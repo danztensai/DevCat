@@ -1,0 +1,60 @@
+[package]
+name = "devcat"
+version = "0.1.0"
+description = "DevCat - database, Kubernetes and RabbitMQ client"
+authors = ["DevCat"]
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "devcat_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.53.3", features = ["full"] }
+async-trait = "0.1.92"
+thiserror = "2.0.21"
+anyhow = "1.0.104"
+futures = "0.3.34"
+dirs = "7.0.0"
+base64 = "0.23.1"
+hex = "0.4.3"
+once_cell = "1.21.4"
+parking_lot = "0.12.5"
+regex = "1.13.1"
+csv = "1.4.0"
+serde_yaml = "0.9.34"
+uuid = { version = "1.28.0", features = ["v4", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "mysql", "sqlite", "chrono", "uuid", "json", "rust_decimal", "macros"] }
+rust_decimal = "1.43.0"
+tiberius = { version = "0.13.0", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal", "sql-browser-tokio"] }
+tokio-util = { version = "0.7.20", features = ["compat"] }
+mongodb = "3.9.1"
+redis = { version = "1.7.1", features = ["tokio-comp", "tokio-rustls-comp", "cluster-async"] }
+kube = { version = "4.2.0", default-features = false, features = ["runtime", "client", "ws", "rustls-tls"] }
+k8s-openapi = { version = "0.28.0", features = ["latest"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "http2", "query"] }
+tauri-plugin-dialog = "2.8.2"
+tauri-plugin-fs = "2.7.0"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* DevCat design tokens. Use these (bg-panel, text-muted, border-line, text-accent…)
+   instead of raw Tailwind palette colors so the theme stays consistent. */
+@theme {
+  --color-app: #0f1114;
+  --color-panel: #14161a;
+  --color-raised: #1b1e24;
+  --color-hover: #232730;
+  --color-line: #2a2f39;
+  --color-fg: #e6e8ec;
+  --color-muted: #8b93a3;
+  --color-faint: #5c6370;
+  --color-accent: #f5a524;
+  --color-accent-fg: #1a1205;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-app);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+input, textarea, [contenteditable], .selectable { user-select: text; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2f3540; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: #3d4452; }
+::-webkit-scrollbar-corner { background: transparent; }
+*:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }

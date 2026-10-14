@@ -1,0 +1,27 @@
+# Local services for developing/testing DevCat drivers: `docker compose -f docker-compose.dev.yml up -d`
+name: devcat-dev
+services:
+  postgres:
+    image: postgres:17
+    environment: { POSTGRES_PASSWORD: devcat, POSTGRES_DB: devcat }
+    ports: ["55432:5432"]
+  mysql:
+    image: mysql:8.4
+    environment: { MYSQL_ROOT_PASSWORD: devcat, MYSQL_DATABASE: devcat }
+    ports: ["53306:3306"]
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment: { ACCEPT_EULA: "Y", MSSQL_SA_PASSWORD: "DevCat_Passw0rd!" }
+    ports: ["51433:1433"]
+  mongo:
+    image: mongo:8
+    environment: { MONGO_INITDB_ROOT_USERNAME: devcat, MONGO_INITDB_ROOT_PASSWORD: devcat }
+    ports: ["57017:27017"]
+  redis:
+    image: redis:8
+    ports: ["56379:6379"]
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment: { RABBITMQ_DEFAULT_USER: devcat, RABBITMQ_DEFAULT_PASS: devcat }
+    ports: ["55672:5672", "55673:15672"]
