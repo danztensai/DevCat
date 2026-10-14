@@ -15,12 +15,16 @@ pub async fn db_list_databases(state: State<'_, AppState>, conn_id: String) -> A
     state.driver(&conn_id).await?.list_databases().await
 }
 
-/// Execute a script and record it in history.
+/// Execute a script and record it in history (unless `skip_history`, used for
+/// internal queries such as Mongo page loads or Redis key lookups).
 #[tauri::command]
-pub async fn db_execute(state: State<'_, AppState>, conn_id: String, script: String, opts: ExecOptions) -> AppResult<Vec<QueryResult>> {
+pub async fn db_execute(state: State<'_, AppState>, conn_id: String, script: String, opts: ExecOptions, skip_history: Option<bool>) -> AppResult<Vec<QueryResult>> {
     let d = state.driver(&conn_id).await?;
     let started = std::time::Instant::now();
     let res = d.execute(&script, &opts).await;
+    if skip_history.unwrap_or(false) {
+        return res;
+    }
     let _ = state.history.add(HistoryEntry {
         id: String::new(),
         connection_id: conn_id,

@@ -37,6 +37,7 @@ pub enum NodeKind {
     Trigger,
     Sequence,
     Index,
+    ForeignKey,
     Column,
     Event,
     Collection,

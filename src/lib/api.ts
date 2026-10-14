@@ -20,8 +20,8 @@ export const api = {
   // database
   children: (connId: string, path: string[]) => invoke<TreeNode[]>("db_children", { connId, path }),
   listDatabases: (connId: string) => invoke<string[]>("db_list_databases", { connId }),
-  execute: (connId: string, script: string, opts: ExecOptions = {}) =>
-    invoke<QueryResult[]>("db_execute", { connId, script, opts }),
+  execute: (connId: string, script: string, { skipHistory, ...opts }: ExecOptions = {}) =>
+    invoke<QueryResult[]>("db_execute", { connId, script, opts, skipHistory: skipHistory ?? false }),
   cancel: (connId: string) => invoke<void>("db_cancel", { connId }),
   tableData: (connId: string, req: TableDataRequest) => invoke<TableDataPage>("db_table_data", { connId, req }),
   tableStructure: (connId: string, table: TableRef) => invoke<TableStructure>("db_table_structure", { connId, table }),

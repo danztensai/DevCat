@@ -1,0 +1,102 @@
+import clsx from "clsx";
+import { AlertTriangle, ChevronRight, Loader2, Lock } from "lucide-react";
+import { memo, type MouseEvent } from "react";
+import { KindIcon } from "../../../components/ui/KindIcon";
+import { isNoteNode, NodeIcon } from "./icons";
+import type { Row } from "./rows";
+
+export const ROW_H = 24;
+const INDENT = 14;
+
+interface Props {
+  row: Row;
+  selected: boolean;
+  focused: boolean;
+  isOpen: boolean;
+  connecting: boolean;
+  onSelect: (row: Row) => void;
+  onToggle: (row: Row) => void;
+  onActivate: (row: Row) => void;
+  onContextMenu: (e: MouseEvent, row: Row) => void;
+  onRetry: (row: Extract<Row, { type: "error" }>) => void;
+}
+
+function Chevron({ expanded, visible, loading, onClick }: { expanded: boolean; visible: boolean; loading?: boolean; onClick: () => void }) {
+  if (loading) return <span className="flex size-4 shrink-0 items-center justify-center"><Loader2 className="size-3 animate-spin text-muted" /></span>;
+  if (!visible) return <span className="size-4 shrink-0" />;
+  return (
+    <span
+      className="flex size-4 shrink-0 items-center justify-center rounded text-faint hover:text-fg"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <ChevronRight className={clsx("size-3 transition-transform duration-100", expanded && "rotate-90")} />
+    </span>
+  );
+}
+
+export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, connecting, onSelect, onToggle, onActivate, onContextMenu, onRetry }: Props) {
+  const pad = 6 + row.depth * INDENT;
+
+  if (row.type === "error") {
+    return (
+      <div className="flex h-6 items-center gap-1.5 pr-2 text-[12px]" style={{ paddingLeft: pad + 16 }} title={row.message}>
+        <AlertTriangle className="size-3.5 shrink-0 text-danger" />
+        <span className="min-w-0 flex-1 truncate text-danger/90">{row.message}</span>
+        <button className="shrink-0 text-[11px] text-accent hover:underline" onClick={() => onRetry(row)}>Retry</button>
+      </div>
+    );
+  }
+  if (row.type === "empty") {
+    return <div className="flex h-6 items-center text-[12px] italic text-faint" style={{ paddingLeft: pad + 16 }}>No items</div>;
+  }
+
+  const common = {
+    "data-row": row.id,
+    onMouseDown: (e: MouseEvent) => { if (e.button === 0) onSelect(row); },
+    onDoubleClick: () => onActivate(row),
+    onContextMenu: (e: MouseEvent) => onContextMenu(e, row),
+    className: clsx(
+      "group relative flex h-6 cursor-default items-center gap-1.5 pr-2 text-[13px]",
+      selected ? (focused ? "bg-accent/20 text-fg" : "bg-hover") : "hover:bg-hover/60",
+    ),
+    style: { paddingLeft: pad },
+  };
+
+  if (row.type === "group") {
+    return (
+      <div {...common}>
+        <Chevron expanded={!row.collapsed} visible onClick={() => onToggle(row)} />
+        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wider text-muted">{row.name}</span>
+        <span className="text-[11px] text-faint">{row.count}</span>
+      </div>
+    );
+  }
+
+  if (row.type === "conn") {
+    const c = row.conn;
+    const infra = c.kind === "kubernetes" || c.kind === "rabbitmq";
+    return (
+      <div {...common} title={c.host ? `${c.name} — ${c.host}${c.port ? `:${c.port}` : ""}` : c.name}>
+        {c.color && <span className="absolute inset-y-0.5 left-0 w-[3px] rounded-r" style={{ background: c.color }} />}
+        <Chevron expanded={row.expanded} visible={!infra} loading={connecting} onClick={() => onToggle(row)} />
+        <span className="relative shrink-0">
+          <KindIcon kind={c.kind} className="size-3.5" />
+          {isOpen && <span className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-ok ring-1 ring-panel" />}
+        </span>
+        <span className={clsx("min-w-0 flex-1 truncate", isOpen || infra ? "text-fg" : "text-fg/80")}>{c.name}</span>
+        {c.readOnly && <Lock className="size-3 shrink-0 text-faint" aria-label="Read-only" />}
+      </div>
+    );
+  }
+
+  const n = row.node;
+  return (
+    <div {...common} title={n.detail ? `${n.label} — ${n.detail}` : n.label}>
+      <Chevron expanded={row.expanded} visible={n.hasChildren} loading={row.loading} onClick={() => onToggle(row)} />
+      <NodeIcon node={n} expanded={row.expanded} />
+      <span className={clsx("min-w-0 flex-1 truncate", isNoteNode(n) ? "text-muted italic" : n.kind === "folder" && "text-fg/85")}>{n.label}</span>
+      {n.detail && <span className="max-w-[45%] shrink-0 truncate pl-2 font-mono text-[11px] text-faint">{n.detail}</span>}
+    </div>
+  );
+});

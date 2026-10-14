@@ -20,6 +20,7 @@ pub async fn save_connection(state: State<'_, AppState>, config: ConnectionConfi
     if let Some(d) = state.sessions.write().await.remove(&config.id) {
         d.close().await;
     }
+    drop_infra_clients(&config.id).await;
     state.store.save(config)
 }
 
@@ -28,6 +29,7 @@ pub async fn delete_connection(state: State<'_, AppState>, id: String) -> AppRes
     if let Some(d) = state.sessions.write().await.remove(&id) {
         d.close().await;
     }
+    drop_infra_clients(&id).await;
     state.store.delete(&id)
 }
 
@@ -57,10 +59,18 @@ pub async fn close_connection(state: State<'_, AppState>, id: String) -> AppResu
     if let Some(d) = state.sessions.write().await.remove(&id) {
         d.close().await;
     }
+    drop_infra_clients(&id).await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn open_connection_ids(state: State<'_, AppState>) -> AppResult<Vec<String>> {
     Ok(state.sessions.read().await.keys().cloned().collect())
+}
+
+/// Forget cached Kubernetes/RabbitMQ clients (and stop k8s streams) for a profile
+/// so edited settings take effect without a manual reconnect.
+async fn drop_infra_clients(id: &str) {
+    let _ = crate::infra::k8s::k8s_disconnect(id.to_string()).await;
+    crate::infra::rabbitmq::client::evict(id);
 }

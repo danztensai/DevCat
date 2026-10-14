@@ -11,6 +11,10 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Both the `ring` and `aws-lc-rs` rustls backends end up in the dependency tree,
+    // so rustls can't pick one automatically; choose it once for every TLS client.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -57,6 +61,51 @@ pub fn run() {
             commands::transfer::restore_database,
             commands::transfer::transfer_tables,
             // INFRA-COMMANDS (k8s, rabbitmq) — registered during integration
+            // kubernetes
+            infra::k8s::k8s_contexts,
+            infra::k8s::k8s_connect,
+            infra::k8s::k8s_disconnect,
+            infra::k8s::k8s_namespaces,
+            infra::k8s::k8s_list,
+            infra::k8s::k8s_get,
+            infra::k8s::k8s_get_yaml,
+            infra::k8s::k8s_apply_yaml,
+            infra::k8s::k8s_delete,
+            infra::k8s::k8s_scale,
+            infra::k8s::k8s_restart,
+            infra::k8s::k8s_cronjob_suspend,
+            infra::k8s::k8s_events_for,
+            infra::k8s::k8s_cluster_overview,
+            infra::k8s::k8s_metrics,
+            infra::k8s::k8s_save_text,
+            infra::k8s::streams::k8s_stream_stop,
+            infra::k8s::streams::k8s_watch_start,
+            infra::k8s::streams::k8s_exec_input,
+            infra::k8s::streams::k8s_exec_resize,
+            infra::k8s::streams::k8s_exec_stop,
+            infra::k8s::streams::k8s_port_forward_list,
+            infra::k8s::streams::k8s_port_forward_stop,
+            infra::k8s::streams::k8s_exec_start,
+            infra::k8s::streams::k8s_logs_start,
+            infra::k8s::streams::k8s_port_forward_start,
+            // rabbitmq
+            infra::rabbitmq::rmq_bindings,
+            infra::rabbitmq::rmq_close_connection,
+            infra::rabbitmq::rmq_create_binding,
+            infra::rabbitmq::rmq_declare_exchange,
+            infra::rabbitmq::rmq_declare_queue,
+            infra::rabbitmq::rmq_delete_binding,
+            infra::rabbitmq::rmq_delete_exchange,
+            infra::rabbitmq::rmq_delete_queue,
+            infra::rabbitmq::rmq_get,
+            infra::rabbitmq::rmq_get_messages,
+            infra::rabbitmq::rmq_list,
+            infra::rabbitmq::rmq_list_page,
+            infra::rabbitmq::rmq_nodes,
+            infra::rabbitmq::rmq_overview,
+            infra::rabbitmq::rmq_publish,
+            infra::rabbitmq::rmq_purge_queue,
+            infra::rabbitmq::rmq_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

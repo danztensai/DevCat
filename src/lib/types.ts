@@ -42,7 +42,7 @@ export interface ConnectionConfig {
 
 export type NodeKind =
   | "database" | "schema" | "folder" | "table" | "view" | "materializedView"
-  | "function" | "procedure" | "trigger" | "sequence" | "index" | "column"
+  | "function" | "procedure" | "trigger" | "sequence" | "index" | "foreignKey" | "column"
   | "event" | "collection" | "key" | "keyGroup" | "user";
 
 export interface TableRef {
@@ -78,6 +78,8 @@ export interface ExecOptions {
   database?: string | null;
   schema?: string | null;
   maxRows?: number | null;
+  /** Don't record in query history (internal/background queries). Frontend-only flag. */
+  skipHistory?: boolean;
 }
 
 export interface SortSpec { column: string; desc: boolean }

@@ -15,12 +15,6 @@ pub enum ConnectionKind {
     Rabbitmq,
 }
 
-impl ConnectionKind {
-    pub fn is_database(&self) -> bool {
-        !matches!(self, ConnectionKind::Kubernetes | ConnectionKind::Rabbitmq)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SshConfig {
