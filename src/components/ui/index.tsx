@@ -45,18 +45,21 @@ export function IconButton({ title, className, children, active, ...p }:
   );
 }
 
-const field = "h-7 w-full rounded-md bg-app border border-line px-2 text-[13px] text-fg placeholder:text-faint focus:border-accent focus:outline-none";
+const field = "h-7 rounded-md bg-app border border-line px-2 text-[13px] text-fg placeholder:text-faint focus:border-accent focus:outline-none";
+
+/** Fields are full width unless the caller passes its own width (`w-*`, `flex-*`). */
+const width = (className?: string) => (/(^|\s)!?(w-|flex-1|flex-auto|grow)/.test(className ?? "") ? undefined : "w-full");
 
 export function Input({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input spellCheck={false} autoCorrect="off" autoCapitalize="off" {...p} className={clsx(field, className)} />;
+  return <input spellCheck={false} autoCorrect="off" autoCapitalize="off" {...p} className={clsx(field, width(className), className)} />;
 }
 
 export function Textarea({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea spellCheck={false} {...p} className={clsx(field, "h-auto py-1.5 font-mono text-xs", className)} />;
+  return <textarea spellCheck={false} {...p} className={clsx(field, width(className), "h-auto py-1.5 font-mono text-xs", className)} />;
 }
 
 export function Select({ className, children, ...p }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...p} className={clsx(field, "pr-6", className)}>{children}</select>;
+  return <select {...p} className={clsx(field, width(className), "pr-6", className)}>{children}</select>;
 }
 
 export function Field({ label, children, hint, className }: { label: string; children: ReactNode; hint?: string; className?: string }) {
