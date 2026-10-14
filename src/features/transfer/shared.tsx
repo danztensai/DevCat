@@ -8,7 +8,7 @@ import { IconButton, Input, Select, Spinner } from "../../components/ui";
 import { KindIcon } from "../../components/ui/KindIcon";
 import { api, errMsg } from "../../lib/api";
 import type { ConnectionConfig, ConnectionKind, TableRef, TreeNode } from "../../lib/types";
-import { useConnections } from "../../store/connections";
+import { useConnections, useScopedConnections } from "../../store/connections";
 
 export const SQL_KINDS: ConnectionKind[] = ["postgres", "mysql", "sqlite", "mssql"];
 export const SCHEMA_KINDS: ConnectionKind[] = ["postgres", "mssql"];
@@ -163,7 +163,7 @@ export interface Target { connId: string; database: string | null; schema: strin
 
 export function ConnSelect({ value, onChange, kinds = SQL_KINDS, className, placeholder = "Select connection…" }:
   { value: string; onChange: (id: string) => void; kinds?: ConnectionKind[]; className?: string; placeholder?: string }) {
-  const connections = useConnections((s) => s.connections);
+  const connections = useScopedConnections();
   const projects = useConnections((s) => s.projects);
   const list = connections.filter((c) => kinds.includes(c.kind));
   // Group options by project (connections without a project first).

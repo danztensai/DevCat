@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import { api } from "../lib/api";
 import type { ConnectionConfig, Project } from "../lib/types";
@@ -19,15 +20,28 @@ interface ConnectionsState {
   /** Move connections into a project (null = no project). */
   moveToProject: (ids: string[], projectId: string | null) => Promise<void>;
   reorderProjects: (ids: string[]) => Promise<void>;
+  /** Focus mode: only this project's connections are shown (null = all projects). */
+  focusProjectId: string | null;
+  setFocus: (projectId: string | null) => void;
 }
+
+const FOCUS_KEY = "devcat.focusProject";
 
 export const useConnections = create<ConnectionsState>((set, get) => ({
   connections: [],
   projects: [],
   open: new Set(),
+  focusProjectId: localStorage.getItem(FOCUS_KEY),
+  setFocus: (focusProjectId) => {
+    if (focusProjectId) localStorage.setItem(FOCUS_KEY, focusProjectId); else localStorage.removeItem(FOCUS_KEY);
+    set({ focusProjectId });
+  },
   load: async () => {
     const [connections, projects] = await Promise.all([api.listConnections(), api.listProjects()]);
     set({ connections, projects });
+    // The focused project was deleted: leave focus mode.
+    const f = get().focusProjectId;
+    if (f && !projects.some((p) => p.id === f)) get().setFocus(null);
   },
   save: async (c) => {
     const saved = await api.saveConnection(c);
@@ -73,6 +87,23 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     set({ projects });
   },
 }));
+
+/** The focused project, if focus mode is on. */
+export const useFocusProject = () =>
+  useConnections((s) => (s.focusProjectId ? s.projects.find((p) => p.id === s.focusProjectId) ?? null : null));
+
+/** True if a connection is visible under the current focus (always true when not focused). */
+export function inFocus(connId: string | null | undefined, s = useConnections.getState()): boolean {
+  if (!s.focusProjectId || !connId) return true;
+  return s.connections.find((c) => c.id === connId)?.projectId === s.focusProjectId;
+}
+
+/** Connections visible under the current focus. Use this for pickers and lists. */
+export function useScopedConnections(): ConnectionConfig[] {
+  const connections = useConnections((s) => s.connections);
+  const focus = useConnections((s) => s.focusProjectId);
+  return useMemo(() => (focus ? connections.filter((c) => c.projectId === focus) : connections), [connections, focus]);
+}
 
 export function newConnection(kind: ConnectionConfig["kind"], projectId: string | null = null): ConnectionConfig {
   return {

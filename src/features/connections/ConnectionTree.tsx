@@ -27,12 +27,19 @@ function dropProjectOf(row: Row | undefined): string | null {
 }
 
 export default function ConnectionTree() {
-  const connections = useConnections((s) => s.connections);
+  const allConnections = useConnections((s) => s.connections);
   const open = useConnections((s) => s.open);
   const markOpen = useConnections((s) => s.markOpen);
   const nodes = useTree((s) => s.nodes);
   const connecting = useTree((s) => s.connecting);
-  const projects = useConnections((s) => s.projects);
+  const allProjects = useConnections((s) => s.projects);
+  const focusId = useConnections((s) => s.focusProjectId);
+  // Focus mode: only the focused project and its connections are visible.
+  const projects = useMemo(() => (focusId ? allProjects.filter((p) => p.id === focusId) : allProjects), [allProjects, focusId]);
+  const connections = useMemo(
+    () => (focusId ? allConnections.filter((c) => c.projectId === focusId) : allConnections),
+    [allConnections, focusId],
+  );
   const collapsedProjects = useTree((s) => s.collapsedProjects);
   const selected = useTree((s) => s.selected);
   const setSelected = useTree((s) => s.setSelected);

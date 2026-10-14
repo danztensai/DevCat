@@ -1,13 +1,13 @@
 // Context menu builders for every tree row type.
 import {
-  ArrowDown, ArrowLeftRight, ArrowUp, Check, Code, Copy, CopyPlus, Eraser, ExternalLink, FilePlus, Folder, FolderInput,
+  ArrowDown, ArrowLeftRight, Crosshair, LogOut, ArrowUp, Check, Code, Copy, CopyPlus, Eraser, ExternalLink, FilePlus, Folder, FolderInput,
   FolderMinus, FolderPlus, GitCompare, Network, Palette, Pencil, PencilRuler, Play, Plug, Plus, RefreshCw, SquareTerminal,
   Table2, Trash2, Unplug,
 } from "lucide-react";
 import type { Project } from "../../../lib/types";
 import { COLOR_PRESETS } from "../dialog/sections";
 import {
-  createProject, deleteProject, moveConnections, moveProject, moveToNewProject, newConnectionIn, renameProject, setProjectColor,
+  createProject, deleteProject, focusProject, moveConnections, moveProject, moveToNewProject, newConnectionIn, renameProject, setProjectColor,
 } from "./projectActions";
 import { dialectOf, type ConnectionConfig } from "../../../lib/types";
 import { useConnections } from "../../../store/connections";
@@ -56,6 +56,9 @@ function projectMenu(row: Extract<Row, { type: "project" }>): MenuItem[] {
   const idx = projects.findIndex((x) => x.id === p.id);
   return [
     { label: "New connection…", icon: ic(Plus), onClick: () => newConnectionIn(p.id) },
+    useConnections.getState().focusProjectId === p.id
+      ? { label: "Exit focus mode", icon: ic(LogOut), onClick: () => useConnections.getState().setFocus(null) }
+      : { label: "Focus on this project", icon: ic(Crosshair), onClick: () => focusProject(p.id) },
     { label: row.collapsed ? "Expand" : "Collapse", onClick: () => useTree.getState().toggleProject(p.id) },
     "separator",
     { label: "Rename…", icon: ic(Pencil), onClick: () => void renameProject(p) },
@@ -214,7 +217,9 @@ export function rowMenu(row: Row): MenuItem[] | null {
 }
 
 export function backgroundMenu(): MenuItem[] {
+  const focused = useConnections.getState().focusProjectId;
   return [
+    ...(focused ? [{ label: "Exit focus mode", icon: ic(LogOut), onClick: () => useConnections.getState().setFocus(null) } as MenuItem, "separator" as const] : []),
     { label: "New connection…", icon: ic(Plus), onClick: () => useUi.getState().openConnectionDialog(null) },
     { label: "New project…", icon: ic(FolderPlus), onClick: () => void createProject() },
     "separator",

@@ -99,6 +99,12 @@ export async function moveToNewProject(conn: ConnectionConfig) {
   if (p) await moveConnections([conn], p.id);
 }
 
+/** Enter focus mode for a project (expands it). */
+export function focusProject(projectId: string) {
+  conns().setFocus(projectId);
+  useTree.getState().setProjectCollapsed(projectId, false);
+}
+
 export const newConnectionIn = (projectId: string | null) => useUi.getState().openConnectionDialog(null, undefined, projectId);
 
 // ---- drag & drop of connection rows onto projects

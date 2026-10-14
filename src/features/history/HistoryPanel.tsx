@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, CircleCheck, CircleX, Copy, FileCode2, Maxim
 import { useEffect, useMemo, useState } from "react";
 import { IconButton, Spinner } from "../../components/ui";
 import type { HistoryEntry, SavedQuery } from "../../lib/types";
-import { useConnections } from "../../store/connections";
+import { inFocus, useConnections } from "../../store/connections";
 import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
 import { openHistoryTab } from "../connections/openers";
 import {
@@ -16,7 +16,11 @@ const SAVED_OPEN_KEY = "devcat.history.savedOpen";
 
 export default function HistoryPanel() {
   const [search, setSearch] = useState("");
-  const { history, saved, loading, error, refresh } = useHistoryData({ search, limit: 300 });
+  const { history: allHistory, saved: allSaved, loading, error, refresh } = useHistoryData({ search, limit: 300 });
+  // Focus mode: only show entries for the focused project's connections.
+  const focus = useConnections((s) => s.focusProjectId);
+  const history = useMemo(() => allHistory.filter((e) => inFocus(e.connectionId)), [allHistory, focus]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saved = useMemo(() => allSaved.filter((q) => inFocus(q.connectionId)), [allSaved, focus]); // eslint-disable-line react-hooks/exhaustive-deps
   const [savedOpen, setSavedOpen] = useState(() => localStorage.getItem(SAVED_OPEN_KEY) !== "0");
   const menu = useContextMenu();
   useConnections((s) => s.connections); // re-render when connection names change

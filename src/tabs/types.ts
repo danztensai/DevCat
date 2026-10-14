@@ -22,3 +22,10 @@ export type Tab = TabSpec & {
   /** dirty indicator (unsaved edits) */
   dirty?: boolean;
 };
+
+/** Connection a tab belongs to (used by project focus mode); null = not tied to a connection. */
+export function tabConnId(t: TabSpec): string | null {
+  if ("connId" in t && t.connId) return t.connId;
+  if (t.type === "schema-compare") return t.sourceConnId ?? t.targetConnId ?? null;
+  return null;
+}

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Button, IconButton } from "../../components/ui";
 import { KindIcon } from "../../components/ui/KindIcon";
 import { DATABASE_KINDS, type ConnectionKind } from "../../lib/types";
-import { useConnections } from "../../store/connections";
+import { useConnections, useScopedConnections } from "../../store/connections";
 import type { Tab } from "../../tabs/types";
 import { useContextMenu } from "../connections/ContextMenu";
 import { hasSchemas, isSqlKind } from "../table/sqlDialect";
@@ -37,8 +37,11 @@ interface Props {
 }
 
 export default function QueryToolbar(p: Props) {
-  const connections = useConnections((s) => s.connections);
-  const dbConns = connections.filter((c) => DATABASE_KINDS.includes(c.kind));
+  const connections = useScopedConnections();
+  const current = useConnections((s) => s.connections.find((c) => c.id === p.tab.connId));
+  // Focus mode limits the picker to the project, but always keep the tab's own connection.
+  const scoped = current && !connections.includes(current) ? [current, ...connections] : connections;
+  const dbConns = scoped.filter((c) => DATABASE_KINDS.includes(c.kind));
   const menu = useContextMenu();
   const canExplain = p.kind !== "redis" && p.kind !== "mssql";
   const hasAnalyze = p.kind === "postgres" || p.kind === "mysql" || p.kind === "mongodb";

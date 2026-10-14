@@ -20,7 +20,7 @@ export default function ConnectionDialog() {
   const state = useUi((s) => s.connectionDialog);
   return (
     <>
-      {state && <ConnectionDialogInner key={`${state.id ?? "new"}:${state.kind ?? ""}:${state.projectId ?? ""}`} id={state.id} kind={state.kind as ConnectionKind | undefined} projectId={state.projectId ?? null} />}
+      {state && <ConnectionDialogInner key={`${state.id ?? "new"}:${state.kind ?? ""}:${state.projectId ?? ""}`} id={state.id} kind={state.kind as ConnectionKind | undefined} projectId={state.projectId ?? (state.id ? null : useConnections.getState().focusProjectId)} />}
       <DialogHost />
     </>
   );

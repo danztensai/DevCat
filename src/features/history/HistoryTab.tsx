@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { Button, Empty, ErrorBox, IconButton, Spinner, Toolbar } from "../../components/ui";
 import { KindIcon } from "../../components/ui/KindIcon";
 import { DATABASE_KINDS, type HistoryEntry, type SavedQuery } from "../../lib/types";
-import { useConnections } from "../../store/connections";
+import { inFocus, useConnections, useScopedConnections } from "../../store/connections";
 import { useTabs } from "../../store/tabs";
 import type { Tab } from "../../tabs/types";
 import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
@@ -31,7 +31,8 @@ export default function HistoryTab({ tab }: { tab: Extract<Tab, { type: "history
   const [connFilter, setConnFilter] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [selected, setSelected] = useState<string | null>(null);
-  const connections = useConnections((s) => s.connections);
+  const connections = useScopedConnections();
+  useConnections((s) => s.focusProjectId);
   const active = useTabs((s) => s.activeId === tab.id);
   const { history, saved, loading, error, refresh } = useHistoryData({ search, connectionId: connFilter || null, limit: 2000 });
   const menu = useContextMenu();
@@ -45,15 +46,16 @@ export default function HistoryTab({ tab }: { tab: Extract<Tab, { type: "history
   }, [active, refresh]);
 
   const historyRows = useMemo(
-    () => history.filter((e) => status === "all" || (status === "ok" ? e.success : !e.success)),
-    [history, status],
+    () => history.filter((e) => inFocus(e.connectionId) && (status === "all" || (status === "ok" ? e.success : !e.success))),
+    [history, status, connections],
   );
   const savedRows = useMemo(() => {
     const s = search.trim().toLowerCase();
     return saved.filter((q) =>
+      inFocus(q.connectionId) &&
       (!connFilter || q.connectionId === connFilter) &&
       (!s || q.name.toLowerCase().includes(s) || q.query.toLowerCase().includes(s)));
-  }, [saved, search, connFilter]);
+  }, [saved, search, connFilter, connections]);
 
   const failed = useMemo(() => history.filter((e) => !e.success).length, [history]);
   const selHistory = view === "history" ? historyRows.find((e) => e.id === selected) : undefined;
