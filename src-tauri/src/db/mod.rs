@@ -11,6 +11,8 @@ pub mod postgres;
 pub mod redis;
 pub mod sql_common;
 pub mod sqlite;
+pub mod ssh;
+pub mod ddl;
 pub mod transfer;
 
 use crate::error::{AppError, AppResult};

@@ -31,3 +31,10 @@ pub fn literal(d: Dialect, v: &Value) -> String {
         other => format!("'{}'", other.to_string().replace('\'', "''")),
     }
 }
+
+/// Split a script into individual statements for the given dialect, honoring
+/// quotes, comments, Postgres dollar-quoting, MySQL `DELIMITER` and MSSQL `GO`.
+/// STUB: naive split on ';' — to be replaced.
+pub fn split_statements(_d: Dialect, script: &str) -> Vec<String> {
+    script.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+}
