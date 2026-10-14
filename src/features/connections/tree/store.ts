@@ -1,5 +1,5 @@
 // Connection tree state: lazily loaded children per (connection, path), expansion,
-// selection and collapsed connection groups.
+// selection and collapsed projects.
 import { create } from "zustand";
 import { api, errMsg } from "../../../lib/api";
 import type { TreeNode } from "../../../lib/types";
@@ -21,11 +21,13 @@ interface TreeState {
   nodes: Record<string, NodeState>;
   /** connections currently running open_connection */
   connecting: Record<string, boolean>;
-  collapsedGroups: Record<string, boolean>;
+  /** collapsed projects, keyed by project id */
+  collapsedProjects: Record<string, boolean>;
   /** selected row id (see rows.ts) */
   selected: string | null;
   setSelected: (id: string | null) => void;
-  toggleGroup: (name: string) => void;
+  toggleProject: (id: string) => void;
+  setProjectCollapsed: (id: string, collapsed: boolean) => void;
   load: (connId: string, path: string[]) => Promise<void>;
   setExpanded: (connId: string, path: string[], expanded: boolean) => void;
   /** Expand a database connection, opening the backend session first if needed. */
@@ -37,9 +39,9 @@ interface TreeState {
   collapseAll: () => void;
 }
 
-const GROUPS_KEY = "devcat.tree.collapsedGroups";
-const loadGroups = (): Record<string, boolean> => {
-  try { return JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "{}"); } catch { return {}; }
+const PROJECTS_KEY = "devcat.tree.collapsedProjects";
+const loadCollapsed = (): Record<string, boolean> => {
+  try { return JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? "{}"); } catch { return {}; }
 };
 
 const isUnder = (k: string, key: string, path: string[]) => k === key || k.startsWith(path.length ? key + SEP : key);
@@ -51,14 +53,16 @@ export const useTree = create<TreeState>((set, get) => {
   return {
     nodes: {},
     connecting: {},
-    collapsedGroups: loadGroups(),
+    collapsedProjects: loadCollapsed(),
     selected: null,
     setSelected: (selected) => set({ selected }),
-    toggleGroup: (name) =>
+    toggleProject: (id) => get().setProjectCollapsed(id, !get().collapsedProjects[id]),
+    setProjectCollapsed: (id, collapsed) =>
       set((s) => {
-        const collapsedGroups = { ...s.collapsedGroups, [name]: !s.collapsedGroups[name] };
-        localStorage.setItem(GROUPS_KEY, JSON.stringify(collapsedGroups));
-        return { collapsedGroups };
+        const collapsedProjects = { ...s.collapsedProjects, [id]: collapsed };
+        if (!collapsed) delete collapsedProjects[id];
+        localStorage.setItem(PROJECTS_KEY, JSON.stringify(collapsedProjects));
+        return { collapsedProjects };
       }),
 
     load: async (connId, path) => {

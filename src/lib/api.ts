@@ -2,7 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  ConnectionConfig, ExecOptions, HistoryEntry, NodeKind, QueryResult, RowChange,
+  ConnectionConfig, ExecOptions, Project, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
 } from "./types";
 
@@ -16,6 +16,13 @@ export const api = {
   openConnection: (id: string) => invoke<string>("open_connection", { id }),
   closeConnection: (id: string) => invoke<void>("close_connection", { id }),
   openConnectionIds: () => invoke<string[]>("open_connection_ids"),
+
+  // projects
+  listProjects: () => invoke<Project[]>("list_projects"),
+  saveProject: (project: Project) => invoke<Project>("save_project", { project }),
+  deleteProject: (id: string, deleteConnections = false) => invoke<void>("delete_project", { id, deleteConnections }),
+  moveConnections: (ids: string[], projectId: string | null) => invoke<void>("move_connections", { ids, projectId }),
+  reorderProjects: (ids: string[]) => invoke<Project[]>("reorder_projects", { ids }),
 
   // database
   children: (connId: string, path: string[]) => invoke<TreeNode[]>("db_children", { connId, path }),

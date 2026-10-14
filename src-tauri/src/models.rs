@@ -63,11 +63,30 @@ pub struct ConnectionConfig {
     /// UI color tag (e.g. "#e11d48" for production).
     #[serde(default)]
     pub color: Option<String>,
-    #[serde(default)]
+    /// Legacy free-text group name. Migrated into a `Project` on startup; no longer written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// Project (folder) this connection belongs to; `None` = not in a project.
+    #[serde(default)]
+    pub project_id: Option<String>,
     /// Driver specific options. Kubernetes: "context". RabbitMQ: "managementPort", "useTls".
     #[serde(default)]
     pub options: HashMap<String, String>,
     #[serde(default)]
     pub read_only: bool,
+}
+
+/// A user-defined project used to group connections in the sidebar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Sort position in the sidebar (ascending).
+    #[serde(default)]
+    pub order: i64,
 }

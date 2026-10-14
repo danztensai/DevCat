@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { AlertTriangle, ChevronRight, Loader2, Lock } from "lucide-react";
+import { AlertTriangle, ChevronRight, Folder, FolderOpen, Loader2, Lock, Plus } from "lucide-react";
 import { memo, type MouseEvent } from "react";
 import { KindIcon } from "../../../components/ui/KindIcon";
 import { isNoteNode, NodeIcon } from "./icons";
@@ -14,11 +14,14 @@ interface Props {
   focused: boolean;
   isOpen: boolean;
   connecting: boolean;
+  /** a dragged connection would be dropped into this project row */
+  dropTarget?: boolean;
   onSelect: (row: Row) => void;
   onToggle: (row: Row) => void;
   onActivate: (row: Row) => void;
   onContextMenu: (e: MouseEvent, row: Row) => void;
   onRetry: (row: Extract<Row, { type: "error" }>) => void;
+  onNewConnection?: (projectId: string) => void;
 }
 
 function Chevron({ expanded, visible, loading, onClick }: { expanded: boolean; visible: boolean; loading?: boolean; onClick: () => void }) {
@@ -35,7 +38,7 @@ function Chevron({ expanded, visible, loading, onClick }: { expanded: boolean; v
   );
 }
 
-export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, connecting, onSelect, onToggle, onActivate, onContextMenu, onRetry }: Props) {
+export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, connecting, dropTarget, onSelect, onToggle, onActivate, onContextMenu, onRetry, onNewConnection }: Props) {
   const pad = 6 + row.depth * INDENT;
 
   if (row.type === "error") {
@@ -48,7 +51,7 @@ export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, c
     );
   }
   if (row.type === "empty") {
-    return <div className="flex h-6 items-center text-[12px] italic text-faint" style={{ paddingLeft: pad + 16 }}>No items</div>;
+    return <div className="flex h-6 items-center truncate pr-2 text-[12px] italic text-faint" style={{ paddingLeft: pad + 16 }}>{row.text ?? "No items"}</div>;
   }
 
   const common = {
@@ -63,12 +66,29 @@ export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, c
     style: { paddingLeft: pad },
   };
 
-  if (row.type === "group") {
+  if (row.type === "project") {
+    const p = row.project;
+    const Icon = row.collapsed ? Folder : FolderOpen;
     return (
-      <div {...common}>
+      <div
+        {...common}
+        className={clsx(common.className, "font-medium", dropTarget && "bg-accent/15 ring-1 ring-accent/60 ring-inset")}
+        title={p.description ? `${p.name} — ${p.description}` : p.name}
+      >
         <Chevron expanded={!row.collapsed} visible onClick={() => onToggle(row)} />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wider text-muted">{row.name}</span>
-        <span className="text-[11px] text-faint">{row.count}</span>
+        <Icon className="size-3.5 shrink-0" style={{ color: p.color ?? "var(--color-muted)" }} />
+        <span className="min-w-0 flex-1 truncate">{p.name}</span>
+        <button
+          title="New connection in this project"
+          aria-label="New connection in this project"
+          className="hidden size-4 shrink-0 items-center justify-center rounded text-muted group-hover:flex hover:bg-hover hover:text-fg"
+          onMouseDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onNewConnection?.(p.id); }}
+        >
+          <Plus className="size-3" />
+        </button>
+        <span className="min-w-4 text-right text-[11px] font-normal text-faint">{row.count}</span>
       </div>
     );
   }
@@ -77,7 +97,7 @@ export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, c
     const c = row.conn;
     const infra = c.kind === "kubernetes" || c.kind === "rabbitmq";
     return (
-      <div {...common} title={c.host ? `${c.name} — ${c.host}${c.port ? `:${c.port}` : ""}` : c.name}>
+      <div {...common} draggable title={c.host ? `${c.name} — ${c.host}${c.port ? `:${c.port}` : ""}` : c.name}>
         {c.color && <span className="absolute inset-y-0.5 left-0 w-[3px] rounded-r" style={{ background: c.color }} />}
         <Chevron expanded={row.expanded} visible={!infra} loading={connecting} onClick={() => onToggle(row)} />
         <span className="relative shrink-0">

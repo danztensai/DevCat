@@ -1,8 +1,9 @@
 // Sidebar tree of saved connections and their (lazily loaded) database objects.
 // State lives in tree/store.ts; rows are flattened in tree/rows.ts and virtualized here.
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronsDownUp, Plus, RefreshCw, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import clsx from "clsx";
+import { ChevronsDownUp, FolderMinus, FolderPlus, Plus, RefreshCw, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { Button, Empty, IconButton } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useConnections } from "../../store/connections";
@@ -10,11 +11,20 @@ import { useUi } from "../../store/ui";
 import { useContextMenu } from "./ContextMenu";
 import { activateConnection, activateNode, refreshAll, toggleConnection, toggleNode } from "./tree/actions";
 import { backgroundMenu, rowMenu } from "./tree/menus";
+import { createProject, DRAG_MIME, moveConnections, newConnectionIn } from "./tree/projectActions";
 import { buildRows, isInfra, type Row, type SelectableRow } from "./tree/rows";
 import { nodeKey, useTree } from "./tree/store";
 import { ROW_H, TreeRow } from "./tree/TreeRow";
 
-const selectable = (r: Row): r is SelectableRow => r.type === "group" || r.type === "conn" || r.type === "node";
+const selectable = (r: Row): r is SelectableRow => r.type === "project" || r.type === "conn" || r.type === "node";
+
+/** Project a dragged connection lands in when dropped on `row` (null = no project). */
+function dropProjectOf(row: Row | undefined): string | null {
+  if (!row) return null;
+  if (row.type === "project") return row.project.id;
+  if (row.type === "empty" && row.parentId.startsWith("p:")) return row.parentId.slice(2);
+  return "conn" in row ? row.conn.projectId ?? null : null;
+}
 
 export default function ConnectionTree() {
   const connections = useConnections((s) => s.connections);
@@ -22,7 +32,8 @@ export default function ConnectionTree() {
   const markOpen = useConnections((s) => s.markOpen);
   const nodes = useTree((s) => s.nodes);
   const connecting = useTree((s) => s.connecting);
-  const collapsedGroups = useTree((s) => s.collapsedGroups);
+  const projects = useConnections((s) => s.projects);
+  const collapsedProjects = useTree((s) => s.collapsedProjects);
   const selected = useTree((s) => s.selected);
   const setSelected = useTree((s) => s.setSelected);
   const openDialog = useUi((s) => s.openConnectionDialog);
@@ -48,8 +59,8 @@ export default function ConnectionTree() {
   }, [open, connections]);
 
   const rows = useMemo(
-    () => buildRows({ connections, nodes, collapsedGroups, query }),
-    [connections, nodes, collapsedGroups, query],
+    () => buildRows({ connections, projects, nodes, collapsedProjects, query }),
+    [connections, projects, nodes, collapsedProjects, query],
   );
 
   // Lazily (re)load expanded nodes that have no cached children (e.g. after a refresh).
@@ -77,13 +88,13 @@ export default function ConnectionTree() {
   const indexOf = useCallback((id: string | null) => (id ? rows.findIndex((r) => r.id === id) : -1), [rows]);
 
   const toggle = useCallback((row: Row) => {
-    if (row.type === "group") useTree.getState().toggleGroup(row.name);
+    if (row.type === "project") useTree.getState().toggleProject(row.project.id);
     else if (row.type === "conn") toggleConnection(row.conn);
     else if (row.type === "node") toggleNode(row.conn, row.node, row.expanded);
   }, []);
 
   const activate = useCallback((row: Row) => {
-    if (row.type === "group") useTree.getState().toggleGroup(row.name);
+    if (row.type === "project") useTree.getState().toggleProject(row.project.id);
     else if (row.type === "conn") activateConnection(row.conn);
     else if (row.type === "node") activateNode(row.conn, row.node, row.ctx, row.expanded);
   }, []);
@@ -108,6 +119,45 @@ export default function ConnectionTree() {
     if (row.path.length === 0) t.refresh(row.conn.id, []);
     else void t.load(row.conn.id, row.path);
   }, []);
+
+  // ---- drag a connection onto a project (or onto "No project") to move it
+  const [dragging, setDragging] = useState<string | null>(null);
+  /** project id under the pointer; null = "no project"; undefined = not over a target */
+  const [dropTarget, setDropTarget] = useState<string | null | undefined>(undefined);
+  const rowAt = (e: DragEvent) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-row]")?.dataset.row;
+    return id ? rows.find((r) => r.id === id) : undefined;
+  };
+  const endDrag = () => { setDragging(null); setDropTarget(undefined); };
+  const dragHandlers = {
+    onDragStart: (e: DragEvent) => {
+      const row = rowAt(e);
+      if (row?.type !== "conn") return e.preventDefault();
+      e.dataTransfer.setData(DRAG_MIME, row.conn.id);
+      e.dataTransfer.setData("text/plain", row.conn.name);
+      e.dataTransfer.effectAllowed = "move";
+      setDragging(row.conn.id);
+    },
+    onDragOver: (e: DragEvent) => {
+      if (!dragging) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const zone = (e.target as HTMLElement).closest("[data-drop-none]");
+      const target = zone ? null : dropProjectOf(rowAt(e));
+      if (target !== dropTarget) setDropTarget(target);
+    },
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData(DRAG_MIME) || dragging;
+      const conn = id ? connections.find((c) => c.id === id) : undefined;
+      const zone = (e.target as HTMLElement).closest("[data-drop-none]");
+      const target = zone ? null : dropProjectOf(rowAt(e));
+      endDrag();
+      if (conn) void moveConnections([conn], target);
+    },
+    onDragEnd: endDrag,
+  };
+  const draggedConn = dragging ? connections.find((c) => c.id === dragging) : undefined;
 
   const moveTo = (i: number) => {
     const r = rows[i];
@@ -136,8 +186,8 @@ export default function ConnectionTree() {
       case "ArrowRight": {
         e.preventDefault();
         if (!row) return;
-        const expandable = row.type === "group" || (row.type === "conn" && !isInfra(row.conn)) || (row.type === "node" && row.node.hasChildren);
-        const expanded = row.type === "group" ? !row.collapsed : row.type !== "error" && row.type !== "empty" && row.expanded;
+        const expandable = row.type === "project" || (row.type === "conn" && !isInfra(row.conn)) || (row.type === "node" && row.node.hasChildren);
+        const expanded = row.type === "project" ? !row.collapsed : row.type !== "error" && row.type !== "empty" && row.expanded;
         if (expandable && !expanded) toggle(row);
         else if (expanded && rows[idx + 1]?.parentId === row.id && selectable(rows[idx + 1])) moveTo(idx + 1);
         break;
@@ -145,7 +195,7 @@ export default function ConnectionTree() {
       case "ArrowLeft": {
         e.preventDefault();
         if (!row) return;
-        const expanded = row.type === "group" ? !row.collapsed : row.type !== "error" && row.type !== "empty" && row.expanded;
+        const expanded = row.type === "project" ? !row.collapsed : row.type !== "error" && row.type !== "empty" && row.expanded;
         if (expanded) toggle(row);
         else if (row.parentId) moveTo(indexOf(row.parentId));
         break;
@@ -177,11 +227,14 @@ export default function ConnectionTree() {
     }
   };
 
-  if (connections.length === 0) {
+  if (connections.length === 0 && projects.length === 0) {
     return (
       <Empty title="No connections yet">
-        <p className="mb-3">Add a database, Kubernetes cluster or RabbitMQ broker to get started.</p>
-        <Button variant="primary" onClick={() => openDialog(null)}><Plus className="size-3.5" />New connection</Button>
+        <p className="mb-3">Add a database, Kubernetes cluster or RabbitMQ broker, or create a project to organize them.</p>
+        <div className="flex justify-center gap-2">
+          <Button variant="primary" onClick={() => openDialog(null)}><Plus className="size-3.5" />New connection</Button>
+          <Button onClick={() => void createProject()}><FolderPlus className="size-3.5" />New project</Button>
+        </div>
       </Empty>
     );
   }
@@ -214,6 +267,7 @@ export default function ConnectionTree() {
             </button>
           )}
         </div>
+        <IconButton title="New project" onClick={() => void createProject()}><FolderPlus className="size-3.5" /></IconButton>
         <IconButton title="Refresh all" onClick={() => void refreshAll()}><RefreshCw className="size-3.5" /></IconButton>
         <IconButton title="Collapse all" onClick={() => useTree.getState().collapseAll()}><ChevronsDownUp className="size-3.5" /></IconButton>
       </div>
@@ -228,6 +282,7 @@ export default function ConnectionTree() {
         onContextMenu={(e) => {
           if (!(e.target as HTMLElement).closest("[data-row]")) menu.show(e, backgroundMenu());
         }}
+        {...dragHandlers}
       >
         {rows.length === 0 ? (
           <div className="px-3 py-4 text-center text-xs text-muted">No matches for “{query}”</div>
@@ -243,6 +298,8 @@ export default function ConnectionTree() {
                     focused={focused}
                     isOpen={row.type === "conn" && open.has(row.conn.id)}
                     connecting={row.type === "conn" && !!connecting[row.conn.id]}
+                    dropTarget={!!dragging && row.type === "project" && dropTarget === row.project.id && draggedConn?.projectId !== row.project.id}
+                    onNewConnection={newConnectionIn}
                     onSelect={onSelect}
                     onToggle={toggle}
                     onActivate={activate}
@@ -252,6 +309,17 @@ export default function ConnectionTree() {
                 </div>
               );
             })}
+          </div>
+        )}
+        {draggedConn?.projectId && (
+          <div
+            data-drop-none
+            className={clsx(
+              "mx-2 mt-2 flex h-8 items-center justify-center gap-1.5 rounded-md border border-dashed text-[12px]",
+              dropTarget === null ? "border-accent bg-accent/10 text-fg" : "border-line text-muted",
+            )}
+          >
+            <FolderMinus className="size-3.5" />Drop here to remove from project
           </div>
         )}
       </div>

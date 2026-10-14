@@ -1,8 +1,8 @@
-// New / edit connection dialog, driven by useUi().connectionDialog ({ id, kind }).
+// New / edit connection dialog, driven by useUi().connectionDialog ({ id, kind, projectId }).
 // Also hosts the global confirm/prompt dialogs (<DialogHost/>), since AppShell mounts this once.
 import clsx from "clsx";
 import { ArrowLeft, CheckCircle2, PlugZap, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button, Dialog, ErrorBox, Spinner } from "../../components/ui";
 import { KIND_META, KindIcon } from "../../components/ui/KindIcon";
@@ -20,7 +20,7 @@ export default function ConnectionDialog() {
   const state = useUi((s) => s.connectionDialog);
   return (
     <>
-      {state && <ConnectionDialogInner key={`${state.id ?? "new"}:${state.kind ?? ""}`} id={state.id} kind={state.kind as ConnectionKind | undefined} />}
+      {state && <ConnectionDialogInner key={`${state.id ?? "new"}:${state.kind ?? ""}:${state.projectId ?? ""}`} id={state.id} kind={state.kind as ConnectionKind | undefined} projectId={state.projectId ?? null} />}
       <DialogHost />
     </>
   );
@@ -42,8 +42,8 @@ const KIND_BLURB: Record<ConnectionKind, string> = {
 type Section = "general" | "ssl" | "ssh" | "advanced";
 type TestState = { status: "idle" } | { status: "testing" } | { status: "ok"; message: string } | { status: "error"; message: string };
 
-function freshConfig(kind: ConnectionKind): ConnectionConfig {
-  const c = newConnection(kind);
+function freshConfig(kind: ConnectionKind, projectId: string | null): ConnectionConfig {
+  const c = newConnection(kind, projectId);
   c.port = KIND_META[kind].defaultPort ?? null;
   if (kind === "sqlite" || kind === "kubernetes") c.host = "";
   if (kind === "redis") c.database = "0";
@@ -54,13 +54,12 @@ function freshConfig(kind: ConnectionKind): ConnectionConfig {
   return c;
 }
 
-function ConnectionDialogInner({ id, kind }: { id: string | null; kind?: ConnectionKind }) {
+function ConnectionDialogInner({ id, kind, projectId }: { id: string | null; kind?: ConnectionKind; projectId: string | null }) {
   const close = useUi((s) => s.closeConnectionDialog);
-  const connections = useConnections((s) => s.connections);
   const editing = !!id;
   const validKind = kind && KINDS.includes(kind) ? kind : undefined;
 
-  const [cfg, setCfg] = useState<ConnectionConfig | null>(() => (!editing && validKind ? freshConfig(validKind) : null));
+  const [cfg, setCfg] = useState<ConnectionConfig | null>(() => (!editing && validKind ? freshConfig(validKind, projectId) : null));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [useUrl, setUseUrl] = useState(false);
   const [section, setSection] = useState<Section>("general");
@@ -81,11 +80,6 @@ function ConnectionDialogInner({ id, kind }: { id: string | null; kind?: Connect
     return () => { cancelled = true; };
   }, [id]);
 
-  const groups = useMemo(
-    () => [...new Set(connections.map((c) => c.group).filter((g): g is string => !!g))].sort(),
-    [connections],
-  );
-
   const set = (patch: Partial<ConnectionConfig>) => {
     setCfg((c) => (c ? { ...c, ...patch } : c));
     setTest({ status: "idle" });
@@ -102,7 +96,7 @@ function ConnectionDialogInner({ id, kind }: { id: string | null; kind?: Connect
   };
 
   const pickKind = (k: ConnectionKind) => {
-    setCfg(freshConfig(k));
+    setCfg((c) => freshConfig(k, c?.projectId ?? projectId));
     setUseUrl(false);
     setSection("general");
     setTest({ status: "idle" });
@@ -123,7 +117,8 @@ function ConnectionDialogInner({ id, kind }: { id: string | null; kind?: Connect
       if (!out.database) out.database = "/";
     }
     if (c.kind === "kubernetes") out.host = "";
-    out.group = c.group?.trim() || null;
+    out.group = null;
+    out.projectId = c.projectId || null;
     return out;
   };
 
@@ -259,7 +254,7 @@ function ConnectionDialogInner({ id, kind }: { id: string | null; kind?: Connect
         <div className="flex flex-col gap-2.5">
           {activeSection === "general" && (
             <>
-              <IdentitySection {...sp} groups={groups} />
+              <IdentitySection {...sp} />
               {nameError && <div className="pl-[144px] text-[11px] text-danger">Name is required.</div>}
               <div className="my-1 h-px bg-line" />
               {cfg.kind === "sqlite" ? <SqliteSection {...sp} />

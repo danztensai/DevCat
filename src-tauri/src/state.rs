@@ -1,6 +1,7 @@
 use crate::db::DynDriver;
 use crate::error::{AppError, AppResult};
 use crate::history::HistoryStore;
+use crate::projects::ProjectStore;
 use crate::store::ConnectionStore;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -8,15 +9,22 @@ use tokio::sync::RwLock;
 pub struct AppState {
     pub store: ConnectionStore,
     pub history: HistoryStore,
+    pub projects: ProjectStore,
     /// Open database sessions keyed by connection id.
     pub sessions: RwLock<HashMap<String, DynDriver>>,
 }
 
 impl AppState {
     pub fn new(data_dir: std::path::PathBuf) -> Self {
+        let store = ConnectionStore::new(data_dir.clone());
+        let projects = ProjectStore::new(data_dir.clone());
+        if let Err(e) = projects.migrate(&store) {
+            eprintln!("project migration failed: {e}");
+        }
         Self {
-            store: ConnectionStore::new(data_dir.clone()),
+            store,
             history: HistoryStore::new(data_dir),
+            projects,
             sessions: RwLock::new(HashMap::new()),
         }
     }

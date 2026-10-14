@@ -1087,6 +1087,7 @@ mod integration {
             ssh: None,
             color: None,
             group: None,
+            project_id: None,
             options: Default::default(),
             read_only: false,
         }

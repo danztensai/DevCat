@@ -4,6 +4,7 @@ mod error;
 mod history;
 mod infra;
 mod models;
+mod projects;
 mod state;
 mod store;
 
@@ -34,6 +35,12 @@ pub fn run() {
             commands::connections::open_connection,
             commands::connections::close_connection,
             commands::connections::open_connection_ids,
+            // projects
+            commands::projects::list_projects,
+            commands::projects::save_project,
+            commands::projects::delete_project,
+            commands::projects::move_connections,
+            commands::projects::reorder_projects,
             // database
             commands::db::db_children,
             commands::db::db_list_databases,

@@ -65,6 +65,13 @@ impl ConnectionStore {
         Ok(cfg)
     }
 
+    /// Apply an edit to every saved profile (secrets untouched) and persist.
+    pub fn update_all(&self, mut f: impl FnMut(&mut ConnectionConfig)) -> AppResult<()> {
+        let mut all = self.load_all()?;
+        all.iter_mut().for_each(&mut f);
+        self.write_all(&all)
+    }
+
     pub fn delete(&self, id: &str) -> AppResult<()> {
         let mut all = self.load_all()?;
         all.retain(|c| c.id != id);

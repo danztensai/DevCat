@@ -164,15 +164,18 @@ export interface Target { connId: string; database: string | null; schema: strin
 export function ConnSelect({ value, onChange, kinds = SQL_KINDS, className, placeholder = "Select connection…" }:
   { value: string; onChange: (id: string) => void; kinds?: ConnectionKind[]; className?: string; placeholder?: string }) {
   const connections = useConnections((s) => s.connections);
+  const projects = useConnections((s) => s.projects);
   const list = connections.filter((c) => kinds.includes(c.kind));
+  // Group options by project (connections without a project first).
   const groups = useMemo(() => {
     const m = new Map<string, ConnectionConfig[]>();
     for (const c of list) {
-      const g = c.group || "";
+      const g = projects.find((p) => p.id === c.projectId)?.name ?? "";
       m.set(g, [...(m.get(g) ?? []), c]);
     }
-    return [...m.entries()];
-  }, [list]);
+    const order = ["", ...projects.map((p) => p.name)];
+    return [...m.entries()].sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+  }, [list, projects]);
   return (
     <Select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
       <option value="">{list.length ? placeholder : "No compatible connections"}</option>

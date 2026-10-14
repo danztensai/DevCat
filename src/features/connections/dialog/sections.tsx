@@ -1,11 +1,13 @@
 // Form sections of the connection dialog. Each section edits a slice of ConnectionConfig.
 import clsx from "clsx";
-import { Check, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Check, FolderPlus, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Checkbox, IconButton, Input, Select, Spinner } from "../../../components/ui";
 import { KIND_META } from "../../../components/ui/KindIcon";
 import { api, errMsg } from "../../../lib/api";
 import type { ConnectionConfig, ConnectionKind, SshConfig } from "../../../lib/types";
+import { useConnections } from "../../../store/connections";
+import { createProject } from "../tree/projectActions";
 import { FileInput, PasswordInput, Row, Segmented } from "./formBits";
 
 export interface SectionProps {
@@ -46,7 +48,15 @@ export function suggestName(cfg: ConnectionConfig): string {
   return cfg.database && cfg.kind !== "redis" && cfg.kind !== "rabbitmq" ? `${cfg.database}@${cfg.host}` : cfg.host;
 }
 
-export function IdentitySection({ cfg, set, groups }: SectionProps & { groups: string[] }) {
+const NEW_PROJECT = "\u0000new";
+
+export function IdentitySection({ cfg, set }: SectionProps) {
+  const projects = useConnections((s) => s.projects);
+  const pickProject = async (value: string) => {
+    if (value !== NEW_PROJECT) return set({ projectId: value || null });
+    const p = await createProject();
+    if (p) set({ projectId: p.id });
+  };
   return (
     <>
       <Row label="Name">
@@ -73,9 +83,17 @@ export function IdentitySection({ cfg, set, groups }: SectionProps & { groups: s
           ))}
         </div>
       </Row>
-      <Row label="Group">
-        <Input list="devcat-conn-groups" value={cfg.group ?? ""} placeholder="(none)" onChange={(e) => set({ group: e.target.value || null })} />
-        <datalist id="devcat-conn-groups">{groups.map((g) => <option key={g} value={g} />)}</datalist>
+      <Row label="Project">
+        <div className="flex items-center gap-1.5">
+          <Select value={cfg.projectId ?? ""} onChange={(e) => void pickProject(e.target.value)} className="min-w-0 flex-1">
+            <option value="">No project</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <option value={NEW_PROJECT}>New project…</option>
+          </Select>
+          <IconButton type="button" title="New project" onClick={() => void pickProject(NEW_PROJECT)}>
+            <FolderPlus className="size-3.5" />
+          </IconButton>
+        </div>
       </Row>
     </>
   );

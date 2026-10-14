@@ -605,6 +605,7 @@ mod tests {
             ssh: None,
             color: None,
             group: None,
+            project_id: None,
             options: HashMap::new(),
             read_only: false,
         }

@@ -1,8 +1,14 @@
 // Context menu builders for every tree row type.
 import {
-  ArrowLeftRight, Code, Copy, CopyPlus, Eraser, ExternalLink, FilePlus, GitCompare, Network, Pencil,
-  PencilRuler, Play, Plug, Plus, RefreshCw, SquareTerminal, Table2, Trash2, Unplug,
+  ArrowDown, ArrowLeftRight, ArrowUp, Check, Code, Copy, CopyPlus, Eraser, ExternalLink, FilePlus, Folder, FolderInput,
+  FolderMinus, FolderPlus, GitCompare, Network, Palette, Pencil, PencilRuler, Play, Plug, Plus, RefreshCw, SquareTerminal,
+  Table2, Trash2, Unplug,
 } from "lucide-react";
+import type { Project } from "../../../lib/types";
+import { COLOR_PRESETS } from "../dialog/sections";
+import {
+  createProject, deleteProject, moveConnections, moveProject, moveToNewProject, newConnectionIn, renameProject, setProjectColor,
+} from "./projectActions";
 import { dialectOf, type ConnectionConfig } from "../../../lib/types";
 import { useConnections } from "../../../store/connections";
 import { useUi } from "../../../store/ui";
@@ -22,9 +28,65 @@ import { useTree } from "./store";
 const ic = (I: typeof Play) => <I className="size-3.5" />;
 const refresh = (connId: string, path: string[]) => useTree.getState().refresh(connId, path);
 
+function moveToProjectMenu(conn: ConnectionConfig): MenuItem {
+  const projects = useConnections.getState().projects;
+  const current = conn.projectId ?? null;
+  const mark = (on: boolean, I: typeof Play) => ic(on ? Check : I);
+  return {
+    label: "Move to project",
+    icon: ic(FolderInput),
+    submenu: [
+      ...projects.map((p): MenuItem => ({
+        label: p.name,
+        icon: mark(current === p.id, Folder),
+        disabled: current === p.id,
+        onClick: () => void moveConnections([conn], p.id),
+      })),
+      ...(projects.length ? ["separator" as const] : []),
+      { label: "No project", icon: mark(current === null, FolderMinus), disabled: current === null, onClick: () => void moveConnections([conn], null) },
+      "separator",
+      { label: "New project…", icon: ic(FolderPlus), onClick: () => void moveToNewProject(conn) },
+    ],
+  };
+}
+
+function projectMenu(row: Extract<Row, { type: "project" }>): MenuItem[] {
+  const p: Project = row.project;
+  const projects = useConnections.getState().projects;
+  const idx = projects.findIndex((x) => x.id === p.id);
+  return [
+    { label: "New connection…", icon: ic(Plus), onClick: () => newConnectionIn(p.id) },
+    { label: row.collapsed ? "Expand" : "Collapse", onClick: () => useTree.getState().toggleProject(p.id) },
+    "separator",
+    { label: "Rename…", icon: ic(Pencil), onClick: () => void renameProject(p) },
+    {
+      label: "Color",
+      icon: ic(Palette),
+      submenu: COLOR_PRESETS.map((c): MenuItem => ({
+        label: c.value ? c.label : "None",
+        icon: c.value
+          ? <span className="size-3 rounded-full" style={{ background: c.value }} />
+          : (p.color ?? null) === null ? ic(Check) : undefined,
+        disabled: (p.color ?? null) === c.value,
+        onClick: () => void setProjectColor(p, c.value),
+      })),
+    },
+    { label: "Move up", icon: ic(ArrowUp), disabled: idx <= 0, onClick: () => void moveProject(p, -1) },
+    { label: "Move down", icon: ic(ArrowDown), disabled: idx < 0 || idx >= projects.length - 1, onClick: () => void moveProject(p, 1) },
+    "separator",
+    { label: "New project…", icon: ic(FolderPlus), onClick: () => void createProject() },
+    "separator",
+    { label: "Delete project…", icon: ic(Trash2), danger: true, onClick: () => void deleteProject(p) },
+    ...(row.count > 0
+      ? [{ label: "Delete project and connections…", icon: ic(Trash2), danger: true, onClick: () => void deleteProject(p, true) } as MenuItem]
+      : []),
+  ];
+}
+
 function connectionMenu(conn: ConnectionConfig): MenuItem[] {
   const edit: MenuItem[] = [
     { label: "Edit connection…", icon: ic(Pencil), onClick: () => useUi.getState().openConnectionDialog(conn.id) },
+    moveToProjectMenu(conn),
     { label: "Duplicate", icon: ic(CopyPlus), onClick: () => duplicateConnection(conn) },
     { label: "Delete", icon: ic(Trash2), danger: true, onClick: () => deleteConnection(conn) },
   ];
@@ -146,10 +208,7 @@ export function rowMenu(row: Row): MenuItem[] | null {
   switch (row.type) {
     case "conn": return connectionMenu(row.conn);
     case "node": return nodeMenu(row);
-    case "group": return [
-      { label: row.collapsed ? "Expand group" : "Collapse group", onClick: () => useTree.getState().toggleGroup(row.name) },
-      { label: "New connection…", icon: ic(Plus), onClick: () => useUi.getState().openConnectionDialog(null) },
-    ];
+    case "project": return projectMenu(row);
     default: return null;
   }
 }
@@ -157,6 +216,8 @@ export function rowMenu(row: Row): MenuItem[] | null {
 export function backgroundMenu(): MenuItem[] {
   return [
     { label: "New connection…", icon: ic(Plus), onClick: () => useUi.getState().openConnectionDialog(null) },
+    { label: "New project…", icon: ic(FolderPlus), onClick: () => void createProject() },
+    "separator",
     { label: "Refresh all", icon: ic(RefreshCw), onClick: () => void refreshAll() },
     { label: "Collapse all", onClick: () => useTree.getState().collapseAll() },
   ];

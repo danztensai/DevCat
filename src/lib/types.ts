@@ -34,10 +34,22 @@ export interface ConnectionConfig {
   sslMode?: string | null;
   ssh?: SshConfig | null;
   color?: string | null;
+  /** Legacy free-text group; migrated to projects by the backend. Don't use. */
   group?: string | null;
+  /** Project (sidebar folder) this connection belongs to. */
+  projectId?: string | null;
   /** Kubernetes: { context }. RabbitMQ: { managementPort, useTls }. */
   options: Record<string, string>;
   readOnly: boolean;
+}
+
+/** User-created folder that groups connections in the sidebar. */
+export interface Project {
+  id: string;
+  name: string;
+  color?: string | null;
+  description?: string | null;
+  order: number;
 }
 
 export type NodeKind =

@@ -103,13 +103,23 @@ export function ErrorBox({ error }: { error: string }) {
   );
 }
 
+/** Open dialogs, innermost last — only the topmost one reacts to Escape. */
+const dialogStack: symbol[] = [];
+
 export function Dialog({ open, onClose, title, children, footer, width = 560 }:
   { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; width?: number }) {
   useEffect(() => {
     if (!open) return;
-    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const me = Symbol("dialog");
+    dialogStack.push(me);
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && dialogStack[dialogStack.length - 1] === me) onClose();
+    };
     window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
+    return () => {
+      window.removeEventListener("keydown", h);
+      dialogStack.splice(dialogStack.indexOf(me), 1);
+    };
   }, [open, onClose]);
   if (!open) return null;
   return (
