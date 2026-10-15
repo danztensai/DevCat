@@ -21,6 +21,8 @@ pub enum Action {
     Connecting(String),
     Connected(String),
     Error(String),
+    /// Cumulative bytes (in, out) from `>BYTECOUNT`.
+    Bytes(u64, u64),
 }
 
 const STATES: &[&str] = &[
@@ -112,7 +114,14 @@ impl Machine {
         if let Some(rest) = line.strip_prefix(">INFO:") {
             return vec![Action::Log(rest.to_string())];
         }
-        if line.starts_with(">BYTECOUNT") || line.starts_with(">PKCS11ID") {
+        if let Some(rest) = line.strip_prefix(">BYTECOUNT:") {
+            let mut f = rest.split(',').map(|x| x.trim().parse::<u64>());
+            if let (Some(Ok(rx)), Some(Ok(tx))) = (f.next(), f.next()) {
+                return vec![Action::Bytes(rx, tx)];
+            }
+            return vec![];
+        }
+        if line.starts_with(">PKCS11ID") {
             return vec![];
         }
         if let Some(rest) = line.strip_prefix('>') {
@@ -354,7 +363,7 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
         )));
     };
     let (tx, rx) = mpsc::unbounded_channel();
-    for cmd in [token.as_str(), "log on all", "state on all", "hold release"] {
+    for cmd in [token.as_str(), "log on all", "state on all", "bytecount 1", "hold release"] {
         let _ = tx.send(cmd.to_string());
     }
     let machine = Machine::new(profile.vpn_user.clone(), profile.vpn_password.clone());
@@ -399,6 +408,7 @@ async fn mgmt_task(id: String, generation: u64, stream: TcpStream, mut rx: mpsc:
                         Action::Error(e) => {
                             registry::set_error(&id, generation, e);
                         }
+                        Action::Bytes(rx, tx) => super::traffic::set_totals(&id, rx, tx),
                     }
                 }
             }
@@ -480,7 +490,8 @@ mod tests {
         assert_eq!(m.on_line("1700000000,CONNECTED,ERROR,10.8.0.6,1.2.3.4,443,,"), vec![Action::Connected("10.8.0.6 (1.2.3.4:443) — with errors, see the log".into())]);
         assert_eq!(m.on_line(">STATE:1,RECONNECTING,ping-restart,,,,,"), vec![Action::Connecting("reconnecting (ping-restart)".into())]);
         assert_eq!(m.on_line(">STATE:1,GET_CONFIG,,,,,,"), vec![Action::Connecting("get config".into())]);
-        assert_eq!(m.on_line(">BYTECOUNT:1,2"), vec![]);
+        assert_eq!(m.on_line(">BYTECOUNT:1,2"), vec![Action::Bytes(1, 2)]);
+        assert_eq!(m.on_line(">BYTECOUNT:x"), vec![]);
     }
 
     #[test]

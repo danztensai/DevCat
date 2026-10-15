@@ -13,6 +13,7 @@ mod registry;
 mod ssh_tunnel;
 mod store;
 mod tools;
+pub mod traffic;
 mod wireguard;
 
 use crate::error::{AppError, AppResult};
@@ -143,6 +144,7 @@ pub fn init(data_dir: PathBuf) {
 pub fn start(app: tauri::AppHandle) {
     let _ = registry::APP.set(app);
     registry::spawn_log_flusher();
+    traffic::spawn_sampler();
     tauri::async_runtime::spawn(async {
         let Ok(profiles) = store().and_then(|s| s.load_all()) else { return };
         for p in profiles.into_iter().filter(|p| p.auto_connect) {
@@ -284,6 +286,7 @@ pub async fn net_delete(id: String) -> AppResult<()> {
     let _ = disconnect(&id).await;
     store()?.delete(&id)?;
     registry::remove(&id);
+    traffic::remove(&id);
     Ok(())
 }
 
@@ -389,4 +392,11 @@ pub async fn net_tools() -> AppResult<NetTools> {
 #[tauri::command]
 pub async fn net_ssh_config_hosts() -> AppResult<Vec<SshConfigHost>> {
     tauri::async_runtime::spawn_blocking(parse::read_ssh_config).await.map_err(|e| AppError::msg(e.to_string()))
+}
+
+/// Recent traffic samples (1/s, up to 5 minutes) for a profile; live updates arrive as
+/// `net-traffic` events with the same `TrafficSample` shape.
+#[tauri::command]
+pub async fn net_traffic(id: String) -> AppResult<Vec<traffic::TrafficSample>> {
+    Ok(traffic::history(&id))
 }

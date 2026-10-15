@@ -2,7 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, HistoryEntry, NodeKind, QueryResult, RowChange,
+  ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
 } from "./types";
 
@@ -76,6 +76,8 @@ export const api = {
   netLogs: (id: string) => invoke<string[]>("net_logs", { id }),
   netTools: () => invoke<NetTools>("net_tools"),
   netSshConfigHosts: () => invoke<SshConfigHost[]>("net_ssh_config_hosts"),
+  /** Last ≤5 minutes of traffic samples; live updates arrive as "net-traffic" events. */
+  netTraffic: (id: string) => invoke<TrafficSample[]>("net_traffic", { id }),
 
   // kubernetes contexts (used by the connection dialog; implemented in infra/k8s.rs)
   k8sContexts: (kubeconfigPath?: string | null) => invoke<string[]>("k8s_contexts", { kubeconfigPath }),

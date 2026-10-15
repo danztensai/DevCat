@@ -113,6 +113,7 @@ pub fn run() {
             network::net_logs,
             network::net_tools,
             network::net_ssh_config_hosts,
+            network::net_traffic,
             // rabbitmq
             infra::rabbitmq::rmq_bindings,
             infra::rabbitmq::rmq_close_connection,

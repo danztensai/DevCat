@@ -12,7 +12,7 @@ import {
 } from "./actions";
 import { copyText, isBusy, isUp, NET_KIND_META, NetKindIcon, portsLabel, StatusDot, Switch } from "./meta";
 import { SshConfigImportDialog } from "./SshConfigImport";
-import { useNet, useScopedNetProfiles } from "./store";
+import { useNet, useScopedNetProfiles, fmtRate } from "./store";
 
 export default function NetworkPanel() {
   const profiles = useScopedNetProfiles();
@@ -194,6 +194,7 @@ function ProfileRow({ p, focused, toolMissing, menu }: {
     { label: "Delete…", icon: <Trash2 className="size-3.5" />, danger: true, onClick: () => void deleteProfile(p) },
   ];
 
+  const lastTraffic = useNet((s) => s.traffic[p.id]?.[s.traffic[p.id].length - 1]);
   const title = [p.name, p.summary, st?.error ? `Error: ${st.error}` : st?.detail].filter(Boolean).join("\n");
 
   return (
@@ -221,7 +222,13 @@ function ProfileRow({ p, focused, toolMissing, menu }: {
       <NetKindIcon kind={p.kind} className="size-3.5 shrink-0" />
       <span className={clsx("min-w-0 shrink truncate", state === "connected" ? "text-fg" : "text-fg/85")}>{p.name}</span>
       {focused && !p.projectId && <span className="shrink-0 rounded bg-hover px-1 text-[10px] text-faint" title="Not assigned to a project — visible in every project">shared</span>}
-      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint">{p.summary}</span>
+      {st?.state === "connected" && lastTraffic ? (
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] tabular-nums" title="Download / upload">
+          <span className="text-ok">↓{fmtRate(lastTraffic.rxRate)}</span> <span className="text-accent">↑{fmtRate(lastTraffic.txRate)}</span>
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint">{p.summary}</span>
+      )}
       {ports && <span className="shrink-0 font-mono text-[11px] text-ok" title="Local ports on 127.0.0.1">{ports}</span>}
       {toolMissing && <span title={`${NET_KIND_META[p.kind].label} isn't installed`}><AlertTriangle className="size-3 shrink-0 text-warn" /></span>}
       {state === "error" && <span title={st?.error ?? "Error"}><AlertTriangle className="size-3 shrink-0 text-danger" /></span>}

@@ -100,8 +100,9 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
     let shown_iface = real_iface(&format!("{}\n{}", out.stdout, out.stderr)).unwrap_or_else(|| iface.clone());
     let detail = match info.interface.address.first() {
         Some(a) => format!("{a} via {shown_iface}"),
-        None => shown_iface,
+        None => shown_iface.clone(),
     };
+    super::traffic::watch_interface(&id, &shown_iface);
     let run = WgRun { tool, conf, iface };
     match registry::store_run(&id, generation, Run::Wireguard(run)) {
         Ok(()) => {

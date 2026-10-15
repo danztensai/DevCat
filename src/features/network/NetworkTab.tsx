@@ -18,9 +18,10 @@ import {
 } from "./meta";
 import { emptyOvpnForm, generateOvpn } from "./ovpnGen";
 import { forwardLabel, SshTunnelEditor } from "./SshTunnelEditor";
-import { useNet, useNetStatus } from "./store";
+import { useNet, useNetStatus, useNetTraffic } from "./store";
 import { OpenVpnEditor, WireGuardEditor, type EditMode } from "./VpnEditors";
 import { emptyWgForm, generateWg } from "./wgGen";
+import TrafficGraph from "./TrafficGraph";
 
 type NetworkTabSpec = Extract<Tab, { type: "network" }>;
 
@@ -232,6 +233,7 @@ export default function NetworkTab({ tab }: { tab: NetworkTabSpec }) {
       </Toolbar>
 
       {profileId && <StatusStrip status={status} p={p} />}
+      {profileId && <TrafficPanel id={profileId} state={status?.state ?? "disconnected"} />}
 
       <div className="flex h-8 shrink-0 items-end gap-1 border-b border-line bg-panel px-3">
         <SubTab active={view === "settings"} onClick={() => setView("settings")}><Settings2 className="size-3.5" />Settings</SubTab>
@@ -282,6 +284,17 @@ function SubTab({ active, disabled, onClick, children }: { active: boolean; disa
     >
       {children}
     </button>
+  );
+}
+
+/** Live download / upload graph while connected (and the last session's data afterwards). */
+function TrafficPanel({ id, state }: { id: string; state: string }) {
+  const samples = useNetTraffic(id);
+  if (state !== "connected" && !samples.length) return null;
+  return (
+    <div className="shrink-0 border-b border-line bg-panel/60 px-4 py-3">
+      <TrafficGraph samples={samples} connected={state === "connected"} height={140} />
+    </div>
   );
 }
 

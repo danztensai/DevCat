@@ -78,6 +78,7 @@ pub fn begin_connect(id: &str) -> Option<u64> {
             return None;
         }
         e.generation = NEXT_GEN.fetch_add(1, Ordering::SeqCst);
+        super::traffic::reset(id);
         set_state(e, CONNECTING);
         e.status.detail = None;
         e.status.error = None;

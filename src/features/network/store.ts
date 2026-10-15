@@ -5,11 +5,13 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { api, errMsg } from "../../lib/api";
-import type { NetProfile, NetStatus, NetTools } from "../../lib/types";
+import type { NetProfile, NetStatus, NetTools, TrafficSample } from "../../lib/types";
 import { useConnections } from "../../store/connections";
 
 /** Max log lines kept per profile in the UI. */
 const LOG_CAP = 5000;
+/** Traffic samples kept per profile (1/s → 5 minutes), matching the backend. */
+const TRAFFIC_CAP = 300;
 
 interface NetStoreState {
   profiles: NetProfile[];
@@ -20,6 +22,9 @@ interface NetStoreState {
   tools: NetTools | null;
   /** Log lines per profile; only kept for profiles whose logs were requested. */
   logs: Record<string, string[]>;
+  /** Traffic samples per profile (all connected profiles, from "net-traffic"). */
+  traffic: Record<string, TrafficSample[]>;
+  loadTraffic: (id: string) => Promise<void>;
   load: () => Promise<void>;
   loadStatus: () => Promise<void>;
   loadTools: () => Promise<void>;
@@ -41,6 +46,17 @@ export const useNet = create<NetStoreState>((set, get) => {
     statuses: {},
     tools: null,
     logs: {},
+    traffic: {},
+    loadTraffic: async (id) => {
+      try {
+        const hist = await api.netTraffic(id);
+        set((st) => {
+          // Merge with samples that arrived live while loading.
+          const live = (st.traffic[id] ?? []).filter((s) => !hist.length || s.at > hist[hist.length - 1].at);
+          return { traffic: { ...st.traffic, [id]: hist.concat(live).slice(-TRAFFIC_CAP) } };
+        });
+      } catch { /* backend not ready */ }
+    },
     load: async () => {
       try {
         const profiles = await api.netList();
@@ -113,6 +129,16 @@ export function initNetwork() {
       const s = e.payload;
       useNet.setState((cur) => ({ statuses: { ...cur.statuses, [s.id]: { ...s, localPorts: s.localPorts ?? [] } } }));
     }),
+    listen<TrafficSample>("net-traffic", (e) => {
+      const s = e.payload;
+      useNet.setState((cur) => {
+        const prev = cur.traffic[s.id] ?? [];
+        // A new connection restarts the totals: drop the previous session's samples.
+        const base = prev.length && s.rxTotal < prev[prev.length - 1].rxTotal && s.txTotal < prev[prev.length - 1].txTotal ? [] : prev;
+        const next = base.concat(s);
+        return { traffic: { ...cur.traffic, [s.id]: next.length > TRAFFIC_CAP ? next.slice(-TRAFFIC_CAP) : next } };
+      });
+    }),
     listen<{ id: string; lines: string[] }>("net-log", (e) => {
       const { id, lines } = e.payload;
       useNet.setState((cur) => {
@@ -156,3 +182,24 @@ export function useNetStatus(id: string | null | undefined): NetStatus | null {
 }
 
 export const netProfileById = (id: string) => useNet.getState().profiles.find((p) => p.id === id);
+
+/** Traffic samples for a profile (loads the backend history on first use). */
+export function useNetTraffic(id: string | null | undefined): TrafficSample[] {
+  useEffect(initNetwork, []);
+  useEffect(() => { if (id) void useNet.getState().loadTraffic(id); }, [id]);
+  return useNet((s) => (id ? s.traffic[id] ?? EMPTY_TRAFFIC : EMPTY_TRAFFIC));
+}
+const EMPTY_TRAFFIC: TrafficSample[] = [];
+
+/** Human readable byte rate: "0 B/s", "41 B/s", "3.27 KB/s", "12.4 MB/s". */
+export function fmtRate(bps: number): string {
+  return `${fmtBytes(bps)}/s`;
+}
+
+export function fmtBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 1) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return `${i === 0 ? Math.round(n) : n < 10 ? n.toFixed(2) : n < 100 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+}

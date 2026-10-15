@@ -250,3 +250,15 @@ export interface NetTools {
 }
 
 export interface SshConfigHost { alias: string; host: string; port: number; user?: string | null; identityFile?: string | null }
+
+/** One traffic sample (1/s) for a connected network profile; live via the "net-traffic" event. */
+export interface TrafficSample {
+  id: string;
+  /** unix ms */
+  at: number;
+  /** bytes per second */
+  rxRate: number;
+  txRate: number;
+  rxTotal: number;
+  txTotal: number;
+}

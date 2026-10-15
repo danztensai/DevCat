@@ -90,9 +90,9 @@ async fn accept_loop(id: String, listener: TcpListener, session: Arc<SshSession>
         tokio::spawn(async move {
             let _ = socket.set_nodelay(true);
             let res = if fwd.kind == "dynamic" {
-                serve_socks(socket, peer, &session).await
+                serve_socks(&id, socket, peer, &session).await
             } else {
-                serve_local(socket, peer, &session, &fwd.remote_host, fwd.remote_port).await
+                serve_local(&id, socket, peer, &session, &fwd.remote_host, fwd.remote_port).await
             };
             if let Err(e) = res {
                 registry::log(&id, &format!("Forward from {peer} failed: {e}"));
@@ -109,17 +109,19 @@ async fn open_channel(session: &SshSession, host: &str, port: u16, peer: std::ne
     Ok(ch.into_stream())
 }
 
-async fn serve_local(mut socket: TcpStream, peer: std::net::SocketAddr, session: &SshSession, host: &str, port: u16) -> io::Result<()> {
+async fn serve_local(id: &str, socket: TcpStream, peer: std::net::SocketAddr, session: &SshSession, host: &str, port: u16) -> io::Result<()> {
     let mut stream = open_channel(session, host, port, peer).await?;
+    let mut socket = super::traffic::Counted::new(socket, id);
     let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
     Ok(())
 }
 
-async fn serve_socks(mut socket: TcpStream, peer: std::net::SocketAddr, session: &SshSession) -> io::Result<()> {
+async fn serve_socks(id: &str, mut socket: TcpStream, peer: std::net::SocketAddr, session: &SshSession) -> io::Result<()> {
     let (host, port) = socks5_accept(&mut socket).await?;
     match open_channel(session, &host, port, peer).await {
         Ok(mut stream) => {
             socks5_reply(&mut socket, REP_OK).await?;
+            let mut socket = super::traffic::Counted::new(socket, id);
             let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream).await;
             Ok(())
         }
