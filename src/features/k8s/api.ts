@@ -93,6 +93,9 @@ export const k8s = {
   connect: (connId: string) => invoke<ConnectInfo>("k8s_connect", { connId }),
   disconnect: (connId: string) => invoke<void>("k8s_disconnect", { connId }),
   namespaces: (connId: string) => invoke<string[]>("k8s_namespaces", { connId }),
+  helmReleases: (connId: string, namespace?: string | null) => invoke<HelmRelease[]>("k8s_helm_releases", { connId, namespace }),
+  helmRelease: (connId: string, namespace: string, name: string, revision?: number | null) =>
+    invoke<HelmReleaseDetail>("k8s_helm_release", { connId, namespace, name, revision }),
   list: (connId: string, kind: string, namespace?: string | null, labelSelector?: string | null) =>
     invoke<K8sObject[]>("k8s_list", { connId, kind, namespace, labelSelector }),
   get: (connId: string, kind: string, namespace: string | null | undefined, name: string) =>
@@ -185,4 +188,31 @@ export const events = {
 /** Make sure all global listeners are attached before starting streams. */
 export function eventsReady() {
   return Promise.all([events.watch.ready(), events.log.ready(), events.logEnd.ready(), events.execOutput.ready(), events.execExit.ready()]);
+}
+
+export interface HelmRelease {
+  name: string;
+  namespace: string;
+  revision: number;
+  status: string;
+  chart?: string;
+  chartVersion?: string;
+  appVersion?: string;
+  icon?: string;
+  chartDescription?: string;
+  updated?: string;
+  firstDeployed?: string;
+  description?: string;
+  error?: string;
+}
+
+export interface HelmReleaseDetail {
+  summary: HelmRelease;
+  /** user-supplied values (YAML) */
+  values: string;
+  /** chart default values (YAML) */
+  defaultValues: string;
+  manifest?: string;
+  notes?: string;
+  history: HelmRelease[];
 }

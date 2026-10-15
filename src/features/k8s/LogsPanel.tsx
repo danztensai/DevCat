@@ -7,11 +7,12 @@ import { toast } from "sonner";
 import { IconButton, Input, Select } from "../../components/ui";
 import { errMsg } from "../../lib/api";
 import { events, eventsReady, k8s } from "./api";
+import PodSwitcher from "./PodSwitcher";
 
 const MAX_LINES = 50_000;
 const ALL = "__all__";
 
-export interface LogTarget { namespace: string; pod: string; containers: string[]; initContainers: string[]; container?: string | null }
+export interface LogTarget { namespace: string; pod: string; containers: string[]; initContainers: string[]; container?: string | null; owner?: string; pods?: string[] }
 
 function Toggle({ on, onClick, children, title }: { on: boolean; onClick: () => void; children: React.ReactNode; title?: string }) {
   return (
@@ -41,7 +42,7 @@ function highlight(line: string, q: string, active: boolean) {
   return out;
 }
 
-export default function LogsPanel({ connId, target, visible }: { connId: string; target: LogTarget; visible: boolean }) {
+export default function LogsPanel({ connId, target, visible, onPodChange }: { connId: string; target: LogTarget; visible: boolean; onPodChange?: (pod: string) => void }) {
   const [container, setContainer] = useState<string>(target.container ?? target.containers[0] ?? "");
   const [follow, setFollow] = useState(true);
   const [timestamps, setTimestamps] = useState(false);
@@ -161,6 +162,9 @@ export default function LogsPanel({ connId, target, visible }: { connId: string;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-line px-2">
+        {target.pods && target.pods.length > 0 && onPodChange && (
+          <PodSwitcher owner={target.owner} pods={target.pods} pod={target.pod} onChange={onPodChange} />
+        )}
         <Select className="h-6 w-auto max-w-48 text-xs" value={container} onChange={(e) => setContainer(e.target.value)}>
           {target.containers.length > 1 && <option value={ALL}>All containers</option>}
           {target.containers.map((c) => <option key={c} value={c}>{c}</option>)}

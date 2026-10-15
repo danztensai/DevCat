@@ -1394,6 +1394,7 @@ dependencies = [
  "chrono",
  "csv",
  "dirs",
+ "flate2",
  "futures",
  "hex",
  "k8s-openapi",

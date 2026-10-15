@@ -230,6 +230,16 @@ export const KINDS: Record<string, KindDef> = {
       ageCol,
     ],
   },
+  replicationcontrollers: {
+    key: "replicationcontrollers", title: "Replication Controllers", namespaced: true, columns: [
+      nameCol, nsCol,
+      num("desired", "Desired", (o) => o.spec?.replicas),
+      num("current", "Current", (o) => o.status?.replicas),
+      ratio("ready", "Ready", (o) => [o.status?.readyReplicas ?? 0, o.spec?.replicas ?? 0]),
+      text("selector", "Selector", "minmax(120px,1fr)", (o) => selectorString(o.spec?.selector)),
+      ageCol,
+    ],
+  },
   jobs: {
     key: "jobs", title: "Jobs", namespaced: true, columns: [
       nameCol, nsCol,
@@ -512,14 +522,17 @@ export function genericKindDef(key: string, namespaced = true): KindDef {
 export type View =
   | { type: "overview" }
   | { type: "list"; kind: string }
-  | { type: "portforwards" };
+  | { type: "portforwards" }
+  | { type: "workloads" }
+  | { type: "applications" }
+  | { type: "helm" };
 
 export interface NavGroup { id: string; title: string; items: { label: string; view: View }[] }
 
 const list = (kind: string, label = KINDS[kind].title): { label: string; view: View } => ({ label, view: { type: "list", kind } });
 
 export const NAV: NavGroup[] = [
-  { id: "workloads", title: "Workloads", items: [list("pods"), list("deployments"), list("daemonsets"), list("statefulsets"), list("replicasets"), list("jobs"), list("cronjobs")] },
+  { id: "workloads", title: "Workloads", items: [{ label: "Overview", view: { type: "workloads" } }, list("pods"), list("deployments"), list("daemonsets"), list("statefulsets"), list("replicasets"), list("replicationcontrollers"), list("jobs"), list("cronjobs")] },
   { id: "config", title: "Config", items: [list("configmaps"), list("secrets"), list("resourcequotas"), list("limitranges"), list("horizontalpodautoscalers"), list("poddisruptionbudgets"), list("priorityclasses")] },
   { id: "network", title: "Network", items: [list("services"), list("endpoints"), list("ingresses"), list("ingressclasses"), list("networkpolicies"), { label: "Port Forwarding", view: { type: "portforwards" } }] },
   { id: "storage", title: "Storage", items: [list("persistentvolumeclaims"), list("persistentvolumes"), list("storageclasses")] },
@@ -534,7 +547,7 @@ export function kindKeyFor(kind: string, apiVersion?: string): string {
 }
 
 const KIND_NAMES: Record<string, string> = {
-  pods: "Pod", deployments: "Deployment", statefulsets: "StatefulSet", daemonsets: "DaemonSet", replicasets: "ReplicaSet",
+  pods: "Pod", deployments: "Deployment", statefulsets: "StatefulSet", daemonsets: "DaemonSet", replicasets: "ReplicaSet", replicationcontrollers: "ReplicationController",
   jobs: "Job", cronjobs: "CronJob", services: "Service", endpoints: "Endpoints", ingresses: "Ingress", ingressclasses: "IngressClass",
   networkpolicies: "NetworkPolicy", configmaps: "ConfigMap", secrets: "Secret", resourcequotas: "ResourceQuota", limitranges: "LimitRange",
   horizontalpodautoscalers: "HorizontalPodAutoscaler", poddisruptionbudgets: "PodDisruptionBudget", priorityclasses: "PriorityClass",

@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, EllipsisVertical } from "lucide-react";
+import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
 import { useMemo, useRef, useState } from "react";
 import type { K8sObject } from "./api";
 import { useNow } from "./format";
@@ -18,7 +19,7 @@ export function matchesSearch(o: K8sObject, def: KindDef, ctx: CellCtx, q: strin
 }
 
 export default function ResourceTable({
-  def, items, ctx, search, selectedUid, onSelect, onActivate, hideNamespace, sortDefault,
+  def, items, ctx, search, selectedUid, onSelect, onActivate, hideNamespace, sortDefault, menuFor,
 }: {
   def: KindDef;
   items: K8sObject[];
@@ -30,12 +31,15 @@ export default function ResourceTable({
   onActivate?: (o: K8sObject) => void;
   hideNamespace?: boolean;
   sortDefault?: { id: string; desc: boolean };
+  /** Row actions for the ⋮ button and right-click. */
+  menuFor?: (o: K8sObject) => MenuItem[];
 }) {
+  const menu = useContextMenu();
   const now = useNow();
   const fullCtx: CellCtx = { ...ctx, now };
   const [sort, setSort] = useState<{ id: string; desc: boolean }>(sortDefault ?? (def.key === "events" ? { id: "last", desc: false } : { id: "name", desc: false }));
   const columns = useMemo(() => def.columns.filter((c) => !(hideNamespace && c.id === "namespace")), [def, hideNamespace]);
-  const template = columns.map((c) => c.width).join(" ");
+  const template = columns.map((c) => c.width).join(" ") + (menuFor ? " 24px" : "");
 
   // Sorting / filtering ignore the ticking clock so rows don't jump every second.
   const metrics = ctx.metrics;
@@ -75,6 +79,7 @@ export default function ResourceTable({
                 {sort.id === c.id && (sort.desc ? <ArrowDown className="size-3 shrink-0" /> : <ArrowUp className="size-3 shrink-0" />)}
               </button>
             ))}
+            {menuFor && <span />}
           </div>
           <div style={{ height: virt.getTotalSize(), position: "relative" }}>
             {virt.getVirtualItems().map((vr) => {
@@ -85,6 +90,7 @@ export default function ResourceTable({
                   key={o.metadata.uid}
                   onClick={() => onSelect(o)}
                   onDoubleClick={() => onActivate?.(o)}
+                  onContextMenu={menuFor ? (e) => { onSelect(o); menu.show(e, menuFor(o)); } : undefined}
                   className={clsx(
                     "absolute left-0 grid w-full cursor-default items-center gap-x-3 border-b border-line/40 px-3 text-[12.5px]",
                     selected ? "bg-accent/10 shadow-[inset_2px_0_0_var(--color-accent)]" : vr.index % 2 ? "bg-app/30 hover:bg-hover" : "hover:bg-hover",
@@ -97,6 +103,21 @@ export default function ResourceTable({
                       {c.render ? c.render(o, fullCtx) : <span className="truncate">{String(c.value(o, fullCtx))}</span>}
                     </div>
                   ))}
+                  {menuFor && (
+                    <button
+                      title="Actions"
+                      aria-label="Actions"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        menu.show({ clientX: rect.right - 192, clientY: rect.bottom + 2 }, menuFor(o));
+                      }}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      className="flex size-6 items-center justify-center rounded text-muted hover:bg-hover hover:text-fg"
+                    >
+                      <EllipsisVertical className="size-4" />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -106,6 +127,7 @@ export default function ResourceTable({
       <div className="flex h-6 shrink-0 items-center border-t border-line px-3 text-[11px] text-muted">
         {rows.length === items.length ? `${items.length} item${items.length === 1 ? "" : "s"}` : `${rows.length} of ${items.length} items`}
       </div>
+      {menu.element}
     </div>
   );
 }

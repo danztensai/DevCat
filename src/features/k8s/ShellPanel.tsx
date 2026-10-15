@@ -6,8 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Select } from "../../components/ui";
 import { errMsg } from "../../lib/api";
 import { events, eventsReady, k8s } from "./api";
+import PodSwitcher from "./PodSwitcher";
 
-export interface ShellTarget { namespace: string; pod: string; containers: string[]; container?: string | null }
+export interface ShellTarget { namespace: string; pod: string; containers: string[]; container?: string | null; owner?: string; pods?: string[] }
 
 const SHELL = ["/bin/sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh"];
 
@@ -20,7 +21,7 @@ function b64ToBytes(s: string): Uint8Array {
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-export default function ShellPanel({ connId, target, visible }: { connId: string; target: ShellTarget; visible: boolean }) {
+export default function ShellPanel({ connId, target, visible, onPodChange }: { connId: string; target: ShellTarget; visible: boolean; onPodChange?: (pod: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   const termRef = useRef<{ term: Terminal; fit: FitAddon } | null>(null);
   const sessionRef = useRef<string | null>(null);
@@ -116,6 +117,9 @@ export default function ShellPanel({ connId, target, visible }: { connId: string
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line px-2 text-xs">
+        {target.pods && target.pods.length > 0 && onPodChange && (
+          <PodSwitcher owner={target.owner} pods={target.pods} pod={target.pod} onChange={onPodChange} />
+        )}
         {target.containers.length > 1 && (
           <Select className="h-6 w-auto max-w-48 text-xs" value={container} onChange={(e) => setContainer(e.target.value)}>
             {target.containers.map((c) => <option key={c} value={c}>{c}</option>)}

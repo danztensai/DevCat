@@ -1,7 +1,7 @@
 // Lens-style Kubernetes cluster view.
 import clsx from "clsx";
 import {
-  AlertTriangle, Boxes, ChevronDown, ChevronRight, CloudOff, Gauge, Layers, ListTree, Pencil, Puzzle, RefreshCw, Search,
+  AlertTriangle, AppWindow, Boxes, Package, ChevronDown, ChevronRight, CloudOff, Gauge, Layers, ListTree, Pencil, Puzzle, RefreshCw, Search,
   Server, Settings2, Network, HardDrive, Shield, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -18,6 +18,10 @@ import NamespacePicker from "./NamespacePicker";
 import Overview from "./Overview";
 import PortForwards from "./PortForwards";
 import ResourceTable from "./ResourceTable";
+import Applications from "./Applications";
+import HelmView from "./HelmView";
+import WorkloadsOverview from "./WorkloadsOverview";
+import { openForWorkload, useRowActions, type DetailsTab, type RowActionHost } from "./rowActions";
 import { KINDS, NAV, crdKindDef, crdKindKey, genericKindDef, type KindDef, type View } from "./resources";
 
 export default function K8sTab({ tab }: { tab: Extract<Tab, { type: "k8s" }> }) {
@@ -76,7 +80,7 @@ export default function K8sTab({ tab }: { tab: Extract<Tab, { type: "k8s" }> }) 
 
 // ---------------------------------------------------------------------------
 
-interface Selection { kind: string; namespace?: string; name: string }
+interface Selection { kind: string; namespace?: string; name: string; tab?: { tab: DetailsTab; nonce: number } }
 
 function useStored<T>(key: string, initial: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(() => {
@@ -137,18 +141,18 @@ function ClusterView({ connId, info, reconnect }: { connId: string; info: Connec
   );
   const drawerObj = liveObj ?? (needFetch ? fetched.data : null);
 
-  const openSession = useCallback((type: "logs" | "shell", pod: K8sObject, container?: string) => {
+  const openSession = useCallback((type: "logs" | "shell", pod: K8sObject, container?: string, extra?: { owner?: string; pods?: string[] }) => {
     const containers: string[] = (pod.spec?.containers ?? []).map((c: K8sObject) => c.name);
     const initContainers: string[] = (pod.spec?.initContainers ?? []).map((c: K8sObject) => c.name);
     const ns = pod.metadata.namespace!;
     setSessions((prev) => {
-      const existing = type === "logs" && prev.find((s) => s.type === "logs" && s.namespace === ns && s.pod === pod.metadata.name && (!container || s.container === container));
+      const existing = type === "logs" && prev.find((s) => s.type === "logs" && s.namespace === ns && (extra?.owner ? s.owner === extra.owner : s.pod === pod.metadata.name && !s.owner) && (!container || s.container === container));
       if (existing) { setActiveSession(existing.id); return prev; }
       const id = `${type}-${ns}-${pod.metadata.name}-${Date.now()}`;
       setActiveSession(id);
       const s: DockSession = type === "logs"
-        ? { id, type, namespace: ns, pod: pod.metadata.name, containers, initContainers, container }
-        : { id, type, namespace: ns, pod: pod.metadata.name, containers, container };
+        ? { id, type, namespace: ns, pod: pod.metadata.name, containers, initContainers, container, ...extra }
+        : { id, type, namespace: ns, pod: pod.metadata.name, containers, container, ...extra };
       return [...prev, s];
     });
     setDockCollapsed(false);
@@ -163,19 +167,40 @@ function ClusterView({ connId, info, reconnect }: { connId: string; info: Connec
     });
   }, []);
 
+  const updateSession = useCallback((id: string, patch: { pod: string }) => {
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }, []);
+
   const navigate = useCallback((kindKey: string, namespace?: string, name?: string) => {
     setView({ type: "list", kind: kindKey });
     setSelection(name ? { kind: kindKey, namespace: namespace || undefined, name } : null);
   }, [setView]);
 
+  const host: RowActionHost = useMemo(() => ({
+    connId,
+    readOnly,
+    openSession: (type, pod, opts) => openSession(type, pod, undefined, opts),
+    showDetails: (kindKey, obj, t) => setSelection({
+      kind: kindKey, namespace: obj.metadata.namespace || undefined, name: obj.metadata.name,
+      tab: t ? { tab: t, nonce: Date.now() } : undefined,
+    }),
+    onDeleted: (obj) => setSelection((s) => (s && s.name === obj.metadata.name && (s.namespace ?? "") === (obj.metadata.namespace ?? "") ? null : s)),
+    browseCrd: (crd) => navigate(crdKindKey(crd)),
+  }), [connId, readOnly, openSession, navigate]);
+  const rowActions = useRowActions(host);
+
   const actions: DrawerActions = useMemo(() => ({
     logs: (pod, c) => openSession("logs", pod, c),
     shell: (pod, c) => openSession("shell", pod, c),
+    workload: (type, obj) => void openForWorkload(host, type, obj),
     navigate: (k, ns, name) => navigate(k, KINDS[k] && !KINDS[k].namespaced ? undefined : ns, name),
     browseCrd: (crd) => navigate(crdKindKey(crd)),
-  }), [openSession, navigate]);
+  }), [openSession, navigate, host]);
 
-  const title = view.type === "overview" ? "Overview" : view.type === "portforwards" ? "Port Forwarding" : def?.title ?? "";
+  const title = view.type === "overview" ? "Overview" : view.type === "portforwards" ? "Port Forwarding"
+    : view.type === "workloads" ? "Workloads" : view.type === "applications" ? "Applications" : view.type === "helm" ? "Helm Releases" : def?.title ?? "";
+  // Views that get the search + namespace header.
+  const extraView = view.type === "workloads" || view.type === "applications" || view.type === "helm";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-app">
@@ -184,25 +209,31 @@ function ClusterView({ connId, info, reconnect }: { connId: string; info: Connec
         <div className="flex min-w-0 flex-1 flex-col bg-panel">
           <div className="flex min-h-0 flex-1">
             <div className="flex min-w-0 flex-1 flex-col">
-              {view.type === "list" && def && (
+              {((view.type === "list" && def) || extraView) && (
                 <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
                   <span className="text-[14px] font-semibold">{title}</span>
-                  {!list.loading && !list.error && <span className="text-xs text-muted tabular-nums">{list.items.length}</span>}
+                  {!extraView && !list.loading && !list.error && <span className="text-xs text-muted tabular-nums">{list.items.length}</span>}
                   {list.warning && <span className="flex items-center gap-1 text-xs text-warn" title={list.warning}><AlertTriangle className="size-3.5" />reconnecting…</span>}
                   {(kind === "pods" || kind === "nodes") && !metricsAvailable && <span className="text-[11px] text-faint" title="metrics.k8s.io not available">no metrics</span>}
                   <div className="flex-1" />
-                  <div className="relative w-64">
+                  {view.type !== "workloads" && <div className="relative w-64">
                     <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
                     <Input className="pl-7 pr-6" placeholder={`Search ${title.toLowerCase()}…`} value={search} onChange={(e) => setSearch(e.target.value)}
                       onKeyDown={(e) => e.key === "Escape" && setSearch("")} />
                     {search && <button className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted hover:text-fg" onClick={() => setSearch("")}><X className="size-3.5" /></button>}
-                  </div>
-                  <NamespacePicker namespaces={namespaces.data ?? []} selected={selectedNs} onChange={setSelectedNs} disabled={!def.namespaced} />
+                  </div>}
+                  <NamespacePicker namespaces={namespaces.data ?? []} selected={selectedNs} onChange={setSelectedNs} disabled={!extraView && !def?.namespaced} />
                 </div>
               )}
               <div className="min-h-0 flex-1">
                 {view.type === "overview" ? (
                   <Overview connId={connId} onNavigate={(k, ns, name) => navigate(k, ns, name)} />
+                ) : view.type === "workloads" ? (
+                  <WorkloadsOverview connId={connId} namespaces={selectedNs} onNavigate={(k) => navigate(k)} />
+                ) : view.type === "applications" ? (
+                  <Applications connId={connId} namespaces={selectedNs} search={search} menuFor={rowActions.menuFor} onSelect={(k, o) => host.showDetails(k, o)} />
+                ) : view.type === "helm" ? (
+                  <HelmView connId={connId} namespaces={selectedNs} search={search} />
                 ) : view.type === "portforwards" ? (
                   <div className="flex h-full flex-col">
                     <div className="flex h-10 shrink-0 items-center border-b border-line px-3 text-[14px] font-semibold">Port Forwarding</div>
@@ -232,6 +263,7 @@ function ClusterView({ connId, info, reconnect }: { connId: string; info: Connec
                       if (def.key === "customresourcedefinitions") navigate(crdKindKey(o));
                       else if (def.key === "pods") openSession("logs", o);
                     }}
+                    menuFor={(o) => rowActions.menuFor(def.key, o)}
                   />
                 ) : null}
               </div>
@@ -247,15 +279,18 @@ function ClusterView({ connId, info, reconnect }: { connId: string; info: Connec
                 actions={actions}
                 width={drawerW}
                 setWidth={setDrawerW}
+                initialTab={selection.tab}
               />
             )}
           </div>
+          {rowActions.node}
           <Dock
             connId={connId}
             sessions={sessions}
             activeId={activeSession}
             setActive={setActiveSession}
             close={closeSession}
+            update={updateSession}
             height={dockH}
             setHeight={setDockH}
             collapsed={dockCollapsed}
@@ -329,6 +364,7 @@ function Sidebar({ info, view, setView, crds, reconnect }: { info: ConnectInfo; 
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto p-1.5">
         <NavItem label="Overview" icon={<Gauge className="size-4" />} active={view.type === "overview"} onClick={() => setView({ type: "overview" })} />
+        <NavItem label="Applications" icon={<AppWindow className="size-4" />} active={view.type === "applications"} onClick={() => setView({ type: "applications" })} />
         <NavItem label="Nodes" icon={<Server className="size-4" />} active={isActive(view, { type: "list", kind: "nodes" })} onClick={() => setView({ type: "list", kind: "nodes" })} />
         {NAV.map((g) => (
           <Group key={g.id} id={g.id} title={g.title} icon={GROUP_ICONS[g.id]} active={g.items.some((i) => isActive(view, i.view))}>
@@ -337,6 +373,9 @@ function Sidebar({ info, view, setView, crds, reconnect }: { info: ConnectInfo; 
         ))}
         <NavItem label="Namespaces" icon={<Layers className="size-4" />} active={isActive(view, { type: "list", kind: "namespaces" })} onClick={() => setView({ type: "list", kind: "namespaces" })} />
         <NavItem label="Events" icon={<ListTree className="size-4" />} active={isActive(view, { type: "list", kind: "events" })} onClick={() => setView({ type: "list", kind: "events" })} />
+        <Group id="helm" title="Helm" icon={<Package className="size-4" />} active={view.type === "helm"}>
+          <NavItem label="Releases" indent active={view.type === "helm"} onClick={() => setView({ type: "helm" })} />
+        </Group>
         <Group id="crd" title="Custom Resources" icon={<Puzzle className="size-4" />} active={crdActive || isActive(view, { type: "list", kind: "customresourcedefinitions" })}>
           <NavItem label="Definitions" indent active={isActive(view, { type: "list", kind: "customresourcedefinitions" })} onClick={() => setView({ type: "list", kind: "customresourcedefinitions" })} />
           {crds.length > 8 && (

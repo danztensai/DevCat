@@ -16,10 +16,13 @@ import {
 } from "./format";
 import { useAsync } from "./hooks";
 import { StatusText, kindKeyFor, kindName } from "./resources";
+import { POD_OWNERS } from "./rowActions";
 
 export interface DrawerActions {
   logs: (pod: K8sObject, container?: string) => void;
   shell: (pod: K8sObject, container?: string) => void;
+  /** Logs / shell for a workload (Deployment, StatefulSet, …): picks one of its pods. */
+  workload: (type: "logs" | "shell", obj: K8sObject) => void;
   navigate: (kindKey: string, namespace: string | undefined, name: string) => void;
   browseCrd: (crd: K8sObject) => void;
 }
@@ -27,7 +30,7 @@ export interface DrawerActions {
 const SCALABLE = new Set(["deployments", "statefulsets", "replicasets"]);
 const RESTARTABLE = new Set(["deployments", "statefulsets", "daemonsets"]);
 
-export default function DetailsDrawer({ connId, kindKey, obj, loading, readOnly, onClose, actions, width, setWidth }: {
+export default function DetailsDrawer({ connId, kindKey, obj, loading, readOnly, onClose, actions, width, setWidth, initialTab }: {
   connId: string;
   kindKey: string;
   obj: K8sObject | null;
@@ -37,13 +40,21 @@ export default function DetailsDrawer({ connId, kindKey, obj, loading, readOnly,
   actions: DrawerActions;
   width: number;
   setWidth: (w: number) => void;
+  /** Tab to show when opened (e.g. "yaml" for Edit); re-applied whenever it changes. */
+  initialTab?: { tab: "details" | "events" | "yaml"; nonce: number };
 }) {
-  const [tab, setTab] = useState<"details" | "events" | "yaml">("details");
+  const [tab, setTab] = useState<"details" | "events" | "yaml">(initialTab?.tab ?? "details");
+  useEffect(() => { if (initialTab) setTab(initialTab.tab); }, [initialTab]);
   const [scaleOpen, setScaleOpen] = useState(false);
   const [pf, setPf] = useState<{ port?: number } | null>(null);
   const confirm = useConfirm();
   const uid = obj?.metadata.uid;
-  useEffect(() => { setTab((t) => (t === "yaml" ? "details" : t)); }, [uid]);
+  // A different object: leave the YAML editor unless the caller asked for it.
+  const lastUid = useRef(uid);
+  useEffect(() => {
+    if (lastUid.current !== uid && lastUid.current !== undefined) setTab((t) => (t === "yaml" && initialTab?.tab !== "yaml" ? "details" : t));
+    lastUid.current = uid;
+  }, [uid, initialTab]);
 
   const onDown = (e: React.MouseEvent) => {
     const start = { x: e.clientX, w: width };
@@ -96,6 +107,8 @@ export default function DetailsDrawer({ connId, kindKey, obj, loading, readOnly,
         {obj && (
           <>
             {isPod && <IconButton title="Logs" onClick={() => actions.logs(obj)}><ScrollText className="size-4" /></IconButton>}
+            {POD_OWNERS.has(kindKey) && <IconButton title="Logs" onClick={() => actions.workload("logs", obj)}><ScrollText className="size-4" /></IconButton>}
+            {POD_OWNERS.has(kindKey) && !readOnly && <IconButton title="Shell" onClick={() => actions.workload("shell", obj)}><SquareTerminal className="size-4" /></IconButton>}
             {isPod && !readOnly && <IconButton title="Shell" onClick={() => actions.shell(obj)}><SquareTerminal className="size-4" /></IconButton>}
             {(isPod || kindKey === "services") && !readOnly && <IconButton title="Port forward" onClick={() => setPf({})}><Network className="size-4" /></IconButton>}
             {SCALABLE.has(kindKey) && !readOnly && <IconButton title="Scale" onClick={() => setScaleOpen(true)}><Scaling className="size-4" /></IconButton>}

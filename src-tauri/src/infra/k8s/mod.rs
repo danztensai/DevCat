@@ -4,6 +4,7 @@
 //! built-in kinds, plus discovery for arbitrary `apiVersion/Kind` (CRDs). Objects are
 //! returned raw (managedFields stripped) and the frontend derives its columns.
 //! Streaming features (logs, watch, exec, port-forward) live in `streams`.
+pub mod helm;
 pub mod streams;
 
 use crate::error::{AppError, AppResult};
@@ -280,6 +281,7 @@ const BUILTIN: &[(&str, &str, &str, &str, bool)] = &[
     ("statefulsets", "apps", "v1", "StatefulSet", true),
     ("daemonsets", "apps", "v1", "DaemonSet", true),
     ("replicasets", "apps", "v1", "ReplicaSet", true),
+    ("replicationcontrollers", "", "v1", "ReplicationController", true),
     ("jobs", "batch", "v1", "Job", true),
     ("cronjobs", "batch", "v1", "CronJob", true),
     ("services", "", "v1", "Service", true),

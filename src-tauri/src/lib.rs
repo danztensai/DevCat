@@ -95,6 +95,8 @@ pub fn run() {
             infra::k8s::streams::k8s_exec_start,
             infra::k8s::streams::k8s_logs_start,
             infra::k8s::streams::k8s_port_forward_start,
+            infra::k8s::helm::k8s_helm_releases,
+            infra::k8s::helm::k8s_helm_release,
             // rabbitmq
             infra::rabbitmq::rmq_bindings,
             infra::rabbitmq::rmq_close_connection,

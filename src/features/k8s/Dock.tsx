@@ -9,12 +9,14 @@ export type DockSession =
   | ({ id: string; type: "logs" } & LogTarget)
   | ({ id: string; type: "shell" } & ShellTarget);
 
-export default function Dock({ connId, sessions, activeId, setActive, close, height, setHeight, collapsed, setCollapsed }: {
+export default function Dock({ connId, sessions, activeId, setActive, close, update, height, setHeight, collapsed, setCollapsed }: {
   connId: string;
   sessions: DockSession[];
   activeId: string | null;
   setActive: (id: string) => void;
   close: (id: string) => void;
+  /** Switch a session to another pod (workload sessions). */
+  update: (id: string, patch: { pod: string }) => void;
   height: number;
   setHeight: (h: number) => void;
   collapsed: boolean;
@@ -49,7 +51,7 @@ export default function Dock({ connId, sessions, activeId, setActive, close, hei
               )}
             >
               {s.type === "logs" ? <ScrollText className="size-3.5 shrink-0 text-info" /> : <SquareTerminal className="size-3.5 shrink-0 text-ok" />}
-              <span className="truncate">{s.pod}</span>
+              <span className="truncate" title={s.owner ? `${s.owner} › ${s.pod}` : s.pod}>{s.owner ? s.owner.replace(/^\S+ /, "") : s.pod}</span>
               <button
                 aria-label="Close"
                 onMouseDown={(e) => e.stopPropagation()}
@@ -70,8 +72,8 @@ export default function Dock({ connId, sessions, activeId, setActive, close, hei
         {sessions.map((s) => (
           <div key={s.id} className={clsx("absolute inset-0", s.id !== activeId && "invisible")}>
             {s.type === "logs"
-              ? <LogsPanel connId={connId} target={s} visible={s.id === activeId && !collapsed} />
-              : <ShellPanel connId={connId} target={s} visible={s.id === activeId && !collapsed} />}
+              ? <LogsPanel connId={connId} target={s} visible={s.id === activeId && !collapsed} onPodChange={(pod) => update(s.id, { pod })} />
+              : <ShellPanel connId={connId} target={s} visible={s.id === activeId && !collapsed} onPodChange={(pod) => update(s.id, { pod })} />}
           </div>
         ))}
       </div>
