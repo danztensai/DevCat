@@ -117,6 +117,8 @@ function ConnectionDialogInner({ id, kind, projectId }: { id: string | null; kin
         out.user = "guest";
         if (!c.password) out.password = "guest";
       }
+      // Remember the URL for the "AMQP URL" view, minus the password (that goes to the keychain).
+      if (out.options.amqpUrl) out.options.amqpUrl = out.options.amqpUrl.trim().replace(/^([a-z]+:\/\/[^:@/]*):[^@/]*@/i, "$1@");
       out.port = c.port ?? 15672;
       out.options.managementPort = String(out.port);
       if (!out.database) out.database = "/";

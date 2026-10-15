@@ -259,8 +259,53 @@ export function RabbitSection({ cfg, set, setOpt }: SectionProps) {
     return true;
   };
   const amqpPort = cfg.port != null && AMQP_TO_MGMT[cfg.port];
+  const [mode, setMode] = useState<"host" | "url">(cfg.options.amqpUrl ? "url" : "host");
+  const url = cfg.options.amqpUrl ?? "";
+  const parsed = url ? parseRabbitUrl(url) : null;
+  const onUrl = (text: string) => {
+    setOpt("amqpUrl", text || null);
+    applyUrl(text);
+  };
+  const modeRow = (
+    <Row label="Connect with">
+      <div>
+        <Segmented
+          value={mode}
+          onChange={(v) => { setMode(v as "host" | "url"); if (v === "host") setOpt("amqpUrl", null); }}
+          options={[{ value: "host", label: "Host & port" }, { value: "url", label: "AMQP URL" }]}
+        />
+      </div>
+    </Row>
+  );
+
+  if (mode === "url") {
+    const scheme = cfg.options.useTls === "true" ? "https" : "http";
+    return (
+      <>
+        {modeRow}
+        <Row label="URL" hint="amqp://, amqps:// or http(s):// — the same value you'd put in RABBITMQ_URL.">
+          <Input autoFocus value={url} placeholder="amqp://guest:guest@localhost:5672/" onChange={(e) => onUrl(e.target.value)} />
+        </Row>
+        <Row label="">
+          {url && !parsed ? (
+            <span className="text-[12px] text-danger">Not a valid amqp:// or http:// URL.</span>
+          ) : parsed ? (
+            <div className="rounded-md border border-line bg-app px-3 py-2 text-[12px] leading-5 text-muted">
+              DevCat connects to the RabbitMQ <b className="text-fg/90">management API</b> (not the AMQP port):
+              <div className="mt-1 font-mono text-[11px] text-fg/90">
+                {scheme}://{cfg.host}:{cfg.port}{cfg.options.basePath ?? ""}/api · user {cfg.user || "guest"} · vhost {cfg.database || "/"}
+              </div>
+              <div className="mt-1 text-[11px]">Needs the <span className="font-mono">rabbitmq_management</span> plugin. Switch to “Host &amp; port” to adjust.</div>
+            </div>
+          ) : null}
+        </Row>
+      </>
+    );
+  }
+
   return (
     <>
+      {modeRow}
       <Row
         label="Management host"
         hint={amqpPort
