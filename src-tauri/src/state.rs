@@ -35,6 +35,7 @@ impl AppState {
             return Ok(d.clone());
         }
         let cfg = self.store.get(conn_id).map_err(|_| AppError::NotConnected(conn_id.into()))?;
+        crate::network::ensure_for(&cfg).await?;
         let d = crate::db::connect(&cfg).await?;
         self.sessions.write().await.insert(conn_id.to_string(), d.clone());
         Ok(d)

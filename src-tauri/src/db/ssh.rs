@@ -60,7 +60,10 @@ pub async fn open_endpoint(cfg: &ConnectionConfig, default_port: u16) -> AppResu
     }
 }
 
-struct TunnelHandler;
+pub(crate) struct TunnelHandler;
+
+/// An authenticated SSH client session.
+pub(crate) type SshSession = client::Handle<TunnelHandler>;
 
 impl client::Handler for TunnelHandler {
     type Error = russh::Error;
@@ -76,7 +79,7 @@ fn ssh_err(e: impl std::fmt::Display) -> AppError {
     AppError::msg(format!("SSH: {e}"))
 }
 
-fn expand_home(p: &str) -> PathBuf {
+pub(crate) fn expand_home(p: &str) -> PathBuf {
     if let Some(rest) = p.strip_prefix("~/")
         && let Some(home) = dirs::home_dir()
     {
@@ -136,7 +139,9 @@ async fn authenticate(session: &mut client::Handle<TunnelHandler>, ssh: &SshConf
     }
 }
 
-async fn open_tunnel(ssh: &SshConfig, target_host: &str, target_port: u16) -> AppResult<SshTunnel> {
+/// Connect and authenticate to `ssh.host` (keepalive every 30s; the session closes after
+/// three unanswered keepalives). Also used by standalone tunnels in `crate::network`.
+pub(crate) async fn connect_session(ssh: &SshConfig) -> AppResult<SshSession> {
     if ssh.host.is_empty() {
         return Err(ssh_err("SSH host is empty"));
     }
@@ -153,8 +158,11 @@ async fn open_tunnel(ssh: &SshConfig, target_host: &str, target_port: u16) -> Ap
         .map_err(|_| ssh_err(format!("timed out connecting to {}:{ssh_port}", ssh.host)))?
         .map_err(ssh_err)?;
     authenticate(&mut session, ssh).await?;
+    Ok(session)
+}
 
-    let session = Arc::new(session);
+async fn open_tunnel(ssh: &SshConfig, target_host: &str, target_port: u16) -> AppResult<SshTunnel> {
+    let session = Arc::new(connect_session(ssh).await?);
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let local_port = listener.local_addr()?.port();
     let target_host = target_host.to_string();

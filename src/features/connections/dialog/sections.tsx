@@ -8,6 +8,8 @@ import { api, errMsg } from "../../../lib/api";
 import type { ConnectionConfig, ConnectionKind, SshConfig } from "../../../lib/types";
 import { useConnections } from "../../../store/connections";
 import { createProject } from "../tree/projectActions";
+import { NET_KIND_META } from "../../network/meta";
+import { useNetProfiles } from "../../network/store";
 import { FileInput, PasswordInput, Row, Segmented } from "./formBits";
 
 export interface SectionProps {
@@ -416,7 +418,23 @@ export function SshSection({ cfg, set }: SectionProps) {
 }
 
 /** Managed option keys edited by dedicated fields; hidden from the raw editor. */
-const MANAGED_OPTIONS = new Set(["context", "namespace", "managementPort", "useTls", "insecureTls", "basePath"]);
+const MANAGED_OPTIONS = new Set(["context", "namespace", "managementPort", "useTls", "insecureTls", "basePath", "networkId"]);
+
+/** VPN / SSH tunnel profile that is connected before this connection opens (options.networkId). */
+function NetworkRow({ cfg, setOpt }: SectionProps) {
+  const profiles = useNetProfiles();
+  const id = cfg.options.networkId ?? "";
+  const missing = !!id && !profiles.some((p) => p.id === id);
+  return (
+    <Row label="Network" hint={missing ? <span className="text-warn">The selected VPN / tunnel no longer exists.</span> : "Connected automatically before this connection opens. Manage profiles in the VPN & SSH tunnels sidebar."}>
+      <Select value={id} onChange={(e) => setOpt("networkId", e.target.value || null)} className="w-72!">
+        <option value="">None (direct)</option>
+        {missing && <option value={id}>(missing profile)</option>}
+        {profiles.map((p) => <option key={p.id} value={p.id}>{p.name} — {NET_KIND_META[p.kind].label}</option>)}
+      </Select>
+    </Row>
+  );
+}
 
 export function AdvancedSection({ cfg, set, setOpt }: SectionProps) {
   const isDb = cfg.kind !== "kubernetes" && cfg.kind !== "rabbitmq";
@@ -433,6 +451,7 @@ export function AdvancedSection({ cfg, set, setOpt }: SectionProps) {
       <Row label="" hint="Blocks data edits, DDL and destructive actions from the UI for this connection.">
         <Checkbox label="Read-only connection" checked={cfg.readOnly} onChange={(v) => set({ readOnly: v })} />
       </Row>
+      <NetworkRow cfg={cfg} set={set} setOpt={setOpt} />
       {isDb && (
         <Row label="Driver options" hint="Extra key/value options passed to the driver.">
           <div className="flex flex-col gap-1">

@@ -32,6 +32,8 @@ pub async fn client(state: &AppState, conn_id: &str) -> AppResult<Arc<Rmq>> {
         .into_iter()
         .find(|c| c.id == conn_id)
         .ok_or_else(|| AppError::msg(format!("Connection {conn_id} not found")))?;
+    // Reconnects the VPN / tunnel this profile depends on (cheap no-op when connected).
+    crate::network::ensure_for(&stored).await?;
     let fp = serde_json::to_string(&stored)?;
     if let Some((f, c)) = CLIENTS.lock().get(conn_id) {
         if *f == fp {

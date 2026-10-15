@@ -24,6 +24,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir().expect("no app data dir");
             network::init(dir.clone());
+            network::start(app.handle().clone());
             app.manage(state::AppState::new(dir));
             Ok(())
         })
@@ -131,6 +132,12 @@ pub fn run() {
             infra::rabbitmq::rmq_purge_queue,
             infra::rabbitmq::rmq_request,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            // Tear down VPNs / tunnels so no elevated openvpn or wg interface outlives the app.
+            if let tauri::RunEvent::Exit = event {
+                network::shutdown();
+            }
+        });
 }

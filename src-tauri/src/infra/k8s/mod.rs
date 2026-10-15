@@ -178,6 +178,7 @@ pub fn install_crypto_provider() {
 
 pub(crate) async fn build_conn(cfg: &ConnectionConfig) -> AppResult<Conn> {
     install_crypto_provider();
+    crate::network::ensure_for(cfg).await?;
     let kc = load_kubeconfig(cfg.file_path.as_deref())?;
     let context = opt(cfg, "context")
         .or_else(|| kc.current_context.clone())

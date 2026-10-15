@@ -43,6 +43,7 @@ pub async fn delete_connection(state: State<'_, AppState>, id: String) -> AppRes
 /// Test an unsaved profile. Database kinds return the server version.
 #[tauri::command]
 pub async fn test_connection(config: ConnectionConfig) -> AppResult<String> {
+    crate::network::ensure_for(&config).await?;
     match config.kind {
         crate::models::ConnectionKind::Kubernetes => crate::infra::k8s::test(&config).await,
         crate::models::ConnectionKind::Rabbitmq => crate::infra::rabbitmq::test(&config).await,
