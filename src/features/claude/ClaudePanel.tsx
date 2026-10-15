@@ -1,7 +1,7 @@
 // Sidebar for the Claude Code activity: workspace folder, past sessions, file tree.
 import clsx from "clsx";
 import {
-  ChevronDown, ChevronRight, Copy, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X,
+  ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
@@ -11,6 +11,7 @@ import { api } from "../../lib/api";
 import type { ClaudeInfo, GitStatus, SessionMeta } from "../../lib/types";
 import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
 import { basename, copyText, relTime, revealPath } from "../files/format";
+import { openGitRepo } from "../git/open";
 import { openClaudeWorkspace } from "./open";
 import FileTree, { type FileTreeHandle } from "./sidebar/FileTree";
 import { SessionsList } from "./sidebar/SessionsList";
@@ -90,6 +91,7 @@ function WorkspaceHeader() {
   const setCwd = useWorkspace((s) => s.setCwd);
   const forgetRecent = useWorkspace((s) => s.forgetRecent);
   const branch = useGitBranch(cwd);
+  const gitRoot = useSharedGit(cwd)?.root ?? null;
   const menu = useContextMenu();
 
   const showMenu = async (e: MouseEvent) => {
@@ -122,6 +124,7 @@ function WorkspaceHeader() {
     if (cwd) {
       items.push(
         "separator",
+        ...(branch && gitRoot ? [{ label: "Open Git repository", icon: <FolderGit2 className="size-3.5" />, onClick: () => openGitRepo(gitRoot) }] : []),
         { label: "Copy folder path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(cwd) },
         { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(cwd) },
         { label: "Close folder", icon: <X className="size-3.5" />, onClick: () => setCwd(null) },

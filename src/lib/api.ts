@@ -124,6 +124,8 @@ export const api = {
   gitCheckout: (cwd: string, target: string, create = false, startPoint?: string | null) =>
     invoke<void>("git_checkout", { cwd, target, create, startPoint: startPoint ?? null }),
   gitBranchDelete: (cwd: string, name: string, force = false, remote = false) => invoke<void>("git_branch_delete", { cwd, name, force, remote }),
+  /** New branch at startPoint (default HEAD) without switching to it. */
+  gitBranchCreate: (cwd: string, name: string, startPoint?: string | null) => invoke<void>("git_branch_create", { cwd, name, startPoint: startPoint ?? null }),
   gitBranchRename: (cwd: string, from: string, to: string) => invoke<void>("git_branch_rename", { cwd, from, to }),
   /** Merge `branch` into the current branch; returns git output. */
   gitMerge: (cwd: string, branch: string, noFf = false) => invoke<string>("git_merge", { cwd, branch, noFf }),

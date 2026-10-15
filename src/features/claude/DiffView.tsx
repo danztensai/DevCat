@@ -1,13 +1,13 @@
 // Diff view: changed files (Staged / Changes / Untracked) + Monaco diff of the selected file,
-// stage / unstage / discard, commit, and "Ask Claude to review".
+// stage / unstage / discard, commit, and "Ask Claude to review". `ChangesPanel` is also used by the Git tab.
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import clsx from "clsx";
 import { Columns2, ExternalLink, FileDiff, GitCommitHorizontal, Minus, Plus, RefreshCw, Rows2, ScanSearch, Undo2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button, Dialog, Empty, ErrorBox, IconButton, Spinner, Textarea } from "../../components/ui";
 import { api, errMsg } from "../../lib/api";
-import type { FileVersions, GitFile } from "../../lib/types";
+import type { FileVersions, GitFile, GitStatus } from "../../lib/types";
 import { refreshGit, useClaude } from "./store";
 import { basename, languageOf, openFile } from "./util";
 
@@ -58,6 +58,35 @@ export function DiffView({ tabId, cwd, active, onReview }: { tabId: string; cwd:
   const gitLoading = useClaude((s) => !!s.tabs[tabId]?.gitLoading);
   const gitTick = useClaude((s) => s.tabs[tabId]?.gitTick ?? 0);
   const focus = useClaude((s) => s.tabs[tabId]?.diffFocus);
+  const refresh = useCallback(() => refreshGit(tabId), [tabId]);
+
+  // The tab header polls git every 5s while visible; refresh right away when shown.
+  useEffect(() => {
+    if (active) void refreshGit(tabId);
+  }, [active, tabId]);
+
+  return (
+    <ChangesPanel cwd={cwd} git={git ?? null} gitError={gitError ?? null} gitLoading={gitLoading} gitTick={gitTick}
+      focus={focus ?? null} active={active} refresh={refresh} onReview={onReview} />
+  );
+}
+
+/** Working-tree changes of the repo at `cwd`, independent of where the git status comes from
+ *  (the Claude tab store, or the Git tab). `refresh` must re-read the status. */
+export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, active, refresh, onReview, actions }: {
+  cwd: string;
+  git: GitStatus | null;
+  gitError: string | null;
+  gitLoading: boolean;
+  /** Bumped after every status poll; the open file is re-read on it. */
+  gitTick: number;
+  focus?: { path: string; line?: number | null; seq: number } | null;
+  active: boolean;
+  refresh: () => Promise<void> | void;
+  onReview?: () => void;
+  /** Extra buttons on the right of the file list toolbar. */
+  actions?: ReactNode;
+}) {
   const [sel, setSel] = useState<Sel | null>(null);
   const [versions, setVersions] = useState<FileVersions | null>(null);
   const [vErr, setVErr] = useState<string | null>(null);
@@ -70,11 +99,6 @@ export function DiffView({ tabId, cwd, active, onReview }: { tabId: string; cwd:
   const revealLine = useRef<number | null>(null);
 
   const groups = useMemo(() => groupFiles(git?.files ?? []), [git]);
-
-  // The tab header polls git every 5s while visible; refresh right away when shown.
-  useEffect(() => {
-    if (active) void refreshGit(tabId);
-  }, [active, tabId]);
 
   // Keep the selection valid; pick the first file by default.
   useEffect(() => {
@@ -131,7 +155,7 @@ export function DiffView({ tabId, cwd, active, onReview }: { tabId: string; cwd:
     } catch (e) {
       toast.error(errMsg(e));
     }
-    await refreshGit(tabId);
+    await refresh();
     void loadVersions(sel);
   };
 
@@ -156,7 +180,7 @@ export function DiffView({ tabId, cwd, active, onReview }: { tabId: string; cwd:
       toast.error(errMsg(e));
     } finally {
       setCommitting(false);
-      void refreshGit(tabId);
+      void refresh();
     }
   };
 
@@ -207,10 +231,11 @@ export function DiffView({ tabId, cwd, active, onReview }: { tabId: string; cwd:
     <div className="flex h-full min-h-0">
       <div className="flex w-72 shrink-0 flex-col border-r border-line bg-panel">
         <div className="flex h-8 shrink-0 items-center gap-1 border-b border-line px-2">
-          <IconButton title="Refresh" onClick={() => void refreshGit(tabId)}><RefreshCw className={clsx("size-3.5", gitLoading && "animate-spin")} /></IconButton>
+          <IconButton title="Refresh" onClick={() => void refresh()}><RefreshCw className={clsx("size-3.5", gitLoading && "animate-spin")} /></IconButton>
           <IconButton title="Stage all" disabled={!unstaged.length} onClick={() => void act(() => api.gitStage(cwd, unstaged.map((f) => f.path)))}><Plus className="size-3.5" /></IconButton>
           <div className="flex-1" />
-          <Button size="sm" variant="ghost" onClick={onReview} title="Ask Claude to review these changes"><ScanSearch className="size-3.5" />Ask Claude to review</Button>
+          {actions}
+          {onReview && <Button size="sm" variant="ghost" onClick={onReview} title="Ask Claude to review these changes"><ScanSearch className="size-3.5" />Ask Claude to review</Button>}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           {git.files.length === 0 && <div className="px-3 py-6 text-center text-xs text-muted">Working tree clean</div>}

@@ -11,16 +11,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Max bytes per side for `git_file_versions`.
-const VERSION_CAP: u64 = 5 * 1024 * 1024;
+pub(crate) const VERSION_CAP: u64 = 5 * 1024 * 1024;
 /// Max total size of `git_diff_text` output.
-const DIFF_CAP: usize = 20 * 1024 * 1024;
+pub(crate) const DIFF_CAP: usize = 20 * 1024 * 1024;
 /// Max untracked files rendered as new-file diffs.
 const UNTRACKED_DIFF_FILES: usize = 200;
 const STATUS_CACHE_TTL: Duration = Duration::from_secs(2);
 
 // ---------- git binary + process helpers ----------
 
-static GIT_BIN: Lazy<PathBuf> = Lazy::new(|| {
+pub(crate) static GIT_BIN: Lazy<PathBuf> = Lazy::new(|| {
     let candidates: &[&str] = if cfg!(windows) {
         &[
             r"C:\Program Files\Git\cmd\git.exe",
@@ -48,13 +48,13 @@ static GIT_PATH_ENV: Lazy<Option<OsString>> = Lazy::new(|| {
     std::env::join_paths(dirs).ok()
 });
 
-struct GitOut {
-    code: i32,
-    stdout: Vec<u8>,
-    stderr: String,
+pub(crate) struct GitOut {
+    pub code: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: String,
 }
 
-fn git_command(cwd: &Path) -> tokio::process::Command {
+pub(crate) fn git_command(cwd: &Path) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(&*GIT_BIN);
     cmd.arg("-C").arg(cwd);
     cmd.args(["-c", "core.quotepath=false", "-c", "color.ui=false", "--no-pager"]);
@@ -75,7 +75,7 @@ fn git_command(cwd: &Path) -> tokio::process::Command {
 }
 
 /// Runs git; only fails when git can't be spawned. Non-zero exit codes are returned to the caller.
-async fn git_raw<I, S>(cwd: &Path, args: I) -> AppResult<GitOut>
+pub(crate) async fn git_raw<I, S>(cwd: &Path, args: I) -> AppResult<GitOut>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -92,7 +92,7 @@ where
     })
 }
 
-fn git_error(out: &GitOut) -> AppError {
+pub(crate) fn git_error(out: &GitOut) -> AppError {
     let msg: Vec<&str> = out
         .stderr
         .lines()
@@ -107,7 +107,7 @@ fn git_error(out: &GitOut) -> AppError {
 }
 
 /// Runs git and returns stdout, mapping a non-zero exit to `AppError::Msg(stderr)`.
-async fn git_ok<I, S>(cwd: &Path, args: I) -> AppResult<Vec<u8>>
+pub(crate) async fn git_ok<I, S>(cwd: &Path, args: I) -> AppResult<Vec<u8>>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -120,7 +120,7 @@ where
 }
 
 /// Repo top-level for `cwd`, None when not inside a work tree.
-async fn repo_root(cwd: &Path) -> AppResult<Option<PathBuf>> {
+pub(crate) async fn repo_root(cwd: &Path) -> AppResult<Option<PathBuf>> {
     if !cwd.is_dir() {
         return Ok(None);
     }
@@ -132,11 +132,11 @@ async fn repo_root(cwd: &Path) -> AppResult<Option<PathBuf>> {
     Ok(if s.is_empty() { None } else { Some(PathBuf::from(s)) })
 }
 
-async fn require_root(cwd: &str) -> AppResult<PathBuf> {
+pub(crate) async fn require_root(cwd: &str) -> AppResult<PathBuf> {
     repo_root(Path::new(cwd)).await?.ok_or_else(|| AppError::msg(format!("Not a git repository: {cwd}")))
 }
 
-async fn has_head(root: &Path) -> AppResult<bool> {
+pub(crate) async fn has_head(root: &Path) -> AppResult<bool> {
     Ok(git_raw(root, ["rev-parse", "--verify", "-q", "HEAD"]).await?.code == 0)
 }
 
@@ -184,7 +184,7 @@ fn canonical_parent(p: &Path) -> PathBuf {
 
 /// Resolves `p` (absolute, or relative to the repo root) to a `/`-separated path relative to
 /// `root`. Rejects anything outside the repository. The repo root itself resolves to ".".
-fn resolve_rel(root: &Path, p: &str) -> AppResult<String> {
+pub(crate) fn resolve_rel(root: &Path, p: &str) -> AppResult<String> {
     let escape = || AppError::msg(format!("Path is outside the repository: {p}"));
     if p.trim().is_empty() {
         return Err(AppError::msg("Empty path"));
@@ -218,9 +218,10 @@ fn resolve_all(root: &Path, paths: &[String]) -> AppResult<Vec<String>> {
 // ---------- status parsing ----------
 
 #[derive(Debug, Default, Clone)]
-pub(super) struct ParsedStatus {
+pub(crate) struct ParsedStatus {
     pub head: Option<String>,
     pub oid: Option<String>,
+    pub upstream: Option<String>,
     pub ahead: u32,
     pub behind: u32,
     pub files: Vec<GitFile>,
@@ -249,7 +250,7 @@ fn xy(s: &str) -> (String, String) {
 }
 
 /// Parses `git status --porcelain=v2 [--branch] -z` output.
-pub(super) fn parse_status_v2(out: &[u8]) -> ParsedStatus {
+pub(crate) fn parse_status_v2(out: &[u8]) -> ParsedStatus {
     let text = String::from_utf8_lossy(out);
     let mut st = ParsedStatus::default();
     let mut recs = text.split('\0').filter(|r| !r.is_empty());
@@ -259,6 +260,8 @@ pub(super) fn parse_status_v2(out: &[u8]) -> ParsedStatus {
                 st.oid = Some(v.to_string());
             } else if let Some(v) = h.strip_prefix("branch.head ") {
                 st.head = Some(v.to_string());
+            } else if let Some(v) = h.strip_prefix("branch.upstream ") {
+                st.upstream = Some(v.to_string());
             } else if let Some(v) = h.strip_prefix("branch.ab ") {
                 for part in v.split_whitespace() {
                     if let Some(n) = part.strip_prefix('+') {
@@ -378,7 +381,7 @@ pub(super) async fn status_index(root: &Path) -> Option<Arc<StatusIndex>> {
     Some(idx)
 }
 
-fn invalidate_cache() {
+pub(crate) fn invalidate_cache() {
     STATUS_CACHE.lock().clear();
 }
 
@@ -402,7 +405,7 @@ pub async fn git_status(cwd: String) -> AppResult<GitStatus> {
 }
 
 /// Blob contents for a revision spec like `HEAD:path` / `:path`; None if it doesn't exist.
-async fn read_blob(root: &Path, spec: &str) -> AppResult<Option<Vec<u8>>> {
+pub(crate) async fn read_blob(root: &Path, spec: &str) -> AppResult<Option<Vec<u8>>> {
     let size = git_raw(root, ["cat-file", "-s", spec]).await?;
     if size.code != 0 {
         return Ok(None);
@@ -599,7 +602,7 @@ pub async fn git_commit(cwd: String, message: String) -> AppResult<String> {
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Throwaway repo under the system temp dir; removed on drop.

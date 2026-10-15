@@ -169,8 +169,9 @@ pub async fn pty_resize(id: String, cols: u16, rows: u16) -> AppResult<()> {
 }
 
 fn kill(pty: &Pty) {
-    pty.writer.lock().take();
+    // Kill before dropping the writer: dropping it sends EOF, which lets the program exit cleanly first.
     let _ = pty.killer.lock().kill();
+    pty.writer.lock().take();
 }
 
 /// Kill the program and drop the terminal (`pty-exit` still follows).

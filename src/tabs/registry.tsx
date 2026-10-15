@@ -21,6 +21,7 @@ const registry: Record<Tab["type"], ComponentType<{ tab: any }>> = {
   network: lazy(() => import("../features/network/NetworkTab")),
   claude: lazy(() => import("../features/claude/ClaudeTab")),
   file: lazy(() => import("../features/files/FilePreviewTab")),
+  git: lazy(() => import("../features/git/GitTab")),
 };
 
 export function TabContent({ tab }: { tab: Tab }) {

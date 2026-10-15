@@ -84,6 +84,9 @@ pub struct FileEntry {
     /// Ignored by .gitignore (only listed when show_ignored = true).
     #[serde(default)]
     pub ignored: bool,
+    /// Directory contains a `.git` entry (repo, submodule or worktree).
+    #[serde(default)]
+    pub is_repo: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

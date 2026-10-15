@@ -90,6 +90,7 @@ struct RawEntry {
     size: u64,
     modified: Option<String>,
     ignored: bool,
+    is_repo: bool,
 }
 
 fn list_dir(dir: &Path, show_ignored: bool) -> AppResult<(Vec<RawEntry>, Option<(PathBuf, String)>)> {
@@ -114,6 +115,7 @@ fn list_dir(dir: &Path, show_ignored: bool) -> AppResult<(Vec<RawEntry>, Option<
         out.push(RawEntry {
             name: name_os.to_string_lossy().into_owned(),
             is_dir: meta.is_dir(),
+            is_repo: meta.is_dir() && path.join(".git").exists(),
             size: if meta.is_dir() { 0 } else { meta.len() },
             modified: meta.modified().ok().map(rfc3339),
             path,
@@ -158,6 +160,7 @@ pub async fn fs_list(dir: String, show_ignored: Option<bool>) -> AppResult<Vec<F
                 modified: e.modified,
                 git,
                 ignored: e.ignored,
+                is_repo: e.is_repo,
             }
         })
         .collect())

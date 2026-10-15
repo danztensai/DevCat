@@ -10,6 +10,7 @@ Lens-style tooling for Kubernetes and RabbitMQ, built with [Tauri 2](https://tau
 | NoSQL | MongoDB, Redis |
 | Infrastructure | Kubernetes (any kubeconfig context), RabbitMQ (management API) |
 | Networking | OpenVPN, WireGuard, SSH tunnels (local forwards + SOCKS proxy) |
+| Git | Nested repo discovery, commit graph, blame, branches, tags, stashes, fetch/pull/push |
 | AI | Claude Code workspace (terminal, diff, code review) using your installed `claude` CLI |
 
 ## Download
@@ -50,6 +51,13 @@ Grab the latest installer for macOS, Windows or Linux from the
   CLI in a real terminal (like iTerm2), with **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2 · Code Review ⌥⇧⌘3**, your Claude
   session list (resume any session), a git-aware file tree and file previews (code, Markdown, PDF, images,
   Excel/CSV, Word). Uses your own Claude account; install Claude Code and run `claude` once to log in.
+
+- **Git**: scan a folder for every repository inside it (nested repos, submodules and worktrees; `node_modules`
+  and build folders are skipped) and see branch, ahead/behind and changes at a glance. Each repo opens a Git tab
+  with a commit graph (all branches, search, author and file-history filters) and per-commit diffs, working-tree
+  changes with stage/commit/stash, branches/tags/remotes, and stashes. Checkout, branch, merge, tag, cherry-pick,
+  revert and reset from the history. **Blame** for any file preview, with an age heatmap and a link to each commit.
+  Fetch, pull and push use your SSH agent or credential helper (they never prompt).
 
 ## Development
 
@@ -109,12 +117,13 @@ src/                      React frontend
   store/                  zustand stores (connections, tabs, ui)
   tabs/                   tab kinds + registry
   features/               connections, query, grid, table, history, redis, mongo,
-                          er, compare, transfer, k8s, rabbitmq, network, claude, files
+                          er, compare, transfer, k8s, rabbitmq, network, claude, files, git
 src-tauri/src/
   db/                     Driver trait + postgres, mysql, sqlite, mssql, mongo, redis,
                           ssh tunnels, cross-dialect DDL, transfer/backup
   infra/                  kubernetes, rabbitmq
   network/                VPN (OpenVPN, WireGuard), SSH tunnels, traffic counters
+  gitx/                   git tools: repo discovery, log/graph, blame, branches, stashes, remotes
   claude/                 Claude Code CLI driver, PTY terminal, sessions, file previews, git
   commands/               Tauri command handlers
   store.rs                saved connections (JSON) + OS keychain secrets

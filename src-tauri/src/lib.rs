@@ -2,6 +2,7 @@ mod claude;
 mod commands;
 mod db;
 mod error;
+mod gitx;
 mod history;
 mod infra;
 mod models;
@@ -141,6 +142,30 @@ pub fn run() {
             claude::git::git_unstage,
             claude::git::git_discard,
             claude::git::git_commit,
+            // git tools
+            gitx::commands::git_repos,
+            gitx::commands::git_log,
+            gitx::commands::git_show,
+            gitx::commands::git_commit_file_versions,
+            gitx::commands::git_commit_diff,
+            gitx::commands::git_blame,
+            gitx::commands::git_refs,
+            gitx::commands::git_checkout,
+            gitx::commands::git_branch_delete,
+            gitx::commands::git_branch_create,
+            gitx::commands::git_branch_rename,
+            gitx::commands::git_merge,
+            gitx::commands::git_abort,
+            gitx::commands::git_tag_create,
+            gitx::commands::git_tag_delete,
+            gitx::commands::git_commit_action,
+            gitx::commands::git_stash_list,
+            gitx::commands::git_stash_save,
+            gitx::commands::git_stash_apply,
+            gitx::commands::git_stash_drop,
+            gitx::commands::git_fetch,
+            gitx::commands::git_pull,
+            gitx::commands::git_push,
             // rabbitmq
             infra::rabbitmq::rmq_bindings,
             infra::rabbitmq::rmq_close_connection,

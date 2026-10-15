@@ -2,16 +2,20 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
-  AlertTriangle, AtSign, ChevronRight, ChevronsDownUp, ClipboardCopy, Copy, Eye, EyeOff, FolderSearch, Loader2, RefreshCw, Search, SquareArrowOutUpRight, X,
+  AlertTriangle, AtSign, ChevronRight, ChevronsDownUp, ClipboardCopy, Copy, Eye, EyeOff, FolderGit2, FolderSearch, GitBranch, History, Loader2, RefreshCw, Search,
+  SquareArrowOutUpRight, UserSearch, X,
 } from "lucide-react";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { toast } from "sonner";
 import { IconButton } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import type { FileEntry, GitStatus } from "../../../lib/types";
 import { useTabs } from "../../../store/tabs";
 import { useContextMenu, type MenuItem } from "../../connections/ContextMenu";
 import { FileIcon } from "../../files/FileIcon";
-import { copyText, openFilePreview, relPath, revealPath } from "../../files/format";
+import { copyText, dirname, openFilePreview, relPath, revealPath } from "../../files/format";
+import { openBlame, openGitRepo } from "../../git/open";
+import { repoRootOf } from "../../git/repoOf";
 import { useWorkspace } from "./workspace";
 
 const ROW_H = 22;
@@ -50,6 +54,13 @@ function useGitIndex(git: GitStatus | null) {
     }
     return { files, dirs };
   }, [git]);
+}
+
+/** Open the Git tab of the repo containing `path`, filtered to that file. */
+async function showFileHistory(path: string) {
+  const root = await repoRootOf(dirname(path));
+  if (root) openGitRepo(root, { path });
+  else toast.error("This file isn't inside a git repository");
 }
 
 export function gitTone(letter?: string | null): string | undefined {
@@ -203,6 +214,12 @@ const FileTree = forwardRef<FileTreeHandle, { cwd: string; git: GitStatus | null
       e.isDir
         ? { label: expanded.has(e.path) ? "Collapse" : "Expand", icon: <ChevronRight className="size-3.5" />, onClick: () => toggle(e.path) }
         : { label: "Open preview", icon: <SquareArrowOutUpRight className="size-3.5" />, onClick: () => openFilePreview(e.path, cwd) },
+      ...(e.isDir
+        ? e.isRepo ? [{ label: "Open Git repository", icon: <FolderGit2 className="size-3.5" />, onClick: () => openGitRepo(e.path) }] : []
+        : [
+          { label: "Blame", icon: <UserSearch className="size-3.5" />, onClick: () => openBlame(e.path, cwd) },
+          { label: "File history", icon: <History className="size-3.5" />, onClick: () => void showFileHistory(e.path) },
+        ]),
       "separator",
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(e.path) },
       { label: "Copy relative path", icon: <ClipboardCopy className="size-3.5" />, onClick: () => void copyText(rel) },
@@ -329,6 +346,7 @@ const EntryRow = memo(function EntryRow({ row, selected, active, git, dirty, onA
       ) : <span className="size-4 shrink-0" />}
       <FileIcon name={e.name} isDir={e.isDir} open={row.expanded} />
       <span className={clsx("min-w-0 flex-1 truncate pl-0.5", tone ?? (e.isDir ? "text-fg/85" : "text-fg/90"), git?.includes("D") && "line-through")}>{e.name}</span>
+      {e.isRepo && <span className="shrink-0 text-accent/70" title="Git repository — right-click to open it"><GitBranch className="size-3" /></span>}
       {e.isDir
         ? dirty && <span className="size-1.5 shrink-0 rounded-full bg-warn/80" title="Contains changes" />
         : git && <span className={clsx("w-4 shrink-0 text-right font-mono text-[10px] font-semibold", tone ?? "text-muted")}>{git.trim() === "??" ? "U" : git.trim()}</span>}

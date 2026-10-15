@@ -38,3 +38,15 @@ input, textarea, [contenteditable], .selectable { user-select: text; }
 ::-webkit-scrollbar-thumb:hover { background-color: #3d4452; }
 ::-webkit-scrollbar-corner { background: transparent; }
 *:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }
+
+/* Git blame gutter (src/features/git/BlameView.tsx): the line-number column holds "sha author age  n". */
+.blame-editor .margin-view-overlays .line-numbers { white-space: pre; text-align: left; cursor: pointer; padding-left: 8px; color: var(--color-faint); }
+.blame-editor .margin-view-overlays .line-numbers.blame-head { color: var(--color-muted); }
+.blame-editor .margin-view-overlays .line-numbers.blame-hot { color: var(--color-fg); }
+.blame-editor .blame-block { border-top: 1px solid var(--color-line); }
+.blame-editor .blame-same { background: rgba(245, 165, 36, 0.07); }
+.blame-editor .cldr[class*="blame-age-"] { width: 3px !important; margin-left: 3px; }
+.blame-age-0 { background: #2f3a4d; } .blame-age-1 { background: #34476a; } .blame-age-2 { background: #3b5687; }
+.blame-age-3 { background: #4a63a0; } .blame-age-4 { background: #6a6aa8; } .blame-age-5 { background: #8d6aa0; }
+.blame-age-6 { background: #b06c8a; } .blame-age-7 { background: #cf7a63; } .blame-age-8 { background: #e48f3f; }
+.blame-age-9 { background: #f5a524; } .blame-age-now { background: #4ade80; }
