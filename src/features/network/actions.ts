@@ -64,7 +64,7 @@ export async function importProfileFile() {
 export async function duplicateProfile(p: NetProfile) {
   try {
     const full = await api.netGet(p.id);
-    openDraftTab({ profile: { ...full.profile, id: "", name: `${full.profile.name} copy`, autoConnect: false, vpnPassword: null }, configText: full.configText });
+    openDraftTab({ profile: { ...full.profile, id: "", name: `${full.profile.name} copy`, autoConnect: false }, configText: full.configText });
   } catch (e) {
     toast.error(`Couldn't load "${p.name}": ${errMsg(e)}`);
   }

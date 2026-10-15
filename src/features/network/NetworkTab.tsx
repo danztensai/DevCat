@@ -37,14 +37,8 @@ const snap = (p: NetProfile, text: string) => JSON.stringify([{ ...p, vpnPasswor
 
 const blankText = (kind: NetKind) => (kind === "openvpn" ? generateOvpn(emptyOvpnForm()) : kind === "wireguard" ? generateWg(emptyWgForm()) : "");
 
-/** Profile as returned by the backend, with write-only secrets cleared for editing. */
-const forEdit = (p: NetProfile): NetProfile => ({
-  ...p,
-  forwards: p.forwards ?? [],
-  options: p.options ?? {},
-  vpnPassword: null,
-  ssh: p.ssh ? { ...p.ssh, password: null } : p.ssh,
-});
+/** Profile as returned by the backend, normalized for editing (net_get includes keychain secrets). */
+const forEdit = (p: NetProfile): NetProfile => ({ ...p, forwards: p.forwards ?? [], options: p.options ?? {} });
 
 async function loadInitial(tab: NetworkTabSpec): Promise<Loaded> {
   if (tab.profileId) {
@@ -145,7 +139,8 @@ export default function NetworkTab({ tab }: { tab: NetworkTabSpec }) {
     setSaving(true);
     try {
       const saved = await useNet.getState().save(toSave, isVpn(toSave.kind) ? data.text : null);
-      const p2 = forEdit(saved);
+      // net_save doesn't echo secrets: keep what the form holds (unchanged in the keychain).
+      const p2 = forEdit({ ...saved, vpnPassword: data.p.vpnPassword ?? null, ssh: saved.ssh ? { ...saved.ssh, password: data.p.ssh?.password ?? null } : saved.ssh });
       setProfileId(saved.id);
       setData({ p: p2, text: data.text, mode: data.mode, baseline: snap(p2, data.text) });
       setAttempted(false);
@@ -263,7 +258,7 @@ export default function NetworkTab({ tab }: { tab: NetworkTabSpec }) {
               {p.kind === "openvpn" && (
                 <OpenVpnEditor p={p} set={set} text={text} setText={setText} initialMode={data.mode} saved={!!profileId} />
               )}
-              {p.kind === "wireguard" && <WireGuardEditor text={text} setText={setText} initialMode={data.mode} />}
+              {p.kind === "wireguard" && <WireGuardEditor p={p} set={set} text={text} setText={setText} initialMode={data.mode} />}
               {p.kind === "ssh" && <SshTunnelEditor p={p} set={set} saved={!!profileId} status={status} />}
               {isVpn(p.kind) && <ElevationNote kind={p.kind} tools={tools} />}
             </div>

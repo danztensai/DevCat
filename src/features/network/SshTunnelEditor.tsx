@@ -23,7 +23,7 @@ export function SshTunnelEditor({ p, set, saved, status }: { p: NetProfile; set:
   const forwards = p.forwards;
   const setFwd = (i: number, patch: Partial<PortForward>) => set({ forwards: forwards.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
   const bound = status?.state === "connected" ? status.localPorts : [];
-  const secretHint = saved ? "Saved in the OS keychain — leave empty to keep it." : undefined;
+  const secretHint = "Stored in the OS keychain.";
 
   return (
     <>
@@ -45,7 +45,7 @@ export function SshTunnelEditor({ p, set, saved, status }: { p: NetProfile; set:
         </Row>
       )}
       <Row label={ssh.auth === "key" ? "Passphrase" : "Password"} hint={secretHint}>
-        <PasswordInput value={ssh.password ?? ""} placeholder={saved ? "••••••••  (unchanged)" : ssh.auth === "key" ? "(optional)" : ""} onChange={(v) => up({ password: v || null })} />
+        <PasswordInput value={ssh.password ?? ""} placeholder={ssh.auth === "key" ? "(optional)" : ""} onChange={(v) => up({ password: v || (saved ? "" : null) })} />
       </Row>
 
       <SectionTitle right={<Button type="button" size="sm" variant="ghost" onClick={() => set({ forwards: [...forwards, emptyForward()] })}><Plus className="size-3" />Add forward</Button>}>

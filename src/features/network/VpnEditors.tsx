@@ -178,8 +178,8 @@ function Credentials({ p, set, saved, required }: { p: NetProfile; set: (patch: 
       <Row label="Username" hint={required ? undefined : "Only used when the config contains auth-user-pass."}>
         <Input value={p.vpnUser ?? ""} autoComplete="off" onChange={(e) => set({ vpnUser: e.target.value || null })} />
       </Row>
-      <Row label="Password" hint={saved ? "Saved in the OS keychain — leave empty to keep the current password." : "Stored in the OS keychain, never in the config file."}>
-        <PasswordInput value={p.vpnPassword ?? ""} placeholder={saved ? "••••••••  (unchanged)" : ""} onChange={(v) => set({ vpnPassword: v || null })} />
+      <Row label="Password" hint="Stored in the OS keychain, never in the config file.">
+        <PasswordInput value={p.vpnPassword ?? ""} onChange={(v) => set({ vpnPassword: v || (saved ? "" : null) })} />
       </Row>
     </>
   );
@@ -268,6 +268,9 @@ export function OpenVpnEditor({ p, set, text, setText, initialMode, saved }: Vpn
         </div>
       )}
       <Credentials p={p} set={set} saved={saved} required={needsUserPass} />
+      <Row label="openvpn arguments" hint="Optional extra command-line arguments, e.g. --mute-replay-warnings.">
+        <Input className="font-mono text-xs!" value={p.options.ovpnArgs ?? ""} placeholder="(none)" onChange={(e) => setOption(p, set, "ovpnArgs", e.target.value || null)} />
+      </Row>
     </>
   );
 }
@@ -294,7 +297,13 @@ function ModeHints({ m }: { m: Moded }) {
 
 // ---------------------------------------------------------------- WireGuard
 
-export function WireGuardEditor({ text, setText, initialMode }: Pick<VpnProps, "text" | "setText" | "initialMode">) {
+function setOption(p: NetProfile, set: VpnProps["set"], key: string, value: string | null) {
+  const options = { ...p.options };
+  if (value === null) delete options[key]; else options[key] = value;
+  set({ options });
+}
+
+export function WireGuardEditor({ p, set, text, setText, initialMode }: Omit<VpnProps, "saved">) {
   const m = useModedForm<WgForm>(text, setText, initialMode, parseWg, generateWg, emptyWgForm);
   const f = m.form;
   const setPeer = (i: number, patch: Partial<WgPeer>) => m.update({ peers: f.peers.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
@@ -348,6 +357,9 @@ export function WireGuardEditor({ text, setText, initialMode }: Pick<VpnProps, "
           <div><Button type="button" size="sm" onClick={() => m.update({ peers: [...f.peers, emptyWgPeer()] })}><Plus className="size-3" />Add peer</Button></div>
         </div>
       )}
+      <Row label="" hint="Off: ignore the DNS line so your system resolver stays as is.">
+        <Checkbox label="Use the DNS servers from the config" checked={p.options.dns !== "false"} onChange={(v) => setOption(p, set, "dns", v ? null : "false")} />
+      </Row>
     </>
   );
 }
