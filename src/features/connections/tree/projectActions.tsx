@@ -1,6 +1,7 @@
 // Project (connection folder) actions shared by the tree, its menus and the connection dialog.
 import { toast } from "sonner";
 import { errMsg } from "../../../lib/api";
+import { openNewWindow } from "../../../lib/windows";
 import type { ConnectionConfig, Project } from "../../../lib/types";
 import { useConnections } from "../../../store/connections";
 import { useUi } from "../../../store/ui";
@@ -104,6 +105,9 @@ export function focusProject(projectId: string) {
   conns().setFocus(projectId);
   useTree.getState().setProjectCollapsed(projectId, false);
 }
+
+/** Open another app window focused on a project (this window's focus is unchanged). */
+export const openProjectInNewWindow = (projectId: string) => void openNewWindow(projectId);
 
 export const newConnectionIn = (projectId: string | null) => useUi.getState().openConnectionDialog(null, undefined, projectId);
 

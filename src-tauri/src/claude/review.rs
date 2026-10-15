@@ -185,7 +185,7 @@ pub(super) fn build_prompt(t: &Target) -> String {
 /// Start a one-shot code review run (read-only tools) of `scope`: "uncommitted" | "staged" | "branch" (vs `base`).
 /// Streams like a chat run; the final `result` carries the review (structured findings when supported).
 #[tauri::command]
-pub async fn claude_review(app: tauri::AppHandle, cwd: String, scope: String, base: Option<String>, model: Option<String>) -> AppResult<String> {
+pub async fn claude_review(app: tauri::AppHandle, window: tauri::Window, cwd: String, scope: String, base: Option<String>, model: Option<String>) -> AppResult<String> {
     let target = collect(&cwd, &scope, base.as_deref()).await?;
     let spec = Spawn {
         // dontAsk: anything not in --allowedTools is denied without prompting.
@@ -194,7 +194,9 @@ pub async fn claude_review(app: tauri::AppHandle, cwd: String, scope: String, ba
         extra_args: review_args(),
         close_after_result: true,
     };
-    start_with_prompt(app_sink(app), &cwd, spec, &build_prompt(&target)).await
+    let run_id = start_with_prompt(app_sink(app), &cwd, spec, &build_prompt(&target)).await?;
+    super::runner::set_owner(&run_id, window.label());
+    Ok(run_id)
 }
 
 pub(super) async fn start_with_prompt(sink: Sink, cwd: &str, spec: Spawn, prompt: &str) -> AppResult<String> {

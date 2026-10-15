@@ -1,6 +1,6 @@
 // Diff view: changed files (Staged / Changes / Untracked) + Monaco diff of the selected file,
 // stage / unstage / discard, commit, and "Ask Claude to review". `ChangesPanel` is also used by the Git tab.
-import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
+import { DiffEditor, type DiffOnMount } from "../../components/DiffEditor";
 import clsx from "clsx";
 import { Columns2, ExternalLink, FileDiff, GitCommitHorizontal, Minus, Plus, RefreshCw, Rows2, ScanSearch, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";

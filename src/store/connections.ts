@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 import { api } from "../lib/api";
 import type { ConnectionConfig, Project } from "../lib/types";
+import { broadcast, launchFocus, onBroadcast, windowStorage } from "../lib/windows";
 
 interface ConnectionsState {
   connections: ConnectionConfig[];
@@ -12,6 +13,8 @@ interface ConnectionsState {
   save: (c: ConnectionConfig) => Promise<ConnectionConfig>;
   remove: (id: string) => Promise<void>;
   markOpen: (id: string, open: boolean) => void;
+  /** markOpen for this window only (per-window sessions such as a Kubernetes tab's). */
+  markOpenLocal: (id: string, open: boolean) => void;
   byId: (id: string) => ConnectionConfig | undefined;
   /** Create (no id) or update a project. */
   saveProject: (p: Pick<Project, "name"> & Partial<Project>) => Promise<Project>;
@@ -25,15 +28,23 @@ interface ConnectionsState {
   setFocus: (projectId: string | null) => void;
 }
 
+// Per window: the main window remembers it across restarts, other windows only for their lifetime.
 const FOCUS_KEY = "devcat.focusProject";
+if (launchFocus) windowStorage.setItem(FOCUS_KEY, launchFocus);
+
+/** Reload after a change other windows must see too. */
+async function reloadAndNotify(load: () => Promise<void>) {
+  await load();
+  broadcast({ kind: "connections" });
+}
 
 export const useConnections = create<ConnectionsState>((set, get) => ({
   connections: [],
   projects: [],
   open: new Set(),
-  focusProjectId: localStorage.getItem(FOCUS_KEY),
+  focusProjectId: windowStorage.getItem(FOCUS_KEY),
   setFocus: (focusProjectId) => {
-    if (focusProjectId) localStorage.setItem(FOCUS_KEY, focusProjectId); else localStorage.removeItem(FOCUS_KEY);
+    if (focusProjectId) windowStorage.setItem(FOCUS_KEY, focusProjectId); else windowStorage.removeItem(FOCUS_KEY);
     set({ focusProjectId });
   },
   load: async () => {
@@ -45,32 +56,31 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
   },
   save: async (c) => {
     const saved = await api.saveConnection(c);
-    await get().load();
+    await reloadAndNotify(get().load);
     get().markOpen(saved.id, false);
     return saved;
   },
   remove: async (id) => {
     await api.deleteConnection(id);
     get().markOpen(id, false);
-    await get().load();
+    await reloadAndNotify(get().load);
   },
-  markOpen: (id, isOpen) =>
-    set((s) => {
-      const open = new Set(s.open);
-      if (isOpen) open.add(id); else open.delete(id);
-      return { open };
-    }),
+  markOpen: (id, isOpen) => {
+    setOpen(id, isOpen);
+    broadcast({ kind: "conn-open", id, open: isOpen });
+  },
+  markOpenLocal: (id, isOpen) => setOpen(id, isOpen),
   byId: (id) => get().connections.find((c) => c.id === id),
   saveProject: async (p) => {
     const saved = await api.saveProject({ id: "", color: null, description: null, order: 0, ...p });
-    await get().load();
+    await reloadAndNotify(get().load);
     return saved;
   },
   removeProject: async (id, deleteConnections = false) => {
     const members = get().connections.filter((c) => c.projectId === id).map((c) => c.id);
     await api.deleteProject(id, deleteConnections);
     if (deleteConnections) members.forEach((m) => get().markOpen(m, false));
-    await get().load();
+    await reloadAndNotify(get().load);
   },
   moveToProject: async (ids, projectId) => {
     // Optimistic so drag & drop feels instant; reload reconciles.
@@ -78,15 +88,31 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     try {
       await api.moveConnections(ids, projectId);
     } finally {
-      await get().load();
+      await reloadAndNotify(get().load);
     }
   },
   reorderProjects: async (ids) => {
     set((s) => ({ projects: ids.map((id) => s.projects.find((p) => p.id === id)!).filter(Boolean) }));
     const projects = await api.reorderProjects(ids);
     set({ projects });
+    broadcast({ kind: "connections" });
   },
 }));
+
+function setOpen(id: string, isOpen: boolean) {
+  useConnections.setState((s) => {
+    if (s.open.has(id) === isOpen) return s;
+    const open = new Set(s.open);
+    if (isOpen) open.add(id); else open.delete(id);
+    return { open };
+  });
+}
+
+// Changes made in other windows.
+onBroadcast((m) => {
+  if (m.kind === "connections") useConnections.getState().load().catch(console.error);
+  else if (m.kind === "conn-open") setOpen(m.id, m.open);
+});
 
 /** The focused project, if focus mode is on. */
 export const useFocusProject = () =>

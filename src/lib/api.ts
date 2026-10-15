@@ -9,6 +9,11 @@ import type {
 } from "./types";
 
 export const api = {
+  // windows
+  /** Open another app window, optionally focused on a project and/or opening a tab. Returns its label. */
+  openWindow: (projectId?: string | null, tab?: Record<string, unknown> | null) =>
+    invoke<string>("open_window", { projectId: projectId ?? null, tab: tab ?? null }),
+
   // connections
   listConnections: () => invoke<ConnectionConfig[]>("list_connections"),
   getConnection: (id: string) => invoke<ConnectionConfig>("get_connection", { id }),

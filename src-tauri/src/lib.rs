@@ -1,6 +1,9 @@
 mod claude;
 mod commands;
 mod db;
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub mod devbridge;
 mod error;
 mod gitx;
 mod history;
@@ -10,6 +13,7 @@ mod network;
 mod projects;
 mod state;
 mod store;
+mod windows;
 
 use tauri::Manager;
 
@@ -28,9 +32,19 @@ pub fn run() {
             network::init(dir.clone());
             network::start(app.handle().clone());
             app.manage(state::AppState::new(dir));
+            #[cfg(target_os = "macos")]
+            windows::install_menu(app.handle())?;
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // A closed window takes its terminals, Claude runs and k8s streams with it.
+            if let tauri::WindowEvent::Destroyed = event {
+                windows::on_destroyed(window.label());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            // windows
+            windows::open_window,
             // connections
             commands::connections::list_connections,
             commands::connections::get_connection,

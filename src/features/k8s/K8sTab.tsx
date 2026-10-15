@@ -26,7 +26,7 @@ import { KINDS, NAV, crdKindDef, crdKindKey, genericKindDef, type KindDef, type 
 
 export default function K8sTab({ tab }: { tab: Extract<Tab, { type: "k8s" }> }) {
   const connId = tab.connId;
-  const markOpen = useConnections((s) => s.markOpen);
+  const markOpen = useConnections((s) => s.markOpenLocal);
   const openDialog = useUi((s) => s.openConnectionDialog);
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [error, setError] = useState<string | null>(null);

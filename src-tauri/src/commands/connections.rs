@@ -79,6 +79,6 @@ pub async fn open_connection_ids(state: State<'_, AppState>) -> AppResult<Vec<St
 /// Forget cached Kubernetes/RabbitMQ clients (and stop k8s streams) for a profile
 /// so edited settings take effect without a manual reconnect.
 pub(crate) async fn drop_infra_clients(id: &str) {
-    let _ = crate::infra::k8s::k8s_disconnect(id.to_string()).await;
+    crate::infra::k8s::drop_conn(id).await;
     crate::infra::rabbitmq::client::evict(id);
 }

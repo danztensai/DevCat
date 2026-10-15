@@ -1,4 +1,4 @@
-import { DiffEditor } from "@monaco-editor/react";
+import { DiffEditor } from "../../components/DiffEditor";
 import clsx from "clsx";
 import { ArrowRight, CheckSquare, Eye, GitCompareArrows, KeyRound, Link2, ListTree, Minus, Plus, Search, Square, Table2, Pencil } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";

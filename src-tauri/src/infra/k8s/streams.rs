@@ -17,13 +17,15 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, State, Window};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::AbortHandle;
 
 struct StreamEntry {
     conn_id: String,
     abort: AbortHandle,
+    /// Label of the window that started the stream (stopped when it closes).
+    owner: Option<String>,
 }
 
 /// Log and watch streams.
@@ -71,6 +73,36 @@ pub(crate) fn stop_all_for(conn_id: &str) {
     });
 }
 
+/// Tie a log / watch stream or exec session to the window that started it.
+fn set_owner(id: &str, label: &str) {
+    if let Some(s) = STREAMS.lock().get_mut(id) {
+        s.owner = Some(label.to_string());
+    }
+    if let Some(s) = EXECS.lock().get_mut(id) {
+        s.owner = Some(label.to_string());
+    }
+}
+
+/// Stops the log / watch streams and exec sessions started by a window (all, or one
+/// connection's). Port-forwards are app-wide and keep running.
+pub fn stop_owned_by(label: &str, conn_id: Option<&str>) {
+    let owned = |owner: &Option<String>, conn: &str| owner.as_deref() == Some(label) && conn_id.is_none_or(|c| c == conn);
+    STREAMS.lock().retain(|_, s| {
+        let keep = !owned(&s.owner, &s.conn_id);
+        if !keep {
+            s.abort.abort();
+        }
+        keep
+    });
+    EXECS.lock().retain(|_, s| {
+        let keep = !owned(&s.owner, &s.conn_id);
+        if !keep {
+            s.abort.abort();
+        }
+        keep
+    });
+}
+
 #[tauri::command]
 pub async fn k8s_stream_stop(stream_id: String) -> AppResult<()> {
     if let Some(s) = STREAMS.lock().remove(&stream_id) {
@@ -102,6 +134,7 @@ struct StreamEnd {
 #[allow(clippy::too_many_arguments)]
 pub async fn k8s_logs_start(
     app: AppHandle,
+    window: Window,
     state: State<'_, AppState>,
     conn_id: String,
     namespace: String,
@@ -123,7 +156,9 @@ pub async fn k8s_logs_start(
         since_seconds,
         ..Default::default()
     };
-    logs_start(&c, conn_id, app_emitter(app), &namespace, &pod, &lp).await
+    let id = logs_start(&c, conn_id, app_emitter(app), &namespace, &pod, &lp).await?;
+    set_owner(&id, window.label());
+    Ok(id)
 }
 
 pub(crate) async fn logs_start(c: &Conn, conn_id: String, emit: Emit, namespace: &str, pod: &str, lp: &LogParams) -> AppResult<String> {
@@ -173,7 +208,7 @@ pub(crate) async fn logs_start(c: &Conn, conn_id: String, emit: Emit, namespace:
         emit("k8s-log-end", to_json(StreamEnd { stream_id: sid.clone(), error }));
         STREAMS.lock().remove(&sid);
     });
-    STREAMS.lock().insert(id.clone(), StreamEntry { conn_id, abort: task.abort_handle() });
+    STREAMS.lock().insert(id.clone(), StreamEntry { conn_id, abort: task.abort_handle(), owner: None });
     Ok(id)
 }
 
@@ -198,6 +233,7 @@ struct WatchEvent {
 #[tauri::command]
 pub async fn k8s_watch_start(
     app: AppHandle,
+    window: Window,
     state: State<'_, AppState>,
     conn_id: String,
     kind: String,
@@ -205,7 +241,9 @@ pub async fn k8s_watch_start(
     label_selector: Option<String>,
 ) -> AppResult<String> {
     let c = conn(&state, &conn_id).await?;
-    watch_start(&c, conn_id, app_emitter(app), &kind, namespace.as_deref(), label_selector).await
+    let id = watch_start(&c, conn_id, app_emitter(app), &kind, namespace.as_deref(), label_selector).await?;
+    set_owner(&id, window.label());
+    Ok(id)
 }
 
 pub(crate) async fn watch_start(
@@ -264,7 +302,7 @@ pub(crate) async fn watch_start(
         }
         STREAMS.lock().remove(&sid);
     });
-    STREAMS.lock().insert(id.clone(), StreamEntry { conn_id, abort: task.abort_handle() });
+    STREAMS.lock().insert(id.clone(), StreamEntry { conn_id, abort: task.abort_handle(), owner: None });
     Ok(id)
 }
 
@@ -277,6 +315,7 @@ struct ExecSession {
     stdin: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
     resize: Option<futures::channel::mpsc::Sender<TerminalSize>>,
     abort: AbortHandle,
+    owner: Option<String>,
 }
 
 static EXECS: Lazy<Mutex<HashMap<String, ExecSession>>> = Lazy::new(|| Mutex::new(HashMap::new()));
@@ -302,6 +341,7 @@ struct ExecExit {
 #[allow(clippy::too_many_arguments)]
 pub async fn k8s_exec_start(
     app: AppHandle,
+    window: Window,
     state: State<'_, AppState>,
     conn_id: String,
     namespace: String,
@@ -312,7 +352,9 @@ pub async fn k8s_exec_start(
     rows: u16,
 ) -> AppResult<String> {
     let c = conn(&state, &conn_id).await?;
-    exec_start(&c, conn_id, app_emitter(app), &namespace, &pod, container, command, cols, rows).await
+    let id = exec_start(&c, conn_id, app_emitter(app), &namespace, &pod, container, command, cols, rows).await?;
+    set_owner(&id, window.label());
+    Ok(id)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -383,7 +425,7 @@ pub(crate) async fn exec_start(
         emit("k8s-exec-exit", to_json(ExecExit { session_id: sid.clone(), status, error }));
         EXECS.lock().remove(&sid);
     });
-    EXECS.lock().insert(id.clone(), ExecSession { conn_id, stdin: tx, resize, abort: task.abort_handle() });
+    EXECS.lock().insert(id.clone(), ExecSession { conn_id, stdin: tx, resize, abort: task.abort_handle(), owner: None });
     Ok(id)
 }
 

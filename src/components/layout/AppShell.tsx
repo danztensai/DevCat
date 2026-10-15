@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, Crosshair, Database, Folder, FolderPlus, GitBranch, History, LogOut, Plus, Shield, Sparkles, X } from "lucide-react";
+import { AppWindow, ChevronDown, Copy, Crosshair, Database, Folder, FolderPlus, GitBranch, History, LogOut, Plus, Shield, Sparkles, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
@@ -13,15 +13,40 @@ import GitPanel from "../../features/git/GitPanel";
 import { inFocus, useConnections, useFocusProject } from "../../store/connections";
 import { useContextMenu, type MenuItem } from "../../features/connections/ContextMenu";
 import { createProject, focusProject } from "../../features/connections/tree/projectActions";
-import { useTabs } from "../../store/tabs";
+import { confirmDialog } from "../../features/connections/dialogs";
+import { detectSession } from "../../features/claude/store";
+import { IS_MAC, NEW_WINDOW_SHORTCUT, openNewWindow, takeLaunchTab, type TabTransfer } from "../../lib/windows";
+import { openTab, useTabs } from "../../store/tabs";
 import { useUi, type SidebarView } from "../../store/ui";
 import { TabContent } from "../../tabs/registry";
-import { tabConnId } from "../../tabs/types";
+import { tabConnId, type Tab } from "../../tabs/types";
 import { IconButton } from "../ui";
 
 export default function AppShell() {
   const load = useConnections((s) => s.load);
   useEffect(() => { load().catch(console.error); }, [load]);
+
+  // Opened as "move / open tab in new window": show that tab.
+  useEffect(() => {
+    const t = takeLaunchTab();
+    if (t) {
+      const { title, ...spec } = t;
+      openTab(spec, title);
+    }
+  }, []);
+
+  // ⌘⇧N / Ctrl+Shift+N: new window. On macOS the app menu's "New Window" item owns the shortcut.
+  useEffect(() => {
+    if (IS_MAC) return;
+    const h = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        void openNewWindow();
+      }
+    };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
@@ -117,6 +142,19 @@ function ProjectBar() {
       })),
       "separator",
       { label: "New project…", icon: <FolderPlus className="size-3.5" />, onClick: async () => { const p = await createProject(); if (p) focusProject(p.id); } },
+      "separator",
+      { label: "New window", icon: <AppWindow className="size-3.5" />, shortcut: NEW_WINDOW_SHORTCUT, onClick: () => void openNewWindow() },
+      ...(projects.length
+        ? [{
+            label: "Open project in new window",
+            icon: <SquareArrowOutUpRight className="size-3.5" />,
+            submenu: projects.map((p): MenuItem => ({
+              label: p.name,
+              icon: <Folder className="size-3.5" style={{ color: p.color ?? undefined }} />,
+              onClick: () => void openNewWindow(p.id),
+            })),
+          } as MenuItem]
+        : []),
     ];
     menu.show({ clientX: r.left, clientY: r.bottom + 2 }, items);
   };
@@ -146,13 +184,52 @@ function ProjectBar() {
           </button>
         </>
       )}
+      <IconButton title={`New window (${NEW_WINDOW_SHORTCUT})`} className={focus ? undefined : "ml-auto"} onClick={() => void openNewWindow(focus?.id)}>
+        <AppWindow className="size-3.5" />
+      </IconButton>
       {menu.element}
     </div>
   );
 }
 
+/** Spec + title of a tab, to recreate it in another window. */
+async function tabTransfer(t: Tab): Promise<TabTransfer> {
+  const { id, dirty, ...spec } = t;
+  // Claude: resume the session the terminal is on (it may have changed since the tab opened).
+  if (spec.type === "claude") return { ...spec, sessionId: (await detectSession(id)) ?? spec.sessionId ?? null };
+  return spec;
+}
+
+async function moveTabToWindow(t: Tab) {
+  if (t.dirty && t.type !== "query") {
+    const ok = await confirmDialog({
+      title: "Move tab",
+      message: <>The tab <b>{t.title}</b> has unsaved changes, which are not moved to the new window. Move it anyway?</>,
+      confirmLabel: "Move",
+      danger: true,
+    });
+    if (!ok) return;
+  }
+  if (await openNewWindow(useConnections.getState().focusProjectId, await tabTransfer(t))) useTabs.getState().close(t.id);
+}
+
 function Workspace() {
-  const { tabs: allTabs, activeId, activate, close } = useTabs();
+  const { tabs: allTabs, activeId, activate, close, closeOthers } = useTabs();
+  const menu = useContextMenu();
+  const tabMenu = (e: React.MouseEvent, t: Tab) => {
+    const focusId = useConnections.getState().focusProjectId;
+    const transferable = t.type !== "welcome";
+    menu.show(e, [
+      { label: "Move to new window", icon: <SquareArrowOutUpRight className="size-3.5" />, disabled: !transferable, onClick: () => void moveTabToWindow(t) },
+      // A copy of a Claude tab would run a second claude on the same session.
+      ...(t.type !== "claude"
+        ? [{ label: "Open copy in new window", icon: <Copy className="size-3.5" />, disabled: !transferable, onClick: async () => void openNewWindow(focusId, await tabTransfer(t)) } as MenuItem]
+        : []),
+      "separator",
+      { label: "Close", icon: <X className="size-3.5" />, onClick: () => close(t.id) },
+      { label: "Close others", disabled: allTabs.length < 2, onClick: () => closeOthers(t.id) },
+    ]);
+  };
   // Focus mode hides tabs of other projects' connections (they stay mounted and come back on exit).
   const focusId = useConnections((s) => s.focusProjectId);
   const connections = useConnections((s) => s.connections);
@@ -171,6 +248,7 @@ function Workspace() {
           <div
             key={t.id}
             onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); close(t.id); } else activate(t.id); }}
+            onContextMenu={(e) => tabMenu(e, t)}
             className={clsx(
               "group flex max-w-56 shrink-0 cursor-default items-center gap-2 border-r border-line pl-3 pr-1.5",
               t.id === activeId ? "bg-panel text-fg shadow-[inset_0_2px_0_var(--color-accent)]" : "text-muted hover:bg-panel/60",
@@ -194,6 +272,7 @@ function Workspace() {
           </span>
         )}
       </div>
+      {menu.element}
       <div className="relative min-h-0 flex-1">
         {/* Keep every tab mounted so editors and grids preserve their state. */}
         {allTabs.map((t) => (

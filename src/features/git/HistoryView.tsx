@@ -102,7 +102,8 @@ export function HistoryView({ tabId, repo, path, target, dlg }: {
   const filtered = !!(search || author || path);
   // Parents are only contiguous in an unfiltered log; skip the graph otherwise.
   const graph = useMemo(() => (filtered ? null : computeGraph(commits)), [commits, filtered]);
-  const graphW = graph ? Math.min(Math.max(graph.maxWidth, 1), MAX_LANES) * LANE_W + 6 : 0;
+  // At least wide enough for the "Graph" header label.
+  const graphW = graph ? Math.max(Math.min(Math.max(graph.maxWidth, 1), MAX_LANES) * LANE_W + 6, 56) : 0;
 
   const virt = useVirtualizer({ count: commits.length, getScrollElement: () => scrollRef.current, estimateSize: () => ROW_H, overscan: 20 });
   const items = virt.getVirtualItems();

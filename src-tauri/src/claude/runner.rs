@@ -206,6 +206,8 @@ struct Run {
     exited: watch::Receiver<bool>,
     stopping: AtomicBool,
     pid: Option<u32>,
+    /// Label of the window that started the run (stopped when it closes).
+    owner: Mutex<Option<String>>,
 }
 
 static RUNS: Lazy<Mutex<HashMap<String, Arc<Run>>>> = Lazy::new(Default::default);
@@ -309,6 +311,7 @@ pub(super) async fn spawn_run(sink: Sink, cwd: &str, spec: Spawn) -> AppResult<S
         exited: exit_rx,
         stopping: AtomicBool::new(false),
         pid: child.id(),
+        owner: Mutex::new(None),
     });
     RUNS.lock().insert(run_id.clone(), run.clone());
 
@@ -476,8 +479,23 @@ pub async fn claude_info() -> AppResult<ClaudeInfo> {
 
 /// Start a session in `cwd`; returns a run id. Messages arrive as `claude-msg` events.
 #[tauri::command]
-pub async fn claude_start(app: tauri::AppHandle, cwd: String, opts: StartOptions) -> AppResult<String> {
-    spawn_run(app_sink(app), &cwd, Spawn { opts, prompt_tool: true, ..Default::default() }).await
+pub async fn claude_start(app: tauri::AppHandle, window: tauri::Window, cwd: String, opts: StartOptions) -> AppResult<String> {
+    let id = spawn_run(app_sink(app), &cwd, Spawn { opts, prompt_tool: true, ..Default::default() }).await?;
+    set_owner(&id, window.label());
+    Ok(id)
+}
+
+/// Tie a run to the window that started it.
+pub(super) fn set_owner(run_id: &str, label: &str) {
+    if let Some(run) = RUNS.lock().get(run_id) {
+        *run.owner.lock() = Some(label.to_string());
+    }
+}
+
+/// Stop every run started by a window (it was closed).
+pub async fn stop_owned_by(label: &str) {
+    let runs: Vec<Arc<Run>> = RUNS.lock().values().filter(|r| r.owner.lock().as_deref() == Some(label)).cloned().collect();
+    futures::future::join_all(runs.into_iter().map(stop_run)).await;
 }
 
 fn image_media_type(path: &Path) -> Option<&'static str> {

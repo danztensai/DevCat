@@ -21,6 +21,8 @@ Grab the latest installer for macOS, Windows or Linux from the
 ## Features
 
 - **Projects**: group connections into projects and focus on one project at a time.
+- **Multiple windows**: ⇧⌘N (Ctrl+Shift+N) opens another window; open a project in its own window or move a tab
+  to a new window. Each window has its own tabs and project focus.
 - **Connections**: saved profiles with color tags, SSH tunnels, SSL, read-only mode.
   Passwords are stored in the OS keychain (macOS Keychain / Windows Credential Manager),
   never in plain files.
@@ -68,6 +70,14 @@ Prerequisites: Node 20+, pnpm, Rust (stable), plus the
 ```bash
 pnpm install
 pnpm tauri dev          # run the app with hot reload
+```
+
+UI testing in a normal browser (dev only): the Git and file commands are served over HTTP by a
+debug-only bridge, and the other Tauri APIs are stubbed.
+
+```bash
+cd src-tauri && cargo run --example devbridge   # http://127.0.0.1:1430
+pnpm dev:bridge                                 # http://localhost:1425
 ```
 
 Local test services for every supported backend:

@@ -20,7 +20,7 @@ use kube::{Client, Config};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,6 +44,8 @@ pub(crate) struct Conn {
 }
 
 static CONNS: Lazy<RwLock<HashMap<String, Conn>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+/// Windows using each connection: one window's disconnect must not break another's.
+static HOLDERS: Lazy<parking_lot::Mutex<HashMap<String, HashSet<String>>>> = Lazy::new(Default::default);
 
 fn expand_tilde(p: &str) -> PathBuf {
     if let Some(rest) = p.strip_prefix("~/").or_else(|| p.strip_prefix("~\\")) {
@@ -250,7 +252,8 @@ pub struct ConnectInfo {
 
 /// (Re)connects: always builds a fresh client so this doubles as "retry".
 #[tauri::command]
-pub async fn k8s_connect(state: State<'_, AppState>, conn_id: String) -> AppResult<ConnectInfo> {
+pub async fn k8s_connect(window: tauri::Window, state: State<'_, AppState>, conn_id: String) -> AppResult<ConnectInfo> {
+    HOLDERS.lock().entry(conn_id.clone()).or_default().insert(window.label().to_string());
     let cfg = state.store.get(&conn_id)?;
     let c = build_conn(&cfg).await?;
     let v = c.client.apiserver_version().await.map_err(friendly)?;
@@ -259,10 +262,33 @@ pub async fn k8s_connect(state: State<'_, AppState>, conn_id: String) -> AppResu
 }
 
 #[tauri::command]
-pub async fn k8s_disconnect(conn_id: String) -> AppResult<()> {
-    CONNS.write().await.remove(&conn_id);
-    streams::stop_all_for(&conn_id);
+pub async fn k8s_disconnect(window: tauri::Window, conn_id: String) -> AppResult<()> {
+    let still_used = HOLDERS.lock().get_mut(&conn_id).is_some_and(|h| {
+        h.remove(window.label());
+        !h.is_empty()
+    });
+    if still_used {
+        // Another window still uses the connection: only stop this window's streams.
+        streams::stop_owned_by(window.label(), Some(&conn_id));
+    } else {
+        drop_conn(&conn_id).await;
+    }
     Ok(())
+}
+
+/// Forget the client and stop every stream / port-forward of a connection (all windows).
+pub(crate) async fn drop_conn(conn_id: &str) {
+    HOLDERS.lock().remove(conn_id);
+    CONNS.write().await.remove(conn_id);
+    streams::stop_all_for(conn_id);
+}
+
+/// A window was closed: it no longer holds any connection (port-forwards keep running).
+pub fn release_window(label: &str) {
+    HOLDERS.lock().retain(|_, h| {
+        h.remove(label);
+        !h.is_empty()
+    });
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 // Commit detail: message, author / committer, parents, refs and changed files (left),
 // Monaco diff of the selected file vs the first parent (right).
-import { DiffEditor } from "@monaco-editor/react";
+import { DiffEditor } from "../../components/DiffEditor";
 import clsx from "clsx";
 import { Columns2, Copy, ExternalLink, FileDiff, History, MoreHorizontal, Rows2, UserSearch } from "lucide-react";
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";

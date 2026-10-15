@@ -26,6 +26,8 @@ struct Pty {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    /// Label of the window that opened the terminal (closed with it).
+    owner: Mutex<Option<String>>,
 }
 
 static PTYS: Lazy<Mutex<HashMap<String, Arc<Pty>>>> = Lazy::new(Default::default);
@@ -95,6 +97,7 @@ pub(super) async fn open(sink: Sink, cwd: &str, program: Option<String>, args: V
         master: Mutex::new(pair.master),
         writer: Mutex::new(Some(writer)),
         killer: Mutex::new(child.clone_killer()),
+        owner: Mutex::new(None),
     });
     PTYS.lock().insert(id.clone(), pty);
 
@@ -148,8 +151,12 @@ pub(super) async fn open(sink: Sink, cwd: &str, program: Option<String>, args: V
 
 /// Open a terminal in `cwd`. `program`: "claude" (resolved binary), None (login shell) or any program.
 #[tauri::command]
-pub async fn pty_open(app: tauri::AppHandle, cwd: String, program: Option<String>, args: Vec<String>, cols: u16, rows: u16) -> AppResult<String> {
-    open(app_sink(app), &cwd, program, args, cols, rows).await
+pub async fn pty_open(app: tauri::AppHandle, window: tauri::Window, cwd: String, program: Option<String>, args: Vec<String>, cols: u16, rows: u16) -> AppResult<String> {
+    let id = open(app_sink(app), &cwd, program, args, cols, rows).await?;
+    if let Some(p) = PTYS.lock().get(&id) {
+        *p.owner.lock() = Some(window.label().to_string());
+    }
+    Ok(id)
 }
 
 /// Raw keystrokes (UTF-8).
@@ -181,6 +188,17 @@ pub async fn pty_close(id: String) -> AppResult<()> {
         kill(&p);
     }
     Ok(())
+}
+
+/// Kill every terminal opened by a window (it was closed).
+pub fn close_owned_by(label: &str) {
+    let mut ptys = PTYS.lock();
+    let ids: Vec<String> = ptys.iter().filter(|(_, p)| p.owner.lock().as_deref() == Some(label)).map(|(id, _)| id.clone()).collect();
+    let owned: Vec<Arc<Pty>> = ids.iter().filter_map(|id| ptys.remove(id)).collect();
+    drop(ptys);
+    for p in owned {
+        kill(&p);
+    }
 }
 
 /// Kill every terminal (app exit).
