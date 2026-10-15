@@ -63,6 +63,14 @@ time = { version = "0.3", features = ["formatting"] }
 keepawake = "0.6.1"
 
 
+# Dev builds: line numbers for our own code (readable backtraces) and no debug info for
+# dependencies. Full debug info made target/debug grow by tens of GB.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1
