@@ -2,10 +2,10 @@
 // stage / unstage / discard, commit, and "Ask Claude to review". `ChangesPanel` is also used by the Git tab.
 import { DiffEditor, type DiffOnMount } from "../../components/DiffEditor";
 import clsx from "clsx";
-import { Columns2, ExternalLink, FileDiff, GitCommitHorizontal, Minus, Plus, RefreshCw, Rows2, ScanSearch, Undo2 } from "lucide-react";
+import { Columns2, ExternalLink, FileDiff, GitCommitHorizontal, ListChecks, Minus, Plus, RefreshCw, Rows2, ScanSearch, Trash2, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Button, Dialog, Empty, ErrorBox, IconButton, Spinner, Textarea } from "../../components/ui";
+import { Button, Checkbox, Dialog, Empty, ErrorBox, IconButton, Spinner, Textarea } from "../../components/ui";
 import { api, errMsg } from "../../lib/api";
 import type { FileVersions, GitFile, GitStatus } from "../../lib/types";
 import { refreshGit, useClaude } from "./store";
@@ -28,17 +28,34 @@ function groupFiles(files: GitFile[]) {
   return { staged, changes, untracked };
 }
 
-function FileRow({ f, group, selected, onSelect, onAction }: {
-  f: GitFile; group: Group; selected: boolean; onSelect: () => void; onAction: (a: "stage" | "unstage" | "discard") => void;
+/** Tri-state checkbox (checked / some / none). */
+function Check({ state, onChange, title }: { state: boolean | "some"; onChange: (v: boolean) => void; title: string }) {
+  return (
+    <input
+      type="checkbox"
+      title={title}
+      className="size-3 shrink-0 cursor-pointer accent-[var(--color-accent)]"
+      checked={state === true}
+      ref={(el) => { if (el) el.indeterminate = state === "some"; }}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+  );
+}
+
+function FileRow({ f, group, selected, checked, onCheck, onSelect, onAction }: {
+  f: GitFile; group: Group; selected: boolean; checked: boolean; onCheck: (v: boolean) => void;
+  onSelect: () => void; onAction: (a: "stage" | "unstage" | "discard") => void;
 }) {
   const letter = group === "staged" ? f.index : group === "untracked" ? "U" : f.worktree;
   const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
   return (
     <div
-      className={clsx("group flex h-6 cursor-pointer items-center gap-1.5 pl-3 pr-1 text-xs", selected ? "bg-accent/15 text-fg" : "text-fg/85 hover:bg-hover")}
+      className={clsx("group flex h-6 cursor-pointer items-center gap-1.5 pl-2 pr-1 text-xs", selected ? "bg-accent/15 text-fg" : "text-fg/85 hover:bg-hover")}
       onClick={onSelect}
       title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
     >
+      <Check state={checked} onChange={onCheck} title="Select for commit / discard" />
       <span className="truncate">{basename(f.path)}</span>
       <span className="min-w-0 flex-1 truncate text-[11px] text-faint">{dir}</span>
       <span className="hidden shrink-0 items-center group-hover:flex" onClick={(e) => e.stopPropagation()}>
@@ -94,7 +111,15 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
   const [sideBySide, setSideBySide] = useState(true);
   const [msg, setMsg] = useState("");
   const [committing, setCommitting] = useState(false);
-  const [confirm, setConfirm] = useState<{ title: string; body: string; run: () => Promise<void> } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    title: string; body: string; ok?: string;
+    /** Optional extra choice shown as a checkbox; its value is passed to run. */
+    option?: { label: string; initial: boolean };
+    run: (option: boolean) => Promise<void>;
+  } | null>(null);
+  const [confirmOpt, setConfirmOpt] = useState(false);
+  /** Paths ticked for "commit selected" / bulk actions. */
+  const [checked, setChecked] = useState<Set<string>>(() => new Set());
   const editorRef = useRef<Parameters<DiffOnMount>[0] | null>(null);
   const revealLine = useRef<number | null>(null);
 
@@ -113,6 +138,18 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
     setSel(samePath || list[0] || null);
   }, [git, groups, sel]);
 
+  // Drop ticks for files that no longer have changes.
+  useEffect(() => {
+    if (!git?.files) return;
+    setChecked((c) => {
+      if (!c.size) return c;
+      const live = new Set(git.files.map((f) => f.path));
+      const next = new Set([...c].filter((p) => live.has(p)));
+      return next.size === c.size ? c : next;
+    });
+  }, [git]);
+  useEffect(() => { setChecked(new Set()); }, [cwd]);
+
   // Focus requests from the review view.
   useEffect(() => {
     if (!focus || !git?.files) return;
@@ -126,25 +163,31 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.seq, git?.files]);
 
+  // Only the latest request may update the view (an older one may be for another file).
+  const loadSeq = useRef(0);
   const loadVersions = useCallback(async (s: Sel | null, quiet = false) => {
+    const seq = ++loadSeq.current;
     if (!s) return setVersions(null);
     if (!quiet) setVLoading(true);
     try {
       const v = await api.gitFileVersions(cwd, s.path, s.group === "staged");
+      if (seq !== loadSeq.current) return;
       // Same content → keep the object so the editor isn't touched.
       setVersions((cur) => (cur && cur.original === v.original && cur.modified === v.modified && cur.binary === v.binary ? cur : v));
       setVErr(null);
     } catch (e) {
-      if (!quiet) {
+      if (!quiet && seq === loadSeq.current) {
         setVErr(errMsg(e));
         setVersions(null);
       }
     } finally {
-      if (!quiet) setVLoading(false);
+      if (!quiet && seq === loadSeq.current) setVLoading(false);
     }
   }, [cwd]);
 
-  useEffect(() => { void loadVersions(sel); }, [sel, loadVersions]);
+  // `reload` re-reads the current selection after an action (which may also change the selection).
+  const [reload, setReload] = useState(0);
+  useEffect(() => { void loadVersions(sel); }, [sel, loadVersions, reload]);
   // Re-read the open file on each git poll while visible (Claude edits it from the terminal).
   useEffect(() => { if (gitTick && active) void loadVersions(sel, true); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [gitTick]);
 
@@ -156,7 +199,7 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
       toast.error(errMsg(e));
     }
     await refresh();
-    void loadVersions(sel);
+    setReload((n) => n + 1);
   };
 
   const onAction = (f: GitFile, group: Group, a: "stage" | "unstage" | "discard") => {
@@ -169,13 +212,50 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
     });
   };
 
+  const setCheck = (paths: string[], on: boolean) => setChecked((c) => {
+    const n = new Set(c);
+    for (const p of paths) if (on) n.add(p); else n.delete(p);
+    return n;
+  });
+  const checkedFiles = (git?.files ?? []).filter((f) => checked.has(f.path));
+  const isUntracked = (f: GitFile) => f.index === "?" || f.worktree === "?";
+
+  const askConfirm = (c: NonNullable<typeof confirm>) => { setConfirmOpt(c.option?.initial ?? false); setConfirm(c); };
+
+  const discardSelected = () => {
+    const paths = checkedFiles.map((f) => f.path);
+    if (!paths.length) return;
+    const untracked = checkedFiles.filter(isUntracked).length;
+    askConfirm({
+      title: `Discard ${paths.length} file${paths.length === 1 ? "" : "s"}?`,
+      body: `All changes to the selected files, staged and unstaged, go back to the last commit.${untracked ? ` ${untracked} untracked file${untracked === 1 ? " is" : "s are"} deleted.` : ""} This cannot be undone.`,
+      run: () => act(async () => { await api.gitDiscard(cwd, paths, true); setChecked(new Set()); }, `Discarded ${paths.length} file${paths.length === 1 ? "" : "s"}`),
+    });
+  };
+
+  const discardAll = () => {
+    const files = git?.files ?? [];
+    const untracked = files.filter(isUntracked).length;
+    const tracked = files.length - untracked;
+    askConfirm({
+      title: "Discard all changes?",
+      body: `Every staged and unstaged change${tracked ? ` in ${tracked} file${tracked === 1 ? "" : "s"}` : ""} goes back to the last commit. This cannot be undone.`,
+      ok: "Discard all",
+      option: untracked ? { label: `Also delete ${untracked} untracked file${untracked === 1 ? "" : "s"} / folder${untracked === 1 ? "" : "s"}`, initial: true } : undefined,
+      run: (withUntracked) => act(async () => { await api.gitDiscardAll(cwd, withUntracked); setChecked(new Set()); }, "Discarded all changes"),
+    });
+  };
+
   const commit = async () => {
     if (!msg.trim()) return;
+    const only = checked.size ? [...checked] : null;
+    if (!only && !groups.staged.length) return;
     setCommitting(true);
     try {
-      const out = await api.gitCommit(cwd, msg.trim());
-      toast.success(out?.split("\n")[0] || "Committed");
+      const out = await api.gitCommit(cwd, msg.trim(), only);
+      toast.success(`${out?.split("\n")[0] || "Committed"}${only ? ` · ${only.length} file${only.length === 1 ? "" : "s"}` : ""}`);
       setMsg("");
+      setChecked(new Set());
     } catch (e) {
       toast.error(errMsg(e));
     } finally {
@@ -211,7 +291,12 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
   const section = (title: string, list: GitFile[], group: Group) =>
     list.length > 0 && (
       <div className="pb-1">
-        <div className="flex h-6 items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        <div className="flex h-6 items-center gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+          <Check
+            state={list.every((f) => checked.has(f.path)) ? true : list.some((f) => checked.has(f.path)) ? "some" : false}
+            onChange={(v) => setCheck(list.map((f) => f.path), v)}
+            title={`Select all ${title.toLowerCase()}`}
+          />
           <span className="flex-1">{title}</span>
           <span className="font-normal text-faint">{list.length}</span>
           {group === "staged"
@@ -220,6 +305,7 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
         </div>
         {list.map((f) => (
           <FileRow key={group + f.path} f={f} group={group} selected={sel?.path === f.path && sel.group === group}
+            checked={checked.has(f.path)} onCheck={(v) => setCheck([f.path], v)}
             onSelect={() => setSel({ path: f.path, group })} onAction={(a) => onAction(f, group, a)} />
         ))}
       </div>
@@ -233,6 +319,12 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
         <div className="flex h-8 shrink-0 items-center gap-1 border-b border-line px-2">
           <IconButton title="Refresh" onClick={() => void refresh()}><RefreshCw className={clsx("size-3.5", gitLoading && "animate-spin")} /></IconButton>
           <IconButton title="Stage all" disabled={!unstaged.length} onClick={() => void act(() => api.gitStage(cwd, unstaged.map((f) => f.path)))}><Plus className="size-3.5" /></IconButton>
+          <IconButton title="Discard all changes…" disabled={!git.files.length} onClick={discardAll}><Undo2 className="size-3.5" /></IconButton>
+          <IconButton
+            title={checked.size === git.files.length ? "Clear selection" : "Select all files"}
+            disabled={!git.files.length}
+            onClick={() => setChecked(checked.size === git.files.length ? new Set() : new Set(git.files.map((f) => f.path)))}
+          ><ListChecks className="size-3.5" /></IconButton>
           <div className="flex-1" />
           {actions}
           {onReview && <Button size="sm" variant="ghost" onClick={onReview} title="Ask Claude to review these changes"><ScanSearch className="size-3.5" />Ask Claude to review</Button>}
@@ -243,17 +335,28 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
           {section("Changes", groups.changes, "changes")}
           {section("Untracked", groups.untracked, "untracked")}
         </div>
+        {/* Below the list, so ticking the first file doesn't shift the rows. */}
+        {checked.size > 0 && (
+          <div className="flex h-7 shrink-0 items-center gap-1 border-t border-line bg-accent/10 px-2 text-xs">
+            <span className="flex-1 text-fg/90">{checked.size} selected</span>
+            <IconButton title="Stage selected" className="size-5" onClick={() => void act(() => api.gitStage(cwd, [...checked]))}><Plus className="size-3" /></IconButton>
+            <IconButton title="Unstage selected" className="size-5" onClick={() => void act(() => api.gitUnstage(cwd, [...checked]))}><Minus className="size-3" /></IconButton>
+            <IconButton title="Discard selected…" className="size-5 hover:text-danger" onClick={discardSelected}><Trash2 className="size-3" /></IconButton>
+            <IconButton title="Clear selection" className="size-5" onClick={() => setChecked(new Set())}><X className="size-3" /></IconButton>
+          </div>
+        )}
         <div className="shrink-0 border-t border-line p-2">
           <Textarea
             rows={2}
             className="resize-none font-sans text-xs"
-            placeholder={groups.staged.length ? `Commit message (${groups.staged.length} staged) — ⌘↵ to commit` : "Stage files to commit"}
+            placeholder={checked.size ? `Commit message (${checked.size} selected) — ⌘↵ to commit` : groups.staged.length ? `Commit message (${groups.staged.length} staged) — ⌘↵ to commit` : "Stage or select files to commit"}
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void commit(); } }}
           />
-          <Button variant="primary" className="mt-1.5 w-full justify-center" loading={committing} disabled={!msg.trim() || !groups.staged.length} onClick={() => void commit()}>
-            <GitCommitHorizontal className="size-3.5" />Commit
+          <Button variant="primary" className="mt-1.5 w-full justify-center" loading={committing} disabled={!msg.trim() || (!checked.size && !groups.staged.length)} onClick={() => void commit()}
+            title={checked.size ? "Commit only the selected files (other staged changes stay staged)" : "Commit the staged changes"}>
+            <GitCommitHorizontal className="size-3.5" />{checked.size ? `Commit ${checked.size} selected` : "Commit"}
           </Button>
         </div>
       </div>
@@ -301,11 +404,12 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirm(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => { const c = confirm; setConfirm(null); void c?.run(); }}>Discard</Button>
+            <Button variant="danger" onClick={() => { const c = confirm; setConfirm(null); void c?.run(confirmOpt); }}>{confirm?.ok ?? "Discard"}</Button>
           </>
         }
       >
         <div className="text-[13px] text-fg/90">{confirm?.body}</div>
+        {confirm?.option && <div className="mt-3"><Checkbox label={confirm.option.label} checked={confirmOpt} onChange={setConfirmOpt} /></div>}
       </Dialog>
     </div>
   );

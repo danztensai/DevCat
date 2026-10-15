@@ -155,6 +155,7 @@ pub fn run() {
             claude::git::git_stage,
             claude::git::git_unstage,
             claude::git::git_discard,
+            claude::git::git_discard_all,
             claude::git::git_commit,
             // git tools
             gitx::commands::git_repos,

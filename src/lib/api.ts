@@ -109,8 +109,12 @@ export const api = {
   gitDiffText: (cwd: string, staged: boolean) => invoke<string>("git_diff_text", { cwd, staged }),
   gitStage: (cwd: string, paths: string[]) => invoke<void>("git_stage", { cwd, paths }),
   gitUnstage: (cwd: string, paths: string[]) => invoke<void>("git_unstage", { cwd, paths }),
-  gitDiscard: (cwd: string, paths: string[]) => invoke<void>("git_discard", { cwd, paths }),
-  gitCommit: (cwd: string, message: string) => invoke<string>("git_commit", { cwd, message }),
+  /** includeStaged: also drop staged changes (back to HEAD), not only the worktree part. */
+  gitDiscard: (cwd: string, paths: string[], includeStaged = false) => invoke<void>("git_discard", { cwd, paths, includeStaged }),
+  /** Everything back to HEAD; includeUntracked also deletes untracked files (not ignored ones). */
+  gitDiscardAll: (cwd: string, includeUntracked: boolean) => invoke<void>("git_discard_all", { cwd, includeUntracked }),
+  /** paths: commit only these files (staged or not); others stay as they are. */
+  gitCommit: (cwd: string, message: string, paths?: string[] | null) => invoke<string>("git_commit", { cwd, message, paths: paths ?? null }),
 
   // Git tools (src-tauri/src/gitx). `cwd` = any path inside the repo.
   /** Find repos at/under `root` (and the repo enclosing it). maxDepth default 6. */

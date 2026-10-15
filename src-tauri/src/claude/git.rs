@@ -548,8 +548,11 @@ fn delete_worktree_file(root: &Path, rel: &str) -> AppResult<()> {
 /// - staged-new (index `A`) → `rm --cached` + file deleted
 /// - worktree changes → restored from the index (`restore --worktree`)
 /// - staged-only changes → reverted to HEAD (`restore --source=HEAD --staged --worktree`)
+///
+/// `include_staged`: also drop staged changes of tracked files (back to HEAD), not just the worktree part.
 #[tauri::command]
-pub async fn git_discard(cwd: String, paths: Vec<String>) -> AppResult<()> {
+pub async fn git_discard(cwd: String, paths: Vec<String>, include_staged: Option<bool>) -> AppResult<()> {
+    let include_staged = include_staged.unwrap_or(false);
     let root = require_root(&cwd).await?;
     let rels = resolve_all(&root, &paths)?;
     if rels.is_empty() {
@@ -564,7 +567,15 @@ pub async fn git_discard(cwd: String, paths: Vec<String>) -> AppResult<()> {
             ("?", _) => untracked.push(f.path),
             ("!", _) => {}
             ("A", _) => added.push(f.path),
+            ("R" | "C", _) if include_staged => {
+                // The new name isn't in HEAD: drop it; a rename also restores the old path.
+                if f.index == "R" {
+                    staged_only.extend(f.old_path.clone());
+                }
+                added.push(f.path);
+            }
             (_, " ") => staged_only.push(f.path),
+            _ if include_staged => staged_only.push(f.path),
             _ => worktree.push(f.path),
         }
     }
@@ -583,11 +594,40 @@ pub async fn git_discard(cwd: String, paths: Vec<String>) -> AppResult<()> {
     Ok(())
 }
 
+/// Discard every change: staged and unstaged edits go back to HEAD; with `include_untracked`
+/// untracked files and folders are deleted too (ignored files and nested repos are kept).
 #[tauri::command]
-pub async fn git_commit(cwd: String, message: String) -> AppResult<String> {
+pub async fn git_discard_all(cwd: String, include_untracked: bool) -> AppResult<()> {
+    let root = require_root(&cwd).await?;
+    if !has_head(&root).await? {
+        return Err(AppError::msg("The repository has no commits yet; nothing to go back to"));
+    }
+    invalidate_cache();
+    git_ok(&root, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ":/"]).await?;
+    if include_untracked {
+        git_ok(&root, ["clean", "-f", "-d", "-q", "--", ":/"]).await?;
+    }
+    Ok(())
+}
+
+/// Commit the index, or with `paths` only those files (their current contents, staging
+/// untracked/deleted ones first); other staged changes stay staged.
+#[tauri::command]
+pub async fn git_commit(cwd: String, message: String, paths: Option<Vec<String>>) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     if message.trim().is_empty() {
         return Err(AppError::msg("Commit message is empty"));
+    }
+    if let Some(paths) = paths.filter(|p| !p.is_empty()) {
+        let rels = resolve_all(&root, &paths)?;
+        invalidate_cache();
+        git_ok(&root, with_paths(vec!["--literal-pathspecs", "add", "-A"], &rels)).await?;
+        let out = git_raw(&root, with_paths(vec!["--literal-pathspecs", "commit", "-q", "-m", message.as_str(), "--only"], &rels)).await?;
+        if out.code != 0 {
+            return Err(git_error(&out));
+        }
+        let sha = git_ok(&root, ["rev-parse", "--short", "HEAD"]).await?;
+        return Ok(String::from_utf8_lossy(&sha).trim().to_string());
     }
     let staged = git_raw(&root, ["diff", "--cached", "--quiet"]).await?;
     match staged.code {
@@ -714,7 +754,7 @@ u UU N... 100644 100644 100644 100644 d1 d2 d3 conflict.txt\0\
         std::fs::create_dir_all(&dir).unwrap();
         let st = git_status(dir.to_string_lossy().into_owned()).await.unwrap();
         assert!(!st.is_repo);
-        assert!(git_commit(dir.to_string_lossy().into_owned(), "x".into()).await.is_err());
+        assert!(git_commit(dir.to_string_lossy().into_owned(), "x".into(), None).await.is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -799,10 +839,10 @@ u UU N... 100644 100644 100644 100644 d1 d2 d3 conflict.txt\0\
         assert_eq!(find(&git_status(repo.cwd()).await.unwrap(), "first.txt").unwrap().index, "A");
         git_unstage(repo.cwd(), vec!["first.txt".into()]).await.unwrap();
         assert_eq!(find(&git_status(repo.cwd()).await.unwrap(), "first.txt").unwrap().index, "?");
-        assert!(git_commit(repo.cwd(), "empty".into()).await.unwrap_err().to_string().contains("Nothing staged"));
+        assert!(git_commit(repo.cwd(), "empty".into(), None).await.unwrap_err().to_string().contains("Nothing staged"));
 
         git_stage(repo.cwd(), vec!["first.txt".into()]).await.unwrap();
-        let sha = git_commit(repo.cwd(), "first".into()).await.unwrap();
+        let sha = git_commit(repo.cwd(), "first".into(), None).await.unwrap();
         assert!(sha.len() >= 7);
         assert_eq!(repo.git(&["rev-parse", "--short", "HEAD"]).trim(), sha);
         assert!(git_status(repo.cwd()).await.unwrap().files.is_empty());
@@ -812,7 +852,7 @@ u UU N... 100644 100644 100644 100644 d1 d2 d3 conflict.txt\0\
         repo.write("added.txt", "a\n");
         git_stage(repo.cwd(), vec!["added.txt".into()]).await.unwrap();
         repo.write("junk/untracked.txt", "x\n");
-        git_discard(repo.cwd(), vec!["first.txt".into(), "added.txt".into(), "junk".into()]).await.unwrap();
+        git_discard(repo.cwd(), vec!["first.txt".into(), "added.txt".into(), "junk".into()], None).await.unwrap();
         assert_eq!(std::fs::read_to_string(repo.dir.join("first.txt")).unwrap(), "1\n");
         assert!(!repo.dir.join("added.txt").exists());
         assert!(!repo.dir.join("junk/untracked.txt").exists());
@@ -820,12 +860,47 @@ u UU N... 100644 100644 100644 100644 d1 d2 d3 conflict.txt\0\
 
         repo.write("first.txt", "staged change\n");
         git_stage(repo.cwd(), vec!["first.txt".into()]).await.unwrap();
-        git_discard(repo.cwd(), vec!["first.txt".into()]).await.unwrap();
+        git_discard(repo.cwd(), vec!["first.txt".into()], None).await.unwrap();
         assert_eq!(std::fs::read_to_string(repo.dir.join("first.txt")).unwrap(), "1\n");
         assert!(git_status(repo.cwd()).await.unwrap().files.is_empty());
 
         // escapes are rejected before git runs
         assert!(git_stage(repo.cwd(), vec!["../evil".into()]).await.is_err());
-        assert!(git_discard(repo.cwd(), vec!["/etc/hosts".into()]).await.is_err());
+        assert!(git_discard(repo.cwd(), vec!["/etc/hosts".into()], None).await.is_err());
+
+        // commit only selected files; other staged changes stay staged
+        repo.write("a.txt", "a\n");
+        repo.write("b.txt", "b\n");
+        repo.write("c.txt", "c\n");
+        repo.git(&["add", "c.txt"]);
+        git_commit(repo.cwd(), "only a and b".into(), Some(vec!["a.txt".into(), "b.txt".into()])).await.unwrap();
+        assert_eq!(repo.git(&["show", "--name-only", "--format=", "HEAD"]).trim(), "a.txt\nb.txt");
+        assert!(repo.git(&["status", "--porcelain"]).contains("A  c.txt"));
+
+        // discard selected incl. staged changes
+        repo.write("a.txt", "a2\n");
+        repo.git(&["add", "a.txt"]);
+        repo.write("a.txt", "a3\n");
+        git_discard(repo.cwd(), vec!["a.txt".into()], Some(true)).await.unwrap();
+        assert_eq!(std::fs::read_to_string(repo.dir.join("a.txt")).unwrap(), "a\n");
+        assert!(!repo.git(&["status", "--porcelain"]).contains("a.txt"));
+
+        // discard all: tracked edits, staged new file, untracked dir; ignored files survive
+        repo.write("b.txt", "changed\n");
+        repo.write(".gitignore", "*.log\n");
+        repo.git(&["add", ".gitignore"]);
+        repo.git(&["commit", "-qm", "ignore"]);
+        repo.write("keep.log", "x");
+        repo.write("newdir/x.txt", "x");
+        repo.write("d.txt", "d\n");
+        repo.git(&["add", "d.txt"]);
+        git_discard_all(repo.cwd(), false).await.unwrap();
+        assert_eq!(std::fs::read_to_string(repo.dir.join("b.txt")).unwrap(), "b\n");
+        assert!(!repo.dir.join("d.txt").exists(), "staged new file removed");
+        assert!(repo.dir.join("newdir/x.txt").exists(), "untracked kept without include_untracked");
+        git_discard_all(repo.cwd(), true).await.unwrap();
+        assert!(!repo.dir.join("newdir").exists());
+        assert!(repo.dir.join("keep.log").exists(), "ignored files kept");
+        assert_eq!(repo.git(&["status", "--porcelain"]).trim(), "");
     }
 }

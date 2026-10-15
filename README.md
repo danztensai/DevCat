@@ -57,7 +57,7 @@ Grab the latest installer for macOS, Windows or Linux from the
 - **Git**: scan a folder for every repository inside it (nested repos, submodules and worktrees; `node_modules`
   and build folders are skipped) and see branch, ahead/behind and changes at a glance. Each repo opens a Git tab
   with a commit graph (all branches, search, author and file-history filters) and per-commit diffs, working-tree
-  changes with stage/commit/stash, branches/tags/remotes, and stashes. Checkout, branch, merge, tag, cherry-pick,
+  changes with stage/commit/stash (tick files to commit or discard just those, or discard all), branches/tags/remotes, and stashes. Checkout, branch, merge, tag, cherry-pick,
   revert and reset from the history. **Blame** for any file preview, with an age heatmap and a link to each commit.
   Fetch, pull and push use your SSH agent or credential helper (they never prompt).
 
