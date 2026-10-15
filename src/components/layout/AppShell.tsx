@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, Crosshair, Database, Folder, FolderPlus, History, LogOut, Plus, Shield, X } from "lucide-react";
+import { ChevronDown, Crosshair, Database, Folder, FolderPlus, History, LogOut, Plus, Shield, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
@@ -8,6 +8,7 @@ import ConnectionDialog from "../../features/connections/ConnectionDialog";
 import ConnectionTree from "../../features/connections/ConnectionTree";
 import HistoryPanel from "../../features/history/HistoryPanel";
 import NetworkPanel from "../../features/network/NetworkPanel";
+import ClaudePanel from "../../features/claude/ClaudePanel";
 import { inFocus, useConnections, useFocusProject } from "../../store/connections";
 import { useContextMenu, type MenuItem } from "../../features/connections/ContextMenu";
 import { createProject, focusProject } from "../../features/connections/tree/projectActions";
@@ -62,6 +63,7 @@ function ActivityBar() {
       {item("connections", <Database className="size-5" />, "Connections")}
       {item("history", <History className="size-5" />, "History & saved queries")}
       {item("network", <Shield className="size-5" />, "VPN & SSH tunnels")}
+      {item("claude", <Sparkles className="size-5" />, "Claude Code")}
     </div>
   );
 }
@@ -73,14 +75,14 @@ function Sidebar() {
     <div className="flex h-full flex-col bg-panel">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-          {sidebar === "connections" ? "Connections" : sidebar === "network" ? "VPN & Tunnels" : "History"}
+          {sidebar === "connections" ? "Connections" : sidebar === "network" ? "VPN & Tunnels" : sidebar === "claude" ? "Claude Code" : "History"}
         </span>
         {sidebar === "connections" && (
           <IconButton title="New connection" onClick={() => openDialog(null)}><Plus className="size-4" /></IconButton>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {sidebar === "connections" ? <ConnectionTree /> : sidebar === "network" ? <NetworkPanel /> : <HistoryPanel />}
+        {sidebar === "connections" ? <ConnectionTree /> : sidebar === "network" ? <NetworkPanel /> : sidebar === "claude" ? <ClaudePanel /> : <HistoryPanel />}
       </div>
     </div>
   );

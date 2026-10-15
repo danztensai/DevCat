@@ -1,3 +1,4 @@
+mod claude;
 mod commands;
 mod db;
 mod error;
@@ -114,6 +115,26 @@ pub fn run() {
             network::net_tools,
             network::net_ssh_config_hosts,
             network::net_traffic,
+            // claude code workspace
+            claude::claude_info,
+            claude::claude_start,
+            claude::claude_send,
+            claude::claude_permission,
+            claude::claude_control,
+            claude::claude_stop,
+            claude::claude_review,
+            claude::claude_projects,
+            claude::claude_sessions,
+            claude::claude_transcript,
+            claude::fs_list,
+            claude::fs_preview,
+            claude::git_status,
+            claude::git_file_versions,
+            claude::git_diff_text,
+            claude::git_stage,
+            claude::git_unstage,
+            claude::git_discard,
+            claude::git_commit,
             // rabbitmq
             infra::rabbitmq::rmq_bindings,
             infra::rabbitmq::rmq_close_connection,

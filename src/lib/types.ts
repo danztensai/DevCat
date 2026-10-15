@@ -262,3 +262,28 @@ export interface TrafficSample {
   rxTotal: number;
   txTotal: number;
 }
+
+// ---- Claude Code workspace (mirror src-tauri/src/claude/mod.rs)
+
+export type ClaudePermissionMode = "manual" | "acceptEdits" | "auto" | "plan" | "dontAsk" | "bypassPermissions";
+
+export interface ClaudeInfo { path?: string | null; version?: string | null; account?: unknown; models?: unknown }
+export interface ClaudeStartOptions { model?: string | null; permissionMode?: ClaudePermissionMode | null; resume?: string | null; fork?: boolean }
+export interface ClaudeProject { cwd: string; sessionCount: number; lastActive?: string | null }
+export interface SessionMeta {
+  id: string; title: string; firstPrompt?: string | null; lastPrompt?: string | null;
+  createdAt?: string | null; updatedAt?: string | null; messageCount: number; gitBranch?: string | null; costUsd?: number | null;
+}
+/** Raw stream-json object from the CLI (system / assistant / user / stream_event / result / control_*). */
+export type ClaudeMsg = { type: string; subtype?: string; [k: string]: unknown };
+
+export interface FileEntry { name: string; path: string; isDir: boolean; size: number; modified?: string | null; git?: string | null; ignored: boolean }
+export interface SheetData { name: string; rows: string[][]; truncated: boolean }
+export interface FilePreview {
+  kind: "text" | "markdown" | "image" | "pdf" | "sheet" | "csv" | "docx" | "binary" | "too_large";
+  path: string; mime?: string | null; size: number; text?: string | null; language?: string | null;
+  dataBase64?: string | null; sheets?: SheetData[] | null; truncated: boolean;
+}
+export interface GitFile { path: string; oldPath?: string | null; index: string; worktree: string }
+export interface GitStatus { isRepo: boolean; root?: string | null; branch?: string | null; ahead: number; behind: number; files: GitFile[] }
+export interface FileVersions { original: string; modified: string; binary: boolean }

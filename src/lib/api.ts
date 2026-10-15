@@ -2,6 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  ClaudeInfo, ClaudeProject, ClaudeStartOptions, FileEntry, FilePreview, FileVersions, GitStatus, SessionMeta,
   ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
 } from "./types";
@@ -78,6 +79,30 @@ export const api = {
   netSshConfigHosts: () => invoke<SshConfigHost[]>("net_ssh_config_hosts"),
   /** Last ≤5 minutes of traffic samples; live updates arrive as "net-traffic" events. */
   netTraffic: (id: string) => invoke<TrafficSample[]>("net_traffic", { id }),
+
+  // Claude Code workspace. Events: "claude-msg" ({ runId, msg: ClaudeMsg }), "claude-exit" ({ runId, code, error? })
+  claudeInfo: () => invoke<ClaudeInfo>("claude_info"),
+  claudeStart: (cwd: string, opts: ClaudeStartOptions = {}) => invoke<string>("claude_start", { cwd, opts }),
+  claudeSend: (runId: string, text: string, images?: string[] | null) => invoke<void>("claude_send", { runId, text, images: images ?? null }),
+  claudePermission: (runId: string, requestId: string, decision: { behavior: "allow"; updatedInput?: unknown; updatedPermissions?: unknown } | { behavior: "deny"; message: string }) =>
+    invoke<void>("claude_permission", { runId, requestId, decision }),
+  claudeControl: (runId: string, subtype: "interrupt" | "set_permission_mode" | "set_model", payload?: Record<string, unknown>) =>
+    invoke<unknown>("claude_control", { runId, subtype, payload: payload ?? null }),
+  claudeStop: (runId: string) => invoke<void>("claude_stop", { runId }),
+  claudeReview: (cwd: string, scope: "uncommitted" | "staged" | "branch", base?: string | null, model?: string | null) =>
+    invoke<string>("claude_review", { cwd, scope, base: base ?? null, model: model ?? null }),
+  claudeProjects: () => invoke<ClaudeProject[]>("claude_projects"),
+  claudeSessions: (cwd: string) => invoke<SessionMeta[]>("claude_sessions", { cwd }),
+  claudeTranscript: (cwd: string, sessionId: string) => invoke<unknown[]>("claude_transcript", { cwd, sessionId }),
+  fsList: (dir: string, showIgnored = false) => invoke<FileEntry[]>("fs_list", { dir, showIgnored }),
+  fsPreview: (path: string) => invoke<FilePreview>("fs_preview", { path }),
+  gitStatus: (cwd: string) => invoke<GitStatus>("git_status", { cwd }),
+  gitFileVersions: (cwd: string, path: string, staged: boolean) => invoke<FileVersions>("git_file_versions", { cwd, path, staged }),
+  gitDiffText: (cwd: string, staged: boolean) => invoke<string>("git_diff_text", { cwd, staged }),
+  gitStage: (cwd: string, paths: string[]) => invoke<void>("git_stage", { cwd, paths }),
+  gitUnstage: (cwd: string, paths: string[]) => invoke<void>("git_unstage", { cwd, paths }),
+  gitDiscard: (cwd: string, paths: string[]) => invoke<void>("git_discard", { cwd, paths }),
+  gitCommit: (cwd: string, message: string) => invoke<string>("git_commit", { cwd, message }),
 
   // kubernetes contexts (used by the connection dialog; implemented in infra/k8s.rs)
   k8sContexts: (kubeconfigPath?: string | null) => invoke<string[]>("k8s_contexts", { kubeconfigPath }),

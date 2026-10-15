@@ -16,7 +16,11 @@ export type TabSpec =
   | { type: "k8s"; connId: string }
   | { type: "rabbitmq"; connId: string }
   /** Network profile (VPN / SSH tunnel) details; profileId "" = new (kind preselected). */
-  | { type: "network"; profileId: string; kind?: "ssh" | "openvpn" | "wireguard"; importPath?: string };
+  | { type: "network"; profileId: string; kind?: "ssh" | "openvpn" | "wireguard"; importPath?: string }
+  /** Claude Code workspace for a folder: Chat / Diff / Code Review. sessionId resumes a past session. */
+  | { type: "claude"; cwd: string; sessionId?: string | null; view?: "chat" | "diff" | "review" }
+  /** Preview of a file (code, markdown, pdf, image, spreadsheet, …). */
+  | { type: "file"; path: string; root?: string | null };
 
 export type Tab = TabSpec & {
   id: string;
