@@ -9,6 +9,8 @@ Lens-style tooling for Kubernetes and RabbitMQ, built with [Tauri 2](https://tau
 | SQL databases | PostgreSQL, MySQL / MariaDB, SQLite, SQL Server |
 | NoSQL | MongoDB, Redis |
 | Infrastructure | Kubernetes (any kubeconfig context), RabbitMQ (management API) |
+| Networking | OpenVPN, WireGuard, SSH tunnels (local forwards + SOCKS proxy) |
+| AI | Claude Code workspace (terminal, diff, code review) using your installed `claude` CLI |
 
 ## Download
 
@@ -39,6 +41,15 @@ Grab the latest installer for macOS, Windows or Linux from the
   including logs and shell on Deployments with a pod switcher.
 - **RabbitMQ**: overview with live message-rate charts; queues, exchanges, bindings, connections,
   channels and consumers; publish and get messages; declare, purge and delete.
+  Paste an `amqp://` URL to fill the connection form.
+- **VPN & SSH tunnels**: import `.ovpn` / WireGuard `.conf` files or `~/.ssh/config` hosts, or set them up
+  in a form; connect/disconnect with live status, logs and a realtime traffic graph. Connections can depend
+  on a VPN or tunnel, which is connected automatically first. VPNs need administrator rights to connect
+  (the OS asks for your password); OpenVPN / `wireguard-tools` must be installed.
+- **Claude Code workspace**: runs your installed [Claude Code](https://docs.claude.com/en/docs/claude-code)
+  CLI in a real terminal (like iTerm2), with **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2 · Code Review ⌥⇧⌘3**, your Claude
+  session list (resume any session), a git-aware file tree and file previews (code, Markdown, PDF, images,
+  Excel/CSV, Word). Uses your own Claude account; install Claude Code and run `claude` once to log in.
 
 ## Development
 
@@ -97,11 +108,13 @@ src/                      React frontend
   store/                  zustand stores (connections, tabs, ui)
   tabs/                   tab kinds + registry
   features/               connections, query, grid, table, history, redis, mongo,
-                          er, compare, transfer, k8s, rabbitmq
+                          er, compare, transfer, k8s, rabbitmq, network, claude, files
 src-tauri/src/
   db/                     Driver trait + postgres, mysql, sqlite, mssql, mongo, redis,
                           ssh tunnels, cross-dialect DDL, transfer/backup
   infra/                  kubernetes, rabbitmq
+  network/                VPN (OpenVPN, WireGuard), SSH tunnels, traffic counters
+  claude/                 Claude Code CLI driver, PTY terminal, sessions, file previews, git
   commands/               Tauri command handlers
   store.rs                saved connections (JSON) + OS keychain secrets
 ```
