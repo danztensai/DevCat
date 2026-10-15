@@ -7,7 +7,7 @@ import type {
   GitRepo, GitLogQuery, GitCommit, GitCommitDetail, GitBlame, GitRefs, GitStash, CommitAction, RemoteOpts,
   AiDetect, AiProvider,
   ClaudeInfo, ClaudeProject, ClaudeStartOptions, FileEntry, FilePreview, FileVersions, GitStatus, SessionMeta,
-  ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
+  ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetHelperStatus, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
 } from "./types";
 
@@ -80,7 +80,8 @@ export const api = {
   netDelete: (id: string) => invoke<void>("net_delete", { id }),
   netImport: (path: string) => invoke<NetProfileFull>("net_import", { path }),
   netParse: (kind: NetKind, text: string) => invoke<Record<string, unknown>>("net_parse", { kind, text }),
-  netConnect: (id: string) => invoke<void>("net_connect", { id }),
+  /** `passwordPrompt`: skip the passwordless helper and ask for the admin password. */
+  netConnect: (id: string, passwordPrompt?: boolean) => invoke<void>("net_connect", { id, passwordPrompt: passwordPrompt ?? null }),
   netDisconnect: (id: string) => invoke<void>("net_disconnect", { id }),
   netStatus: () => invoke<NetStatus[]>("net_status"),
   netLogs: (id: string) => invoke<string[]>("net_logs", { id }),
@@ -88,6 +89,10 @@ export const api = {
   netSshConfigHosts: () => invoke<SshConfigHost[]>("net_ssh_config_hosts"),
   /** Last ≤5 minutes of traffic samples; live updates arrive as "net-traffic" events. */
   netTraffic: (id: string) => invoke<TrafficSample[]>("net_traffic", { id }),
+  /** Passwordless VPN helper (macOS / Linux): status, install / update, remove (one admin prompt each). */
+  netHelperStatus: () => invoke<NetHelperStatus>("net_helper_status"),
+  netHelperInstall: () => invoke<NetHelperStatus>("net_helper_install"),
+  netHelperUninstall: () => invoke<NetHelperStatus>("net_helper_uninstall"),
 
   // Claude Code workspace. Events: "claude-msg" ({ runId, msg: ClaudeMsg }), "claude-exit" ({ runId, code, error? })
   claudeInfo: () => invoke<ClaudeInfo>("claude_info"),

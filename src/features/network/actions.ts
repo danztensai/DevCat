@@ -95,11 +95,23 @@ export async function deleteProfile(p: Pick<NetProfile, "id" | "name">): Promise
   }
 }
 
-export async function connectProfile(p: Pick<NetProfile, "id" | "name">) {
+/** Errors from the passwordless VPN helper refusing a config contain this (helper.rs REJECTION_MARK). */
+export const isHelperRejection = (err: string | null | undefined) => !!err && err.includes("passwordless helper");
+
+/** `passwordPrompt`: connect with the admin password prompt instead of the passwordless helper. */
+export async function connectProfile(p: Pick<NetProfile, "id" | "name">, passwordPrompt = false) {
   try {
-    await useNet.getState().connect(p.id);
+    await useNet.getState().connect(p.id, passwordPrompt);
   } catch (e) {
-    toast.error(`${p.name}: ${errMsg(e)}`);
+    const msg = errMsg(e);
+    if (!passwordPrompt && isHelperRejection(msg)) {
+      toast.error(`${p.name}: ${msg}`, {
+        duration: 15_000,
+        action: { label: "Connect with password prompt", onClick: () => void connectProfile(p, true) },
+      });
+    } else {
+      toast.error(`${p.name}: ${msg}`);
+    }
   }
 }
 

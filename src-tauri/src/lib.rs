@@ -20,6 +20,17 @@ mod windows;
 
 use tauri::Manager;
 
+/// `devcat --vpn-helper <command> …`: the passwordless VPN helper (no Tauri, no window).
+/// Returns the process exit code.
+pub fn vpn_helper_main(args: &[String]) -> i32 {
+    network::helper::cli_main(args)
+}
+
+/// Why this process must not open the app window (it is the root VPN helper), if so.
+pub fn gui_refusal() -> Option<String> {
+    network::helper::gui_refusal()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Both the `ring` and `aws-lc-rs` rustls backends end up in the dependency tree,
@@ -141,6 +152,9 @@ pub fn run() {
             network::net_tools,
             network::net_ssh_config_hosts,
             network::net_traffic,
+            network::net_helper_status,
+            network::net_helper_install,
+            network::net_helper_uninstall,
             // claude code workspace
             claude::runner::claude_info,
             claude::runner::claude_start,

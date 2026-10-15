@@ -11,6 +11,7 @@ import {
   connectProfile, deleteProfile, disconnectProfile, duplicateProfile, importProfileFile, openNewProfile, openProfileTab, toggleProfile,
 } from "./actions";
 import { copyText, isBusy, isUp, NET_KIND_META, NetKindIcon, portsLabel, StatusDot, Switch } from "./meta";
+import { PasswordlessVpnRow } from "./PasswordlessVpn";
 import { SshConfigImportDialog } from "./SshConfigImport";
 import { useNet, useScopedNetProfiles, fmtRate } from "./store";
 
@@ -51,6 +52,7 @@ export default function NetworkPanel() {
     void s.load();
     void s.loadStatus();
     void s.loadTools();
+    void s.loadHelper();
   };
 
   const missing = (kind: NetKind) => tools !== null && kind !== "ssh" && !tools[kind];
@@ -117,6 +119,7 @@ export default function NetworkPanel() {
                 {(["openvpn", "wireguard"] as const).filter((k) => missing(k) && vpns.some((p) => p.kind === k)).map((k) => (
                   <ToolWarning key={k} kind={k} hint={tools?.installHints?.[k]} />
                 ))}
+                <PasswordlessVpnRow kinds={(["openvpn", "wireguard"] as const).filter((k) => vpns.some((p) => p.kind === k))} />
                 {vpns.map((p) => <ProfileRow key={p.id} p={p} focused={!!focus} toolMissing={missing(p.kind)} menu={menu.show} />)}
               </Group>
             )}

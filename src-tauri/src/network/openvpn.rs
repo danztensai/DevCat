@@ -2,6 +2,7 @@
 //! (127.0.0.1, password protected): credentials, state changes and the log stream.
 use super::registry::{self, Run};
 use super::store::{NetStore, write_private};
+use super::helper::{self, Outcome};
 use super::{NetKind, NetProfile, elevate, tools};
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
@@ -264,6 +265,8 @@ pub struct OvpnRun {
     tx: mpsc::UnboundedSender<String>,
     reader: JoinHandle<()>,
     pid_file: PathBuf,
+    /// Started through the passwordless helper (stop / clean up through it too).
+    via_helper: bool,
 }
 
 impl Drop for OvpnRun {
@@ -281,7 +284,27 @@ impl OvpnRun {
         registry::log(id, "Disconnecting");
         let sent = self.tx.send("signal SIGTERM".into()).is_ok();
         if sent && tokio::time::timeout(Duration::from_secs(8), &mut self.reader).await.is_ok() {
+            if self.via_helper {
+                // Removes the helper's root-only copies of the config (no prompt).
+                let args = vec!["openvpn-stop".to_string(), "--profile-id".into(), id.to_string()];
+                tokio::spawn(async move { helper::run(&args).await });
+            }
             return Ok(());
+        }
+        if self.via_helper {
+            registry::log(id, "Management interface not responding; stopping the process through the passwordless helper");
+            match helper::run(&["openvpn-stop".into(), "--profile-id".into(), id.to_string()]).await {
+                Outcome::Done(msg) => {
+                    registry::log(id, msg.trim());
+                    self.reader.abort();
+                    return Ok(());
+                }
+                Outcome::Rejected(m) | Outcome::Failed(m) => {
+                    self.reader.abort();
+                    return Err(AppError::msg(format!("Cannot stop OpenVPN: {m}")));
+                }
+                Outcome::Unavailable(why) => registry::log(id, &format!("Passwordless helper unavailable ({why})")),
+            }
         }
         registry::log(id, "Management interface not responding; stopping the process with administrator rights");
         let pid = std::fs::read_to_string(&self.pid_file).ok().and_then(|s| s.trim().parse::<u32>().ok());
@@ -308,11 +331,67 @@ fn log_tail(path: &Path, n: usize) -> String {
     lines[lines.len().saturating_sub(n)..].join("\n")
 }
 
-pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &NetStore) -> AppResult<()> {
-    let bin = tools::find_openvpn()
-        .ok_or_else(|| AppError::msg(format!("OpenVPN is not installed. {}", tools::openvpn_hint())))?;
+/// `ovpnArgs` the helper can pass on: nothing or `--verb N`. `Err` = anything else.
+pub fn helper_verb(extra: &str) -> Result<Option<u8>, ()> {
+    match extra.split_whitespace().collect::<Vec<_>>().as_slice() {
+        [] => Ok(None),
+        ["--verb", n] => n.parse::<u8>().ok().filter(|n| *n <= 11).map(Some).ok_or(()),
+        _ => Err(()),
+    }
+}
+
+/// `Some(verb)` when this connect goes through the passwordless helper.
+async fn use_helper(id: &str, prompt: bool, extra: &str) -> Option<Option<u8>> {
+    if prompt || cfg!(windows) || !helper::ready().await {
+        return None;
+    }
+    if let Err(e) = helper::find_openvpn(0) {
+        registry::log(id, &format!("Passwordless VPN can't run OpenVPN here ({e}); asking for the administrator password instead"));
+        return None;
+    }
+    match helper_verb(extra) {
+        Ok(v) => Some(v),
+        Err(()) => {
+            registry::log(id, "Extra OpenVPN arguments aren't passed through the passwordless helper; asking for the administrator password instead");
+            None
+        }
+    }
+}
+
+/// Start the daemon through the helper. `None` = the helper isn't usable (fall back).
+async fn launch_with_helper(id: &str, paths: &Paths, port: u16, verb: Option<u8>) -> Option<AppResult<()>> {
+    registry::log(id, "Starting OpenVPN through the passwordless helper");
+    let mut args: Vec<String> = vec![
+        "openvpn-start".into(),
+        "--config".into(),
+        paths.config.to_string_lossy().into(),
+        "--mgmt-port".into(),
+        port.to_string(),
+        "--mgmt-pass-file".into(),
+        paths.mgmt_pw.to_string_lossy().into(),
+        "--profile-id".into(),
+        id.into(),
+    ];
+    if let Some(v) = verb {
+        args.extend(["--verb".into(), v.to_string()]);
+    }
+    match helper::run(&args).await {
+        Outcome::Done(_) => Some(Ok(())),
+        Outcome::Rejected(m) => Some(Err(AppError::msg(helper::rejection(&m)))),
+        Outcome::Failed(m) => {
+            let tail = log_tail(&paths.log, 5);
+            Some(Err(AppError::msg(format!("OpenVPN failed to start: {}", if tail.is_empty() { m } else { tail }))))
+        }
+        Outcome::Unavailable(why) => {
+            registry::log(id, &format!("Passwordless helper unavailable ({why}); asking for the administrator password instead"));
+            None
+        }
+    }
+}
+
+pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &NetStore, prompt: bool) -> AppResult<()> {
     let dir = store.dir()?;
-    let paths = Paths {
+    let mut paths = Paths {
         config: store.config_path(&id, NetKind::Openvpn)?,
         mgmt_pw: dir.join(format!("{id}.mgmt")),
         pid: dir.join(format!("{id}.pid")),
@@ -324,22 +403,22 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
     let port = free_port()?;
     let token = uuid::Uuid::new_v4().simple().to_string();
     write_private(&paths.mgmt_pw, format!("{token}\n").as_bytes())?;
-    // Created by us so the log stays readable after root writes to it.
-    write_private(&paths.log, b"")?;
-    let _ = std::fs::remove_file(&paths.pid);
     let extra = profile.options.get("ovpnArgs").cloned().unwrap_or_default();
-    let args = build_args(&paths, port, &extra, cfg!(windows));
-    registry::log(&id, &format!("Starting {} (administrator rights required)", bin.display()));
-    registry::set_connecting(&id, generation, Some("waiting for authorization".into()));
 
-    let launched = elevate::run(&bin.to_string_lossy(), &args, !cfg!(windows), None).await;
+    let mut via_helper = false;
+    let mut launched = None;
+    if let Some(verb) = use_helper(&id, prompt, &extra).await {
+        let (pid, log) = helper::run_files(&id);
+        let helper_paths = Paths { pid, log, ..paths };
+        registry::set_connecting(&id, generation, Some("starting".into()));
+        launched = launch_with_helper(&id, &helper_paths, port, verb).await;
+        via_helper = launched.is_some();
+        // Back to the app's own pid / log files if the helper wasn't usable.
+        paths = if via_helper { helper_paths } else { Paths { pid: dir.join(format!("{id}.pid")), log: dir.join(format!("{id}.log")), ..helper_paths } };
+    }
     let launched = match launched {
-        Ok(o) if o.success => Ok(()),
-        Ok(o) => {
-            let tail = log_tail(&paths.log, 5);
-            Err(AppError::msg(format!("OpenVPN failed to start: {}", if tail.is_empty() { o.message() } else { tail })))
-        }
-        Err(e) => Err(e),
+        Some(r) => r,
+        None => launch_with_prompt(&id, generation, &paths, port, &extra).await,
     };
     if let Err(e) = launched {
         let _ = std::fs::remove_file(&paths.mgmt_pw);
@@ -368,7 +447,7 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
     }
     let machine = Machine::new(profile.vpn_user.clone(), profile.vpn_password.clone());
     let reader = tokio::spawn(mgmt_task(id.clone(), generation, stream, rx, machine));
-    let run = OvpnRun { tx, reader, pid_file: paths.pid.clone() };
+    let run = OvpnRun { tx, reader, pid_file: paths.pid.clone(), via_helper };
     match registry::store_run(&id, generation, Run::Openvpn(run)) {
         Ok(()) => {
             registry::set_connecting(&id, generation, Some("connecting".into()));
@@ -380,6 +459,26 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
         Err(_) => {}
     }
     Ok(())
+}
+
+/// Start the daemon elevated with the OS password prompt.
+async fn launch_with_prompt(id: &str, generation: u64, paths: &Paths, port: u16, extra: &str) -> AppResult<()> {
+    let bin = tools::find_openvpn()
+        .ok_or_else(|| AppError::msg(format!("OpenVPN is not installed. {}", tools::openvpn_hint())))?;
+    // Created by us so the log stays readable after root writes to it.
+    write_private(&paths.log, b"")?;
+    let _ = std::fs::remove_file(&paths.pid);
+    let args = build_args(paths, port, extra, cfg!(windows));
+    registry::log(id, &format!("Starting {} (administrator rights required)", bin.display()));
+    registry::set_connecting(id, generation, Some("waiting for authorization".into()));
+    match elevate::run(&bin.to_string_lossy(), &args, !cfg!(windows), None).await {
+        Ok(o) if o.success => Ok(()),
+        Ok(o) => {
+            let tail = log_tail(&paths.log, 5);
+            Err(AppError::msg(format!("OpenVPN failed to start: {}", if tail.is_empty() { o.message() } else { tail })))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 async fn mgmt_task(id: String, generation: u64, stream: TcpStream, mut rx: mpsc::UnboundedReceiver<String>, mut m: Machine) {
@@ -549,6 +648,16 @@ mod tests {
         let mut m = Machine::new(None, None);
         assert_eq!(m.on_line(">STATE:1,EXITING,SIGTERM,,,,,"), vec![Action::Error("OpenVPN exited (SIGTERM)".into())]);
         assert_eq!(Machine::new(None, None).exit_message(), "OpenVPN exited unexpectedly (see the log)");
+    }
+
+    #[test]
+    fn helper_extra_args() {
+        assert_eq!(helper_verb(""), Ok(None));
+        assert_eq!(helper_verb("  --verb 4 "), Ok(Some(4)));
+        assert_eq!(helper_verb("--verb 12"), Err(()));
+        assert_eq!(helper_verb("--verb x"), Err(()));
+        assert_eq!(helper_verb("--route-nopull"), Err(()));
+        assert_eq!(helper_verb("--verb 3 --up /x"), Err(()));
     }
 
     #[test]

@@ -2,5 +2,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // Helper mode runs before (and instead of) anything Tauri: see network/helper.rs.
+    if std::env::args_os().nth(1).is_some_and(|a| a == "--vpn-helper") {
+        let args: Option<Vec<String>> = std::env::args_os().skip(2).map(|a| a.into_string().ok()).collect();
+        let code = match args {
+            Some(args) => devcat_lib::vpn_helper_main(&args),
+            None => {
+                eprintln!("DevCat's passwordless helper: arguments must be valid UTF-8");
+                10
+            }
+        };
+        std::process::exit(code);
+    }
+    if let Some(why) = devcat_lib::gui_refusal() {
+        eprintln!("{why}");
+        std::process::exit(1);
+    }
     devcat_lib::run()
 }

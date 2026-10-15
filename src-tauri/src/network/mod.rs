@@ -7,6 +7,7 @@
 //!   `net-status` → `NetStatus`             (on every state change)
 //!   `net-log`    → `{ id, lines: [..] }`   (batched log lines)
 mod elevate;
+pub(crate) mod helper;
 mod openvpn;
 mod parse;
 mod registry;
@@ -148,7 +149,7 @@ pub fn start(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async {
         let Ok(profiles) = store().and_then(|s| s.load_all()) else { return };
         for p in profiles.into_iter().filter(|p| p.auto_connect) {
-            if let Err(e) = start_connect(&p.id).await {
+            if let Err(e) = start_connect(&p.id, false).await {
                 registry::log(&p.id, &format!("Auto-connect failed: {e}"));
             }
         }
@@ -195,7 +196,7 @@ async fn ensure(id: &str) -> AppResult<()> {
     if registry::status(id).state == registry::CONNECTED {
         return Ok(());
     }
-    start_connect(id).await?;
+    start_connect(id, false).await?;
     match wait_connected(id, ENSURE_TIMEOUT).await {
         Ok(true) => Ok(()),
         Ok(false) => Err(AppError::msg(format!("Timed out waiting for network \"{}\" to connect", profile.name))),
@@ -204,7 +205,8 @@ async fn ensure(id: &str) -> AppResult<()> {
 }
 
 /// Begin connecting in the background (no-op if already connecting/connected).
-async fn start_connect(id: &str) -> AppResult<()> {
+/// `prompt` skips the passwordless helper and asks for the admin password.
+async fn start_connect(id: &str, prompt: bool) -> AppResult<()> {
     check_id(id)?;
     let full = store()?.get(id)?;
     let Some(generation) = registry::begin_connect(id) else { return Ok(()) };
@@ -215,8 +217,8 @@ async fn start_connect(id: &str) -> AppResult<()> {
             Err(e) => Err(e),
             Ok(st) => match profile.kind {
                 NetKind::Ssh => ssh_tunnel::connect(id.clone(), generation, profile).await,
-                NetKind::Openvpn => openvpn::connect(id.clone(), generation, profile, st).await,
-                NetKind::Wireguard => wireguard::connect(id.clone(), generation, profile, st).await,
+                NetKind::Openvpn => openvpn::connect(id.clone(), generation, profile, st, prompt).await,
+                NetKind::Wireguard => wireguard::connect(id.clone(), generation, profile, st, prompt).await,
             },
         };
         if let Err(e) = res {
@@ -349,10 +351,12 @@ pub async fn net_parse(kind: NetKind, text: String) -> AppResult<serde_json::Val
     }
 }
 
+/// `password_prompt`: connect with the admin password prompt even when the passwordless
+/// helper is set up (e.g. after the helper refused the config).
 #[tauri::command]
-pub async fn net_connect(app: tauri::AppHandle, id: String) -> AppResult<()> {
+pub async fn net_connect(app: tauri::AppHandle, id: String, password_prompt: Option<bool>) -> AppResult<()> {
     let _ = registry::APP.set(app);
-    start_connect(&id).await?;
+    start_connect(&id, password_prompt.unwrap_or(false)).await?;
     // Returns early (Ok) if still connecting after the timeout; `net-status` follows.
     wait_connected(&id, ENSURE_TIMEOUT).await.map(|_| ())
 }
@@ -403,4 +407,22 @@ pub async fn net_ssh_config_hosts() -> AppResult<Vec<SshConfigHost>> {
 #[tauri::command]
 pub async fn net_traffic(id: String) -> AppResult<Vec<traffic::TrafficSample>> {
     Ok(traffic::history(&id))
+}
+
+/// Passwordless VPN helper: installed / up to date, and whether it can run the VPN tools here.
+#[tauri::command]
+pub async fn net_helper_status() -> AppResult<helper::HelperStatus> {
+    tauri::async_runtime::spawn_blocking(helper::status).await.map_err(|e| AppError::msg(e.to_string()))
+}
+
+/// Install or update the helper and its sudoers rule (one administrator prompt).
+#[tauri::command]
+pub async fn net_helper_install() -> AppResult<helper::HelperStatus> {
+    helper::install().await
+}
+
+/// Remove the helper and its sudoers rule (one administrator prompt).
+#[tauri::command]
+pub async fn net_helper_uninstall() -> AppResult<helper::HelperStatus> {
+    helper::uninstall().await
 }

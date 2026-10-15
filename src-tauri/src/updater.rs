@@ -82,8 +82,7 @@ mod tests {
     /// Regression: the pre-restart teardown runs inside the async runtime and must not panic.
     #[tokio::test(flavor = "multi_thread")]
     async fn teardown_inside_runtime_does_not_panic() {
+        // Only the network teardown: shutdown_all() would kill other tests' terminals.
         crate::network::shutdown_async().await;
-        crate::claude::runner::shutdown_all();
-        crate::keep_awake::shutdown();
     }
 }

@@ -56,6 +56,14 @@ Grab the latest installer for macOS, Windows or Linux from the
   in a form; connect/disconnect with live status, logs and a realtime traffic graph. Connections can depend
   on a VPN or tunnel, which is connected automatically first. VPNs need administrator rights to connect
   (the OS asks for your password); OpenVPN / `wireguard-tools` must be installed.
+  - **Passwordless VPN** (macOS / Linux, opt-in): *Set up passwordless VPN…* in the VPN list installs a
+    root-owned copy of DevCat as a helper (`/Library/PrivilegedHelperTools/dev.devcat.vpn-helper` on macOS,
+    `/usr/local/libexec/devcat-vpn-helper` on Linux) plus a sudoers rule for your account only
+    (`/etc/sudoers.d/dev-devcat-vpn`), with one password prompt. After that, connects use `sudo -n` without a
+    password. The helper refuses configs that run scripts or load plugins (OpenVPN `up`/`down`/`plugin`…,
+    WireGuard `PostUp`/`PreDown`…) and files that aren't yours, and it only runs OpenVPN / wg-quick from
+    root-owned, non-writable locations (a Homebrew install under `/opt/homebrew` doesn't qualify). Those cases
+    fall back to the password prompt. *Remove* deletes both files. Windows keeps using UAC.
 - **AI Workspace**: runs your installed coding-agent CLI in a real terminal (like iTerm2), with
   **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2**, a git-aware file tree and file previews (code, Markdown, PDF, images,
   Excel/CSV, Word). The agent is an *AI connection* picked in the sidebar header: [Claude Code](https://docs.claude.com/en/docs/claude-code)

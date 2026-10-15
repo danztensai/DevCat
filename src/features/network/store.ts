@@ -5,7 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { api, errMsg } from "../../lib/api";
-import type { NetProfile, NetStatus, NetTools, TrafficSample } from "../../lib/types";
+import type { NetHelperStatus, NetProfile, NetStatus, NetTools, TrafficSample } from "../../lib/types";
 import { useConnections } from "../../store/connections";
 
 /** Max log lines kept per profile in the UI. */
@@ -20,6 +20,8 @@ interface NetStoreState {
   statuses: Record<string, NetStatus>;
   /** null = unknown (backend not ready / failed) */
   tools: NetTools | null;
+  /** Passwordless VPN helper; null = unknown / not loaded */
+  helper: NetHelperStatus | null;
   /** Log lines per profile; only kept for profiles whose logs were requested. */
   logs: Record<string, string[]>;
   /** Traffic samples per profile (all connected profiles, from "net-traffic"). */
@@ -28,8 +30,10 @@ interface NetStoreState {
   load: () => Promise<void>;
   loadStatus: () => Promise<void>;
   loadTools: () => Promise<void>;
+  loadHelper: () => Promise<void>;
   loadLogs: (id: string) => Promise<void>;
-  connect: (id: string) => Promise<void>;
+  /** `passwordPrompt`: bypass the passwordless helper for this attempt. */
+  connect: (id: string, passwordPrompt?: boolean) => Promise<void>;
   disconnect: (id: string) => Promise<void>;
   save: (p: NetProfile, configText?: string | null) => Promise<NetProfile>;
   remove: (id: string) => Promise<void>;
@@ -45,6 +49,7 @@ export const useNet = create<NetStoreState>((set, get) => {
     error: null,
     statuses: {},
     tools: null,
+    helper: null,
     logs: {},
     traffic: {},
     loadTraffic: async (id) => {
@@ -74,6 +79,9 @@ export const useNet = create<NetStoreState>((set, get) => {
     loadTools: async () => {
       try { set({ tools: await api.netTools() }); } catch { set({ tools: null }); }
     },
+    loadHelper: async () => {
+      try { set({ helper: await api.netHelperStatus() }); } catch { set({ helper: null }); }
+    },
     loadLogs: async (id) => {
       try {
         const lines = await api.netLogs(id);
@@ -82,10 +90,10 @@ export const useNet = create<NetStoreState>((set, get) => {
         set((st) => ({ logs: { ...st.logs, [id]: st.logs[id] ?? [] } }));
       }
     },
-    connect: async (id) => {
+    connect: async (id, passwordPrompt) => {
       setStatus({ ...(get().statuses[id] ?? idle(id)), state: "connecting", error: null, since: new Date().toISOString() });
       try {
-        await api.netConnect(id);
+        await api.netConnect(id, passwordPrompt);
       } catch (e) {
         setStatus({ ...(get().statuses[id] ?? idle(id)), state: "error", error: errMsg(e), since: new Date().toISOString() });
         throw e;
@@ -154,6 +162,7 @@ export function initNetwork() {
   void st.load();
   void st.loadStatus();
   void st.loadTools();
+  void st.loadHelper();
 }
 
 // HMR: drop the old listeners when this module is replaced.

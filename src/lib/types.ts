@@ -249,6 +249,25 @@ export interface NetTools {
   installHints: Record<string, string>;
 }
 
+/** Passwordless VPN helper (mirror of network/helper.rs HelperStatus). */
+export interface NetHelperStatus {
+  /** macOS / Linux */
+  supported: boolean;
+  /** helper is root-owned and the sudoers rule exists */
+  installed: boolean;
+  /** `sudo -n` works without a prompt and the helper is this exact DevCat build */
+  upToDate: boolean;
+  helperVersion?: string | null;
+  appVersion: string;
+  helperPath: string;
+  sudoersPath: string;
+  /** the rule setup writes (null if the account name can't be used in sudoers) */
+  sudoersLine?: string | null;
+  /** why the helper can't run OpenVPN / WireGuard here (null = it can) */
+  openvpnIssue?: string | null;
+  wireguardIssue?: string | null;
+}
+
 export interface SshConfigHost { alias: string; host: string; port: number; user?: string | null; identityFile?: string | null }
 
 /** One traffic sample (1/s) for a connected network profile; live via the "net-traffic" event. */

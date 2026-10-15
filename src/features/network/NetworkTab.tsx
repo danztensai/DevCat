@@ -10,7 +10,7 @@ import type { NetKind, NetProfile, NetProfileFull, NetStatus, NetTools } from ".
 import { useConnections } from "../../store/connections";
 import { useTabs } from "../../store/tabs";
 import type { Tab } from "../../tabs/types";
-import { connectProfile, deleteProfile, disconnectProfile, draftFor, useNetTabNav } from "./actions";
+import { connectProfile, deleteProfile, disconnectProfile, draftFor, isHelperRejection, useNetTabNav } from "./actions";
 import { IdentityRows, SectionTitle } from "./formBits";
 import { LogsView } from "./LogsView";
 import {
@@ -326,6 +326,11 @@ function StatusStrip({ status, p }: { status: NetStatus | null; p: NetProfile })
       </div>
       {state === "error" && status?.error && (
         <div className="selectable mt-1.5 rounded-md border border-danger/30 bg-danger/10 px-2.5 py-1.5 font-mono text-[11px] whitespace-pre-wrap text-danger">{status.error}</div>
+      )}
+      {state === "error" && isHelperRejection(status?.error) && (
+        <Button size="sm" className="mt-1.5" onClick={() => void connectProfile({ id: p.id, name: p.name }, true)}>
+          <Power className="size-3" />Connect with password prompt
+        </Button>
       )}
     </div>
   );

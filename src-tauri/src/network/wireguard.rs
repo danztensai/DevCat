@@ -3,6 +3,7 @@
 //! name, so the stored config is copied to `<data>/network/wg/dc<8 hex>.conf` first.
 use super::registry::{self, Run};
 use super::store::{NetStore, write_private};
+use super::helper::{self, Outcome};
 use super::{NetKind, NetProfile, elevate, parse, tools};
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
@@ -52,15 +53,43 @@ pub struct WgRun {
     tool: PathBuf,
     conf: PathBuf,
     iface: String,
+    /// Brought up through the passwordless helper (bring it down through it too).
+    via_helper: bool,
+}
+
+/// `wg-up` / `wg-down` through the passwordless helper. `None` = helper not usable.
+async fn run_helper(id: &str, cmd: &str, conf: &Path) -> Option<AppResult<elevate::Output>> {
+    let args = [cmd.to_string(), "--conf".into(), conf.to_string_lossy().into()];
+    match helper::run(&args).await {
+        Outcome::Done(stdout) => Some(Ok(elevate::Output { success: true, stdout, stderr: String::new() })),
+        Outcome::Failed(stderr) => Some(Ok(elevate::Output { success: false, stdout: String::new(), stderr })),
+        Outcome::Rejected(m) => Some(Err(AppError::msg(helper::rejection(&m)))),
+        Outcome::Unavailable(why) => {
+            registry::log(id, &format!("Passwordless helper unavailable ({why}); asking for the administrator password instead"));
+            None
+        }
+    }
 }
 
 impl WgRun {
     pub async fn stop(self, id: &str) -> AppResult<()> {
-        registry::log(id, "Bringing the WireGuard interface down (administrator rights required)");
-        let out = elevate::run(&self.tool.to_string_lossy(), &down_args(&self.conf, &self.iface, cfg!(windows)), true, helper_path(&self.tool).as_deref()).await?;
+        let mut out = None;
+        if self.via_helper {
+            registry::log(id, "Bringing the WireGuard interface down through the passwordless helper");
+            out = run_helper(id, "wg-down", &self.conf).await;
+        }
+        let out = match out {
+            Some(o) => o?,
+            None => self.stop_with_prompt(id).await?,
+        };
         log_output(id, &out);
         let _ = std::fs::remove_file(&self.conf);
         if out.success { Ok(()) } else { Err(AppError::msg(format!("wg-quick down failed: {}", out.message()))) }
+    }
+
+    async fn stop_with_prompt(&self, id: &str) -> AppResult<elevate::Output> {
+        registry::log(id, "Bringing the WireGuard interface down (administrator rights required)");
+        elevate::run(&self.tool.to_string_lossy(), &down_args(&self.conf, &self.iface, cfg!(windows)), true, helper_path(&self.tool).as_deref()).await
     }
 }
 
@@ -70,7 +99,7 @@ fn log_output(id: &str, out: &elevate::Output) {
     }
 }
 
-pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &NetStore) -> AppResult<()> {
+pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &NetStore, prompt: bool) -> AppResult<()> {
     let tool = tools::find_wireguard()
         .ok_or_else(|| AppError::msg(format!("WireGuard tools are not installed. {}", tools::wireguard_hint())))?;
     let text = std::fs::read_to_string(store.config_path(&id, NetKind::Wireguard)?)
@@ -83,9 +112,27 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
     let conf = dir.join(format!("{iface}.conf"));
     write_private(&conf, text.as_bytes())?;
 
-    registry::log(&id, &format!("Bringing up {iface} with {} (administrator rights required)", tool.display()));
-    registry::set_connecting(&id, generation, Some("waiting for authorization".into()));
-    let out = match elevate::run(&tool.to_string_lossy(), &up_args(&conf, cfg!(windows)), true, helper_path(&tool).as_deref()).await {
+    let mut helper_out = None;
+    if !prompt && !cfg!(windows) && helper::ready().await {
+        match helper::find_wg_tools(0) {
+            Err(e) => registry::log(&id, &format!("Passwordless VPN can't run WireGuard here ({e}); asking for the administrator password instead")),
+            Ok(_) => {
+                registry::log(&id, &format!("Bringing up {iface} through the passwordless helper"));
+                registry::set_connecting(&id, generation, Some("starting".into()));
+                helper_out = run_helper(&id, "wg-up", &conf).await;
+            }
+        }
+    }
+    let via_helper = helper_out.is_some();
+    let launched = match helper_out {
+        Some(r) => r,
+        None => {
+            registry::log(&id, &format!("Bringing up {iface} with {} (administrator rights required)", tool.display()));
+            registry::set_connecting(&id, generation, Some("waiting for authorization".into()));
+            elevate::run(&tool.to_string_lossy(), &up_args(&conf, cfg!(windows)), true, helper_path(&tool).as_deref()).await
+        }
+    };
+    let out = match launched {
         Ok(o) => o,
         Err(e) => {
             let _ = std::fs::remove_file(&conf);
@@ -103,7 +150,7 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
         None => shown_iface.clone(),
     };
     super::traffic::watch_interface(&id, &shown_iface);
-    let run = WgRun { tool, conf, iface };
+    let run = WgRun { tool, conf, iface, via_helper };
     match registry::store_run(&id, generation, Run::Wireguard(run)) {
         Ok(()) => {
             registry::set_connected(&id, generation, Some(detail), vec![]);
