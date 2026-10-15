@@ -4,6 +4,7 @@ import clsx from "clsx";
 import {
   ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X,
 } from "lucide-react";
+import { AiTerminalIcon } from "../../components/ui/AppIcons";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { toast } from "sonner";
@@ -78,7 +79,7 @@ function NoFolder() {
   const provider = useSelectedProvider();
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-      <Sparkles className="size-8 text-accent/70" />
+      <AiTerminalIcon className="size-8 text-accent/70" />
       <div className="font-medium text-fg/85">No folder open</div>
       <div className="max-w-56 text-xs text-muted">
         Pick a project folder to chat with {provider.name} about it{provider.kind === "claude" ? ", browse its files and resume past sessions" : " and browse its files"}.

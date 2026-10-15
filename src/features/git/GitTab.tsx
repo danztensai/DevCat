@@ -3,8 +3,9 @@
 import clsx from "clsx";
 import {
   AlertTriangle, Archive, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Check, ChevronDown, Copy, FolderSearch, GitBranch, GitBranchPlus,
-  RefreshCw, Sparkles, Tags,
+  RefreshCw, Tags,
 } from "lucide-react";
+import { AiTerminalIcon } from "../../components/ui/AppIcons";
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { Button, ErrorBox, IconButton } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -266,7 +267,7 @@ function RepoMenu({ repo }: { repo: string }) {
   const open = (e: MouseEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     menu.show({ clientX: r.left, clientY: r.bottom + 2 }, [
-      { label: "New AI chat here", icon: <Sparkles className="size-3.5" />, onClick: () => openClaudeWorkspace(repo) },
+      { label: "New AI chat here", icon: <AiTerminalIcon className="size-3.5" />, onClick: () => openClaudeWorkspace(repo) },
       "separator",
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(repo) },
       { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(repo) },

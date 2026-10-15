@@ -3,8 +3,9 @@
 import clsx from "clsx";
 import {
   AlertTriangle, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Boxes, ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch,
-  GitBranch, Layers, Loader2, RefreshCw, Search, Sparkles, SquareArrowOutUpRight, X,
+  GitBranch, Layers, Loader2, RefreshCw, Search, SquareArrowOutUpRight, X,
 } from "lucide-react";
+import { AiTerminalIcon } from "../../components/ui/AppIcons";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Button, ErrorBox, IconButton } from "../../components/ui";
 import { api, errMsg } from "../../lib/api";
@@ -100,7 +101,7 @@ function RootHeader({ root }: { root: string | null }) {
       { label: "Choose folder…", icon: <FolderOpen className="size-3.5" />, onClick: () => void pickScanRoot(root) },
       {
         label: claudeCwd ? `Follow AI workspace (${basename(claudeCwd)})` : "Follow AI workspace",
-        icon: <Sparkles className="size-3.5" />,
+        icon: <AiTerminalIcon className="size-3.5" />,
         disabled: !claudeCwd || chosen === null,
         onClick: () => setRoot(null),
       },
@@ -224,12 +225,12 @@ function RepoList({ root }: { root: string }) {
       { label: "Push", icon: <ArrowUpFromLine className="size-3.5" />, disabled: busy.has(r.path) || !r.upstream, onClick: () => void remote(r, "push") },
       "separator",
       {
-        label: "Open in AI workspace", icon: <Sparkles className="size-3.5" />, onClick: () => {
+        label: "Open in AI workspace", icon: <AiTerminalIcon className="size-3.5" />, onClick: () => {
           useWorkspace.getState().setCwd(r.path);
           useUi.getState().setSidebar("claude");
         },
       },
-      { label: "New AI chat here", icon: <Sparkles className="size-3.5" />, onClick: () => openClaudeWorkspace(r.path) },
+      { label: "New AI chat here", icon: <AiTerminalIcon className="size-3.5" />, onClick: () => openClaudeWorkspace(r.path) },
       { label: "Scan from this folder", icon: <FolderSearch className="size-3.5" />, onClick: () => useGitScan.getState().setRoot(r.path) },
       "separator",
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(r.path) },

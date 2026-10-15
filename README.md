@@ -1,17 +1,19 @@
+<p align="center"><img src="assets/icon.png" width="128" alt="DevCat"></p>
+
 # DevCat
 
-A cross-platform developer workbench: a Navicat-style database client plus
-Lens-style tooling for Kubernetes and RabbitMQ, built with [Tauri 2](https://tauri.app)
-(Rust) and React + TypeScript.
+An all-in-one, cross-platform developer workbench: AI coding agents in a real terminal, Git, databases,
+Kubernetes, RabbitMQ and VPN / SSH tunnels in one app. Built with [Tauri 2](https://tauri.app) (Rust)
+and React + TypeScript; runs on macOS, Windows and Linux.
 
 | Area | Supported |
 | --- | --- |
+| AI | AI Workspace (terminal, diff, code review) running your installed coding agent: Claude Code (default), OpenAI Codex, Gemini CLI, GitHub Copilot, Aider, opencode or a custom CLI |
+| Git | Nested repo discovery, commit graph, blame, branches, tags, stashes, fetch/pull/push |
 | SQL databases | PostgreSQL, MySQL / MariaDB, SQLite, SQL Server |
 | NoSQL | MongoDB, Redis |
 | Infrastructure | Kubernetes (any kubeconfig context), RabbitMQ (management API) |
 | Networking | OpenVPN, WireGuard, SSH tunnels (local forwards + SOCKS proxy) |
-| Git | Nested repo discovery, commit graph, blame, branches, tags, stashes, fetch/pull/push |
-| AI | AI Workspace (terminal, diff, code review) running your installed coding agent: Claude Code (default), OpenAI Codex, Gemini CLI, GitHub Copilot, Aider, opencode or a custom CLI |
 
 ## Download
 

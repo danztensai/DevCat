@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AppWindow, ArrowUpCircle, Sparkle, ChevronDown, Copy, Crosshair, Database, Folder, FolderPlus, GitBranch, History, LogOut, Plus, Shield, Sparkles, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, ArrowUpCircle, Cable, Sparkle, ChevronDown, Copy, Crosshair, Folder, Layers, FolderPlus, GitBranch, History, LogOut, Plus, Shield, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
@@ -27,6 +27,7 @@ import { useUi, type SidebarView } from "../../store/ui";
 import { TabContent } from "../../tabs/registry";
 import { tabConnId, type Tab } from "../../tabs/types";
 import { IconButton } from "../ui";
+import { AiTerminalIcon } from "../ui/AppIcons";
 
 export default function AppShell() {
   const load = useConnections((s) => s.load);
@@ -94,8 +95,8 @@ function ActivityBar() {
   );
   return (
     <div className="flex w-11 shrink-0 flex-col items-center border-r border-line bg-app pt-1">
-      {item("claude", <Sparkles className="size-5" />, "AI Workspace")}
-      {item("connections", <Database className="size-5" />, "Connections")}
+      {item("claude", <AiTerminalIcon className="size-5" />, "AI Workspace")}
+      {item("connections", <Cable className="size-5" />, "Connections")}
       {item("history", <History className="size-5" />, "History & saved queries")}
       {item("network", <Shield className="size-5" />, "VPN & SSH tunnels")}
       {item("git", <GitBranch className="size-5" />, "Git repositories")}
@@ -141,7 +142,7 @@ function ProjectBar() {
   const openSwitcher = (e: React.MouseEvent) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const items: MenuItem[] = [
-      { label: "All projects", icon: <Database className="size-3.5" />, disabled: !focus, onClick: () => setFocus(null) },
+      { label: "All projects", icon: <Layers className="size-3.5" />, disabled: !focus, onClick: () => setFocus(null) },
       ...(projects.length ? ["separator" as const] : []),
       ...projects.map((p): MenuItem => ({
         label: p.name,
@@ -179,7 +180,7 @@ function ProjectBar() {
         title="Switch project focus"
         className="flex h-6 max-w-72 items-center gap-1.5 rounded px-2 hover:bg-hover"
       >
-        {focus ? <Crosshair className="size-3.5 shrink-0" style={{ color: focus.color ?? "var(--color-accent)" }} /> : <Database className="size-3.5 shrink-0 text-muted" />}
+        {focus ? <Crosshair className="size-3.5 shrink-0" style={{ color: focus.color ?? "var(--color-accent)" }} /> : <Layers className="size-3.5 shrink-0 text-muted" />}
         <span className={clsx("truncate", focus ? "font-semibold text-fg" : "text-muted")}>{focus ? focus.name : "All projects"}</span>
         <ChevronDown className="size-3 shrink-0 text-muted" />
       </button>

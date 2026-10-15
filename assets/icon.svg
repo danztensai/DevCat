@@ -1,26 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- DevCat app icon: a cat whose head is a terminal window. Source for `pnpm tauri icon`. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1f232b"/>
-      <stop offset="1" stop-color="#0d0f12"/>
+      <stop offset="0" stop-color="#232836"/>
+      <stop offset="1" stop-color="#11141b"/>
     </linearGradient>
-    <linearGradient id="acc" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffc24d"/>
-      <stop offset="1" stop-color="#f08a12"/>
+    <linearGradient id="cat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC24D"/>
+      <stop offset="1" stop-color="#F2891A"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2030"/>
+      <stop offset="1" stop-color="#121620"/>
     </linearGradient>
   </defs>
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
-  <rect x="64.5" y="64.5" width="895" height="895" rx="200" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
-  <!-- cat head: ears + face built from a database cylinder -->
-  <path d="M292 430 L330 230 L440 340 Z" fill="url(#acc)"/>
-  <path d="M732 430 L694 230 L584 340 Z" fill="url(#acc)"/>
-  <ellipse cx="512" cy="400" rx="236" ry="78" fill="url(#acc)"/>
-  <path d="M276 400 V660 A236 78 0 0 0 748 660 V400 A236 78 0 0 1 276 400 Z" fill="url(#acc)"/>
-  <path d="M276 500 A236 78 0 0 0 748 500" fill="none" stroke="#1a1205" stroke-opacity="0.35" stroke-width="14"/>
-  <path d="M276 590 A236 78 0 0 0 748 590" fill="none" stroke="#1a1205" stroke-opacity="0.35" stroke-width="14"/>
-  <!-- eyes -->
-  <ellipse cx="430" cy="452" rx="30" ry="40" fill="#14161a"/>
-  <ellipse cx="594" cy="452" rx="30" ry="40" fill="#14161a"/>
-  <!-- prompt chevron nose/mouth -->
-  <path d="M470 528 L512 556 L554 528" fill="none" stroke="#14161a" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="66" y="66" width="892" height="892" rx="200" fill="url(#bg)"/>
+  <!-- ears -->
+  <path d="M250 392 L292 178 Q298 152 320 168 L470 300 Z" fill="url(#cat)" stroke="url(#cat)" stroke-width="24" stroke-linejoin="round"/>
+  <path d="M774 392 L732 178 Q726 152 704 168 L554 300 Z" fill="url(#cat)" stroke="url(#cat)" stroke-width="24" stroke-linejoin="round"/>
+  <!-- head = terminal window -->
+  <rect x="214" y="282" width="596" height="500" rx="96" fill="url(#cat)"/>
+  <!-- title-bar dots -->
+  <circle cx="300" cy="346" r="17" fill="#9a4f06" opacity="0.55"/>
+  <circle cx="352" cy="346" r="17" fill="#9a4f06" opacity="0.55"/>
+  <circle cx="404" cy="346" r="17" fill="#9a4f06" opacity="0.55"/>
+  <!-- screen -->
+  <rect x="262" y="392" width="500" height="338" rx="52" fill="url(#screen)"/>
+  <!-- >_ prompt -->
+  <polyline points="352,486 446,560 352,634" fill="none" stroke="#FFB23F" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="488" y="602" width="164" height="44" rx="22" fill="#FFB23F"/>
 </svg>
