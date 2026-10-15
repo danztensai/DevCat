@@ -2,6 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  GitRepo, GitLogQuery, GitCommit, GitCommitDetail, GitBlame, GitRefs, GitStash, CommitAction, RemoteOpts,
   ClaudeInfo, ClaudeProject, ClaudeStartOptions, FileEntry, FilePreview, FileVersions, GitStatus, SessionMeta,
   ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
@@ -105,6 +106,43 @@ export const api = {
   gitUnstage: (cwd: string, paths: string[]) => invoke<void>("git_unstage", { cwd, paths }),
   gitDiscard: (cwd: string, paths: string[]) => invoke<void>("git_discard", { cwd, paths }),
   gitCommit: (cwd: string, message: string) => invoke<string>("git_commit", { cwd, message }),
+
+  // Git tools (src-tauri/src/gitx). `cwd` = any path inside the repo.
+  /** Find repos at/under `root` (and the repo enclosing it). maxDepth default 6. */
+  gitRepos: (root: string, maxDepth?: number) => invoke<GitRepo[]>("git_repos", { root, maxDepth: maxDepth ?? null }),
+  gitLog: (cwd: string, query: GitLogQuery) => invoke<GitCommit[]>("git_log", { cwd, query }),
+  gitShow: (cwd: string, sha: string) => invoke<GitCommitDetail>("git_show", { cwd, sha }),
+  /** File before (first parent) / after `sha`. */
+  gitCommitFileVersions: (cwd: string, sha: string, path: string, oldPath?: string | null) =>
+    invoke<FileVersions>("git_commit_file_versions", { cwd, sha, path, oldPath: oldPath ?? null }),
+  /** Unified diff text of one commit (vs first parent). */
+  gitCommitDiff: (cwd: string, sha: string) => invoke<string>("git_commit_diff", { cwd, sha }),
+  /** rev null = working tree. */
+  gitBlame: (cwd: string, path: string, rev?: string | null) => invoke<GitBlame>("git_blame", { cwd, path, rev: rev ?? null }),
+  gitRefs: (cwd: string) => invoke<GitRefs>("git_refs", { cwd }),
+  /** Switch to a branch/commit; create = new branch `target` at startPoint (default HEAD). Remote branch names create a tracking branch. */
+  gitCheckout: (cwd: string, target: string, create = false, startPoint?: string | null) =>
+    invoke<void>("git_checkout", { cwd, target, create, startPoint: startPoint ?? null }),
+  gitBranchDelete: (cwd: string, name: string, force = false, remote = false) => invoke<void>("git_branch_delete", { cwd, name, force, remote }),
+  gitBranchRename: (cwd: string, from: string, to: string) => invoke<void>("git_branch_rename", { cwd, from, to }),
+  /** Merge `branch` into the current branch; returns git output. */
+  gitMerge: (cwd: string, branch: string, noFf = false) => invoke<string>("git_merge", { cwd, branch, noFf }),
+  /** Abort the merge/rebase/cherry-pick/revert in progress. */
+  gitAbort: (cwd: string) => invoke<void>("git_abort", { cwd }),
+  gitTagCreate: (cwd: string, name: string, sha?: string | null, message?: string | null) =>
+    invoke<void>("git_tag_create", { cwd, name, sha: sha ?? null, message: message ?? null }),
+  gitTagDelete: (cwd: string, name: string) => invoke<void>("git_tag_delete", { cwd, name }),
+  gitCommitAction: (cwd: string, sha: string, action: CommitAction) => invoke<string>("git_commit_action", { cwd, sha, action }),
+  gitStashList: (cwd: string) => invoke<GitStash[]>("git_stash_list", { cwd }),
+  gitStashSave: (cwd: string, message: string | null, includeUntracked: boolean) =>
+    invoke<void>("git_stash_save", { cwd, message, includeUntracked }),
+  /** pop = apply + drop. */
+  gitStashApply: (cwd: string, index: number, pop: boolean) => invoke<string>("git_stash_apply", { cwd, index, pop }),
+  gitStashDrop: (cwd: string, index: number) => invoke<void>("git_stash_drop", { cwd, index }),
+  /** Network ops (non-interactive: SSH agent / credential helper only); return git output. */
+  gitFetch: (cwd: string, opts: RemoteOpts = {}) => invoke<string>("git_fetch", { cwd, opts }),
+  gitPull: (cwd: string, opts: RemoteOpts = {}) => invoke<string>("git_pull", { cwd, opts }),
+  gitPush: (cwd: string, opts: RemoteOpts = {}) => invoke<string>("git_push", { cwd, opts }),
 
   // Terminal (PTY). Events: "pty-output" ({ id, data: base64 }), "pty-exit" ({ id, code })
   /** program: "claude" = the resolved Claude Code binary, null = the user's login shell, else a path/name. */

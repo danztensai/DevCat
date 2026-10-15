@@ -277,7 +277,7 @@ export interface SessionMeta {
 /** Raw stream-json object from the CLI (system / assistant / user / stream_event / result / control_*). */
 export type ClaudeMsg = { type: string; subtype?: string; [k: string]: unknown };
 
-export interface FileEntry { name: string; path: string; isDir: boolean; size: number; modified?: string | null; git?: string | null; ignored: boolean }
+export interface FileEntry { name: string; path: string; isDir: boolean; size: number; modified?: string | null; git?: string | null; ignored: boolean; /** directory is a nested git repo (has .git) */ isRepo?: boolean }
 export interface SheetData { name: string; rows: string[][]; truncated: boolean }
 export interface FilePreview {
   kind: "text" | "markdown" | "image" | "pdf" | "sheet" | "csv" | "docx" | "binary" | "too_large";
@@ -287,3 +287,26 @@ export interface FilePreview {
 export interface GitFile { path: string; oldPath?: string | null; index: string; worktree: string }
 export interface GitStatus { isRepo: boolean; root?: string | null; branch?: string | null; ahead: number; behind: number; files: GitFile[] }
 export interface FileVersions { original: string; modified: string; binary: boolean }
+
+// ---- git tools (mirror src-tauri/src/gitx/mod.rs)
+export interface GitRepo {
+  path: string; name: string; rel: string; parent?: string | null; isSubmodule: boolean;
+  branch?: string | null; upstream?: string | null; ahead: number; behind: number; changes: number;
+  headSha?: string | null; error?: string | null;
+}
+export interface GitLogQuery { rev?: string | null; all?: boolean; path?: string | null; search?: string | null; author?: string | null; skip?: number; limit?: number | null }
+export type GitRefKind = "head" | "branch" | "remote" | "tag" | "detached" | "stash";
+export interface GitRefLabel { name: string; kind: GitRefKind }
+export interface GitCommit { sha: string; short: string; parents: string[]; author: string; email: string; time: number; subject: string; refs: GitRefLabel[] }
+export interface GitCommitFile { path: string; oldPath?: string | null; status: string; additions?: number | null; deletions?: number | null; binary: boolean }
+export interface GitCommitDetail { commit: GitCommit; body: string; committer: string; committerEmail: string; commitTime: number; files: GitCommitFile[] }
+export interface BlameCommit { sha: string; author: string; email: string; time: number; summary: string; filename: string; uncommitted: boolean }
+export interface BlameLine { line: number; sha: string; origLine: number }
+export interface GitBlame { content: string; lines: BlameLine[]; commits: Record<string, BlameCommit> }
+export interface GitBranch { name: string; fullRef: string; sha: string; current: boolean; upstream?: string | null; ahead: number; behind: number; subject: string; time: number }
+export interface GitTag { name: string; sha: string; annotated: boolean; subject: string; time: number }
+export interface GitRemote { name: string; url: string }
+export interface GitRefs { current?: string | null; headSha?: string | null; local: GitBranch[]; remote: GitBranch[]; tags: GitTag[]; remotes: GitRemote[]; operation?: string | null }
+export interface GitStash { index: number; name: string; sha: string; message: string; time: number }
+export type CommitAction = "checkout" | "cherry-pick" | "revert" | "reset-soft" | "reset-mixed" | "reset-hard";
+export interface RemoteOpts { remote?: string | null; rebase?: boolean; setUpstream?: boolean; force?: boolean; tags?: boolean }
