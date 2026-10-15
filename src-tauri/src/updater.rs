@@ -70,7 +70,20 @@ pub async fn update_install(app: AppHandle) -> AppResult<()> {
         return Err(AppError::msg(format!("Update failed: {e}")));
     }
     // Same teardown as a normal quit (VPNs, tunnels, terminals), then start the new version.
-    crate::network::shutdown();
+    // Async variant: we're on a runtime worker, where the blocking `shutdown` panics (abort).
+    crate::network::shutdown_async().await;
     crate::claude::runner::shutdown_all();
+    crate::keep_awake::shutdown();
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    /// Regression: the pre-restart teardown runs inside the async runtime and must not panic.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn teardown_inside_runtime_does_not_panic() {
+        crate::network::shutdown_async().await;
+        crate::claude::runner::shutdown_all();
+        crate::keep_awake::shutdown();
+    }
 }

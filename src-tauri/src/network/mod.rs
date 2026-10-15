@@ -157,12 +157,16 @@ pub fn start(app: tauri::AppHandle) {
 
 /// Disconnect everything (app exit), so no openvpn / wg interface outlives DevCat.
 pub fn shutdown() {
-    tauri::async_runtime::block_on(async {
-        let all = futures::future::join_all(registry::ids().into_iter().map(|id| async move {
-            let _ = disconnect(&id).await;
-        }));
-        let _ = tokio::time::timeout(Duration::from_secs(20), all).await;
-    });
+    tauri::async_runtime::block_on(shutdown_async());
+}
+
+/// `shutdown` for async callers (e.g. before an update restart): `block_on` would panic
+/// inside the runtime.
+pub async fn shutdown_async() {
+    let all = futures::future::join_all(registry::ids().into_iter().map(|id| async move {
+        let _ = disconnect(&id).await;
+    }));
+    let _ = tokio::time::timeout(Duration::from_secs(20), all).await;
 }
 
 /// Make sure the profile `id` is connected (used before opening a connection that
