@@ -214,15 +214,68 @@ export function KubernetesSection({ cfg, set, setOpt }: SectionProps) {
   );
 }
 
+/** AMQP ports → the management API port DevCat actually talks to. */
+const AMQP_TO_MGMT: Record<number, number> = { 5672: 15672, 5671: 15671 };
+
+/**
+ * Parse a pasted RabbitMQ URL (amqp://, amqps://, http(s)://) into connection fields.
+ * AMQP URLs point at the messaging port, so the port is mapped to the management API port.
+ */
+export function parseRabbitUrl(text: string): Partial<ConnectionConfig> & { tls: boolean; basePath: string | null } | null {
+  const m = text.trim().match(/^(amqps?|https?):\/\//i);
+  if (!m) return null;
+  let u: URL;
+  try { u = new URL(text.trim().replace(/^amqps?:/i, "http:")); } catch { return null; }
+  const scheme = m[1].toLowerCase();
+  const amqp = scheme.startsWith("amqp");
+  const tls = scheme === "amqps" || scheme === "https";
+  const given = u.port ? parseInt(u.port, 10) : null;
+  const port = amqp ? (given ? AMQP_TO_MGMT[given] ?? given : tls ? 15671 : 15672) : given ?? (tls ? 443 : 15672);
+  const path = decodeURIComponent(u.pathname);
+  // amqp://host/ and amqp://host/%2F both mean the default vhost "/"
+  const vhost = amqp ? (path === "" || path === "/" || path === "//" ? "/" : path.slice(1)) : null;
+  const basePath = !amqp && path && path !== "/" ? path.replace(/\/api\/?$/, "").replace(/\/$/, "") || null : null;
+  return {
+    host: u.hostname,
+    port,
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    ...(vhost ? { database: vhost } : {}),
+    tls,
+    basePath,
+  };
+}
+
 export function RabbitSection({ cfg, set, setOpt }: SectionProps) {
   const tls = cfg.options.useTls === "true";
+  const applyUrl = (text: string) => {
+    const p = parseRabbitUrl(text);
+    if (!p) return false;
+    const { tls: useTls, basePath, ...fields } = p;
+    set({ ...fields, user: fields.user || cfg.user, password: fields.password || cfg.password });
+    setOpt("managementPort", String(fields.port));
+    setOpt("useTls", useTls ? "true" : "false");
+    if (basePath) setOpt("basePath", basePath);
+    return true;
+  };
+  const amqpPort = cfg.port != null && AMQP_TO_MGMT[cfg.port];
   return (
     <>
-      <Row label="Management host">
+      <Row
+        label="Management host"
+        hint={amqpPort
+          ? `${cfg.port} is the AMQP messaging port. DevCat uses the management API, usually on port ${amqpPort} (needs the rabbitmq_management plugin).`
+          : "Tip: paste an amqp:// or http:// URL here to fill in everything."}
+      >
         <div className="flex gap-1.5">
-          <Input value={cfg.host} placeholder="localhost" onChange={(e) => set({ host: e.target.value })} />
           <Input
-            className="w-24! shrink-0"
+            value={cfg.host}
+            placeholder="localhost or amqp://user:pass@host:5672/"
+            onPaste={(e) => { if (applyUrl(e.clipboardData.getData("text"))) e.preventDefault(); }}
+            onChange={(e) => { if (!applyUrl(e.target.value)) set({ host: e.target.value }); }}
+          />
+          <Input
+            className={clsx("w-24! shrink-0", amqpPort && "border-warn!")}
             inputMode="numeric"
             value={cfg.port ?? ""}
             placeholder="15672"
@@ -244,7 +297,9 @@ export function RabbitSection({ cfg, set, setOpt }: SectionProps) {
           )}
         </div>
       </Row>
-      <Row label="User"><Input value={cfg.user} placeholder="guest" onChange={(e) => set({ user: e.target.value })} /></Row>
+      <Row label="User" hint={!cfg.user ? "Empty = RabbitMQ's default guest / guest login." : undefined}>
+        <Input value={cfg.user} placeholder="guest" onChange={(e) => set({ user: e.target.value })} />
+      </Row>
       <Row label="Password"><PasswordInput value={cfg.password ?? ""} placeholder="guest" onChange={(v) => set({ password: v })} /></Row>
       <Row label="Virtual host"><Input value={cfg.database ?? ""} placeholder="/" onChange={(e) => set({ database: e.target.value || null })} /></Row>
       <Row label="Base path" hint="Only when the management UI is served behind a reverse-proxy prefix.">

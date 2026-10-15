@@ -112,6 +112,11 @@ function ConnectionDialogInner({ id, kind, projectId }: { id: string | null; kin
     else if (out.ssh && !out.ssh.enabled && !out.ssh.host) out.ssh = null;
     if (!SSL_KINDS.includes(c.kind)) out.sslMode = null;
     if (c.kind === "rabbitmq") {
+      // Placeholders say guest/guest — make an empty login actually mean that.
+      if (!c.user.trim()) {
+        out.user = "guest";
+        if (!c.password) out.password = "guest";
+      }
       out.port = c.port ?? 15672;
       out.options.managementPort = String(out.port);
       if (!out.database) out.database = "/";
