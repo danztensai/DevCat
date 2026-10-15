@@ -2,7 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  ConnectionConfig, ExecOptions, Project, HistoryEntry, NodeKind, QueryResult, RowChange,
+  ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
 } from "./types";
 
@@ -62,6 +62,20 @@ export const api = {
     invoke<string>("restore_database", { connId, database, path, options }),
   transferTables: (sourceConn: string, targetConn: string, tables: TableRef[], targetDatabase: string | null, targetSchema: string | null, options: Record<string, unknown> = {}) =>
     invoke<number>("transfer_tables", { sourceConn, targetConn, tables, targetDatabase, targetSchema, options }),
+
+  // network profiles (VPN / SSH tunnels). Events: "net-status" (NetStatus), "net-log" ({ id, lines })
+  netList: () => invoke<NetProfile[]>("net_list"),
+  netGet: (id: string) => invoke<NetProfileFull>("net_get", { id }),
+  netSave: (profile: NetProfile, configText?: string | null) => invoke<NetProfile>("net_save", { profile, configText: configText ?? null }),
+  netDelete: (id: string) => invoke<void>("net_delete", { id }),
+  netImport: (path: string) => invoke<NetProfileFull>("net_import", { path }),
+  netParse: (kind: NetKind, text: string) => invoke<Record<string, unknown>>("net_parse", { kind, text }),
+  netConnect: (id: string) => invoke<void>("net_connect", { id }),
+  netDisconnect: (id: string) => invoke<void>("net_disconnect", { id }),
+  netStatus: () => invoke<NetStatus[]>("net_status"),
+  netLogs: (id: string) => invoke<string[]>("net_logs", { id }),
+  netTools: () => invoke<NetTools>("net_tools"),
+  netSshConfigHosts: () => invoke<SshConfigHost[]>("net_ssh_config_hosts"),
 
   // kubernetes contexts (used by the connection dialog; implemented in infra/k8s.rs)
   k8sContexts: (kubeconfigPath?: string | null) => invoke<string[]>("k8s_contexts", { kubeconfigPath }),

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type SidebarView = "connections" | "history";
+export type SidebarView = "connections" | "history" | "network";
 
 interface UiState {
   sidebar: SidebarView;

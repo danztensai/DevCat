@@ -199,3 +199,54 @@ export interface SavedQuery {
 }
 
 export type ExportFormat = "csv" | "json" | "sql" | "xlsx";
+
+// ---- Network profiles (mirror src-tauri/src/network/mod.rs)
+
+export type NetKind = "ssh" | "openvpn" | "wireguard";
+
+export interface PortForward {
+  /** "local" = -L bindPort:remoteHost:remotePort ; "dynamic" = SOCKS5 proxy on bindPort */
+  kind: "local" | "dynamic";
+  /** 0 = pick a free port */
+  bindPort: number;
+  remoteHost: string;
+  remotePort: number;
+}
+
+export interface NetProfile {
+  id: string;
+  name: string;
+  kind: NetKind;
+  projectId?: string | null;
+  color?: string | null;
+  autoConnect: boolean;
+  ssh?: SshConfig | null;
+  forwards: PortForward[];
+  vpnUser?: string | null;
+  /** write-only: sent on save, stored in the keychain */
+  vpnPassword?: string | null;
+  summary?: string | null;
+  options: Record<string, string>;
+}
+
+export interface NetProfileFull { profile: NetProfile; configText?: string | null }
+
+export type NetState = "disconnected" | "connecting" | "connected" | "disconnecting" | "error";
+
+export interface NetStatus {
+  id: string;
+  state: NetState;
+  since?: string | null;
+  detail?: string | null;
+  error?: string | null;
+  localPorts: number[];
+}
+
+export interface NetTools {
+  openvpn?: string | null;
+  wireguard?: string | null;
+  elevation: "osascript" | "pkexec" | "uac" | "none";
+  installHints: Record<string, string>;
+}
+
+export interface SshConfigHost { alias: string; host: string; port: number; user?: string | null; identityFile?: string | null }

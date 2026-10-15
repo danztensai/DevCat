@@ -14,7 +14,9 @@ export type TabSpec =
   | { type: "data-transfer"; connId?: string; database?: string | null; schema?: string | null }
   | { type: "history" }
   | { type: "k8s"; connId: string }
-  | { type: "rabbitmq"; connId: string };
+  | { type: "rabbitmq"; connId: string }
+  /** Network profile (VPN / SSH tunnel) details; profileId "" = new (kind preselected). */
+  | { type: "network"; profileId: string; kind?: "ssh" | "openvpn" | "wireguard"; importPath?: string };
 
 export type Tab = TabSpec & {
   id: string;

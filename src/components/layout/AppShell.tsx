@@ -1,12 +1,13 @@
 import clsx from "clsx";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, Crosshair, Database, Folder, FolderPlus, History, LogOut, Plus, X } from "lucide-react";
+import { ChevronDown, Crosshair, Database, Folder, FolderPlus, History, LogOut, Plus, Shield, X } from "lucide-react";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
 import ConnectionDialog from "../../features/connections/ConnectionDialog";
 import ConnectionTree from "../../features/connections/ConnectionTree";
 import HistoryPanel from "../../features/history/HistoryPanel";
+import NetworkPanel from "../../features/network/NetworkPanel";
 import { inFocus, useConnections, useFocusProject } from "../../store/connections";
 import { useContextMenu, type MenuItem } from "../../features/connections/ContextMenu";
 import { createProject, focusProject } from "../../features/connections/tree/projectActions";
@@ -60,6 +61,7 @@ function ActivityBar() {
     <div className="flex w-11 shrink-0 flex-col items-center border-r border-line bg-app pt-1">
       {item("connections", <Database className="size-5" />, "Connections")}
       {item("history", <History className="size-5" />, "History & saved queries")}
+      {item("network", <Shield className="size-5" />, "VPN & SSH tunnels")}
     </div>
   );
 }
@@ -71,14 +73,14 @@ function Sidebar() {
     <div className="flex h-full flex-col bg-panel">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-          {sidebar === "connections" ? "Connections" : "History"}
+          {sidebar === "connections" ? "Connections" : sidebar === "network" ? "VPN & Tunnels" : "History"}
         </span>
         {sidebar === "connections" && (
           <IconButton title="New connection" onClick={() => openDialog(null)}><Plus className="size-4" /></IconButton>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {sidebar === "connections" ? <ConnectionTree /> : <HistoryPanel />}
+        {sidebar === "connections" ? <ConnectionTree /> : sidebar === "network" ? <NetworkPanel /> : <HistoryPanel />}
       </div>
     </div>
   );

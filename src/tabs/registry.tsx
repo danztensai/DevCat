@@ -18,6 +18,7 @@ const registry: Record<Tab["type"], ComponentType<{ tab: any }>> = {
   history: lazy(() => import("../features/history/HistoryTab")),
   k8s: lazy(() => import("../features/k8s/K8sTab")),
   rabbitmq: lazy(() => import("../features/rabbitmq/RabbitTab")),
+  network: lazy(() => import("../features/network/NetworkTab")),
 };
 
 export function TabContent({ tab }: { tab: Tab }) {

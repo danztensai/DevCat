@@ -4,6 +4,7 @@ mod error;
 mod history;
 mod infra;
 mod models;
+mod network;
 mod projects;
 mod state;
 mod store;
@@ -22,6 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let dir = app.path().app_data_dir().expect("no app data dir");
+            network::init(dir.clone());
             app.manage(state::AppState::new(dir));
             Ok(())
         })
@@ -97,6 +99,19 @@ pub fn run() {
             infra::k8s::streams::k8s_port_forward_start,
             infra::k8s::helm::k8s_helm_releases,
             infra::k8s::helm::k8s_helm_release,
+            // network (VPN / SSH tunnels)
+            network::net_list,
+            network::net_get,
+            network::net_save,
+            network::net_delete,
+            network::net_import,
+            network::net_parse,
+            network::net_connect,
+            network::net_disconnect,
+            network::net_status,
+            network::net_logs,
+            network::net_tools,
+            network::net_ssh_config_hosts,
             // rabbitmq
             infra::rabbitmq::rmq_bindings,
             infra::rabbitmq::rmq_close_connection,
