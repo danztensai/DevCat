@@ -22,8 +22,9 @@ export async function listen(): Promise<UnlistenFn> { return () => {}; }
 export async function emit(): Promise<void> {}
 
 // window
+export enum UserAttentionType { Critical = 1, Informational = 2 }
 export function getCurrentWindow() {
-  return { setTitle: async (t: string) => { document.title = t; }, label: "main", onFocusChanged: async () => () => {}, listen: async () => () => {} };
+  return { setTitle: async (t: string) => { document.title = t; }, setBadgeCount: async (n?: number) => { console.log("[bridge] badge", n ?? 0); }, requestUserAttention: async (t: number) => { console.log("[bridge] attention", t); }, label: "main", onFocusChanged: async () => () => {}, listen: async () => () => {} };
 }
 export const getCurrentWebviewWindow = getCurrentWindow;
 

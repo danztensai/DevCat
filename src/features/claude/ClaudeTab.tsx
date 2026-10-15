@@ -7,6 +7,7 @@ import clsx from "clsx";
 import {
   AlertOctagon, AlertTriangle, ArrowDown, ArrowUp, Bot, CheckCircle2, ChevronDown, GitBranch, MessageSquarePlus, RotateCcw, ScanSearch, SquareTerminal,
   Terminal,
+  Sparkle,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
@@ -28,6 +29,7 @@ import {
   claudeLaunchArgs, detectSession, ensureTab, loadInfo, newSession, pasteToClaude, refreshGit, restartClaude, sendToAgent, setLaunchOptions, setPty,
   setTabIsClaude, startReview, useClaude, type Finding,
 } from "./store";
+import { setTabVisible, useTabActivity } from "./activity";
 import { TerminalPane } from "./TerminalPane";
 import { basename, modelOptions, PERMISSION_MODES } from "./util";
 
@@ -214,6 +216,7 @@ function ChatPane({ tabId, cwd, visible, provider }: { tabId: string; cwd: strin
           startKey={startSeq}
           visible={visible}
           shiftEnterNewline={isClaude}
+          activityId={tabId}
           getArgs={() => claudeLaunchArgs(tabId)}
           beforeRestart={async () => { await detectSession(tabId); }}
           onPty={(id) => setPty(tabId, id)}
@@ -259,6 +262,12 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
   const agent = isClaude ? "Claude" : provider?.name ?? "the agent";
   useLayoutEffect(() => { if (ready && provider) setTabIsClaude(tabId, isClaude); }, [ready, provider, isClaude, tabId]);
   const active = useTabs((s) => s.activeId === tabId);
+  const activity = useTabActivity(tabId);
+  // "Seen" = the tab is shown in a focused window; clears the finished marker / Dock badge.
+  useEffect(() => {
+    setTabVisible(tabId, active);
+    return () => setTabVisible(tabId, false);
+  }, [tabId, active]);
   const views = useMemo(() => (isClaude ? VIEWS : VIEWS.filter((v) => v.id !== "review")), [isClaude]);
   const view: ClaudeView = tab.view === "review" && !isClaude ? "chat" : (tab.view ?? "chat");
   const info = useClaude((s) => s.info);
@@ -345,6 +354,7 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
               onClick={() => setView(v.id)}
               className={clsx("flex h-6 items-center gap-1.5 rounded px-2.5 text-xs", view === v.id ? "bg-raised text-fg shadow-sm" : "text-muted hover:text-fg")}
             >
+              {v.id === "chat" && activity.working && <Sparkle className="size-3 animate-spin text-accent [animation-duration:2.4s]" />}
               {v.label}
               <span className="text-[9px] text-faint">{IS_MAC ? `⌥⇧⌘${v.key}` : `^⌥⇧${v.key}`}</span>
             </button>
@@ -354,7 +364,8 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
         <BranchChip tabId={tabId} onClick={() => setView("diff")} />
         {isClaude && <ReviewBadge tabId={tabId} onClick={() => setView("review")} />}
         <div className="flex-1" />
-        <span className={clsx("size-1.5 rounded-full", running ? "bg-ok" : "bg-faint")} title={running ? `${agent} is running` : `${agent} is not running`} />
+        {activity.working && <span className="shimmer-text text-[11px] font-medium" title={`${agent} is working`}>working</span>}
+        <span className={clsx("size-1.5 rounded-full", activity.working ? "bg-accent" : running ? "bg-ok" : "bg-faint")} title={activity.working ? `${agent} is working` : running ? `${agent} is running` : `${agent} is not running`} />
         {isClaude && <SessionChip tabId={tabId} />}
         {isClaude && <LaunchOptions tabId={tabId} onBypass={() => setConfirmBypass(true)} />}
         {provider && !isClaude && (

@@ -50,3 +50,17 @@ input, textarea, [contenteditable], .selectable { user-select: text; }
 .blame-age-3 { background: #4a63a0; } .blame-age-4 { background: #6a6aa8; } .blame-age-5 { background: #8d6aa0; }
 .blame-age-6 { background: #b06c8a; } .blame-age-7 { background: #cf7a63; } .blame-age-8 { background: #e48f3f; }
 .blame-age-9 { background: #f5a524; } .blame-age-now { background: #4ade80; }
+
+/* Shimmering text ("working" on AI workspace tabs). */
+.shimmer-text {
+  color: transparent;
+  background: linear-gradient(90deg, var(--color-accent) 0%, var(--color-accent) 35%, #fff4d6 50%, var(--color-accent) 65%, var(--color-accent) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer-text 1.8s linear infinite;
+}
+@keyframes shimmer-text {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}

@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AppWindow, ArrowUpCircle, ChevronDown, Copy, Crosshair, Database, Folder, FolderPlus, GitBranch, History, LogOut, Plus, Shield, Sparkles, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, ArrowUpCircle, Sparkle, ChevronDown, Copy, Crosshair, Database, Folder, FolderPlus, GitBranch, History, LogOut, Plus, Shield, Sparkles, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
@@ -17,6 +17,7 @@ import { useContextMenu, type MenuItem } from "../../features/connections/Contex
 import { createProject, focusProject } from "../../features/connections/tree/projectActions";
 import { confirmDialog } from "../../features/connections/dialogs";
 import { detectSession } from "../../features/claude/store";
+import { useTabActivity } from "../../features/claude/activity";
 import { KeepAwakeButton } from "../../features/keepawake/KeepAwakeButton";
 import { UpdateDialog } from "../../features/update/UpdateDialog";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
@@ -204,6 +205,21 @@ function ProjectBar() {
   );
 }
 
+/** AI workspace tab title: shimmering "working" while the agent runs, a dot when it finished unseen. */
+function AgentTabTitle({ tabId, title }: { tabId: string; title: string }) {
+  const { working, done } = useTabActivity(tabId);
+  return (
+    <>
+      {working && <Sparkle className="size-3 shrink-0 animate-spin text-accent [animation-duration:2.4s]" />}
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate">{title}</span>
+        {working && <span className="shimmer-text text-[10px] font-medium">working</span>}
+      </span>
+      {done && !working && <span className="size-1.5 shrink-0 rounded-full bg-ok" title="Finished" />}
+    </>
+  );
+}
+
 /** Spec + title of a tab, to recreate it in another window. */
 async function tabTransfer(t: Tab): Promise<TabTransfer> {
   const { id, dirty, ...spec } = t;
@@ -266,7 +282,7 @@ function Workspace() {
               t.id === activeId ? "bg-panel text-fg shadow-[inset_0_2px_0_var(--color-accent)]" : "text-muted hover:bg-panel/60",
             )}
           >
-            <span className="truncate">{t.title}</span>
+            {t.type === "claude" ? <AgentTabTitle tabId={t.id} title={t.title} /> : <span className="truncate">{t.title}</span>}
             {t.dirty && <span className="size-1.5 rounded-full bg-accent" />}
             <button
               aria-label="Close tab"

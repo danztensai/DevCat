@@ -8,6 +8,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal, type ILink } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
+import { ActivityDetector } from "./activity";
 import { api, errMsg } from "../../lib/api";
 import { ptyEventsReady, subscribePty } from "./pty";
 import { openFile } from "./util";
@@ -62,13 +63,18 @@ export interface TerminalPaneProps {
   beforeRestart?: () => Promise<void> | void;
   /** Map Shift+Enter to ESC CR (newline in claude's prompt). */
   shiftEnterNewline?: boolean;
+  /** Track whether the program is working (AI agent tabs): key in the activity store. */
+  activityId?: string;
 }
 
-export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, visible, name, onPty, beforeRestart, shiftEnterNewline }: TerminalPaneProps) {
+export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, visible, name, onPty, beforeRestart, shiftEnterNewline, activityId }: TerminalPaneProps) {
   const host = useRef<HTMLDivElement>(null);
   const termRef = useRef<{ term: Terminal; fit: FitAddon } | null>(null);
   const ptyRef = useRef<string | null>(null);
   const exitedRef = useRef(false);
+  const activity = useRef<ActivityDetector | null>(null);
+  if (activityId && !activity.current) activity.current = new ActivityDetector(activityId);
+  useEffect(() => () => activity.current?.dispose(), []);
   /** The next start was requested with Enter after an exit. */
   const enterRestart = useRef(false);
   const [restartNonce, setRestartNonce] = useNonce();
@@ -158,7 +164,10 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
       },
     });
 
+    const title = term.onTitleChange((t) => activity.current?.title(t));
+    const bell = term.onBell(() => activity.current?.bell());
     const input = term.onData((d) => {
+      activity.current?.input();
       if (exitedRef.current) {
         if (d === "\r") {
           enterRestart.current = true;
@@ -169,6 +178,7 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
       if (ptyRef.current) void api.ptyWrite(ptyRef.current, d).catch(() => {});
     });
     const resize = term.onResize(({ cols, rows }) => {
+      activity.current?.resize();
       if (ptyRef.current) void api.ptyResize(ptyRef.current, cols, rows).catch(() => {});
     });
     const ro = new ResizeObserver(() => {
@@ -181,6 +191,8 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
       ro.disconnect();
       links.dispose();
       input.dispose();
+      title.dispose();
+      bell.dispose();
       resize.dispose();
       term.dispose();
       termRef.current = null;
@@ -216,9 +228,10 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
         cb.current.onPty?.(id);
         off = subscribePty(
           id,
-          (bytes) => t.term.write(bytes),
+          (bytes) => { t.term.write(bytes); activity.current?.output(bytes.length); },
           (code) => {
             if (ptyRef.current !== id) return;
+            activity.current?.exit();
             ptyRef.current = null;
             exitedRef.current = true;
             cb.current.onPty?.(null);
