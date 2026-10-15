@@ -131,6 +131,33 @@ pub async fn child_path() -> OsString {
         .clone()
 }
 
+/// Absolute path of any CLI (`codex`, `gemini`, …): an explicit path (`~` expanded) is used
+/// as is, a bare name is searched on the same augmented PATH claude gets.
+pub async fn find_program(name: &str) -> Option<PathBuf> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let expanded = match name.strip_prefix("~/") {
+        Some(rest) => dirs::home_dir()?.join(rest),
+        None => PathBuf::from(name),
+    };
+    let candidates = |p: PathBuf| -> Vec<PathBuf> {
+        if cfg!(windows) && p.extension().is_none() {
+            ["exe", "cmd", "bat"].iter().map(|e| p.with_extension(e)).chain([p.clone()]).collect()
+        } else {
+            vec![p]
+        }
+    };
+    if expanded.components().count() > 1 || expanded.is_absolute() {
+        return candidates(expanded).into_iter().find(|p| is_executable(p));
+    }
+    let path = child_path().await;
+    std::env::split_paths(&path)
+        .flat_map(|d| candidates(d.join(&expanded)))
+        .find(|p| is_executable(p))
+}
+
 /// A `claude` command with the augmented PATH, no console window on Windows, and the
 /// env vars that would make it think it's nested inside another Claude Code removed.
 pub async fn command(bin: &Path) -> tokio::process::Command {
@@ -159,6 +186,15 @@ mod tests {
         let home = dirs::home_dir().unwrap();
         assert!(known_dirs().contains(&home.join(".local/bin")));
         assert!(known_dirs().contains(&home.join(".claude/local")));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn finds_programs() {
+        assert!(find_program("sh").await.is_some_and(|p| p.is_absolute()));
+        assert_eq!(find_program("/bin/sh").await, Some(PathBuf::from("/bin/sh")));
+        assert!(find_program("definitely-not-a-devcat-cli").await.is_none());
+        assert!(find_program("").await.is_none());
     }
 
     #[tokio::test]

@@ -1,5 +1,5 @@
 // Diff view: changed files (Staged / Changes / Untracked) + Monaco diff of the selected file,
-// stage / unstage / discard, commit, and "Ask Claude to review". `ChangesPanel` is also used by the Git tab.
+// stage / unstage / discard, commit, and "Ask <agent> to review". `ChangesPanel` is also used by the Git tab.
 import { DiffEditor, type DiffOnMount } from "../../components/DiffEditor";
 import clsx from "clsx";
 import { Columns2, ExternalLink, FileDiff, GitCommitHorizontal, ListChecks, Minus, Plus, RefreshCw, Rows2, ScanSearch, Trash2, Undo2, X } from "lucide-react";
@@ -69,7 +69,7 @@ function FileRow({ f, group, selected, checked, onCheck, onSelect, onAction }: {
   );
 }
 
-export function DiffView({ tabId, cwd, active, onReview }: { tabId: string; cwd: string; active: boolean; onReview: () => void }) {
+export function DiffView({ tabId, cwd, active, onReview, agent }: { tabId: string; cwd: string; active: boolean; onReview: () => void; agent?: string }) {
   const git = useClaude((s) => s.tabs[tabId]?.git);
   const gitError = useClaude((s) => s.tabs[tabId]?.gitError);
   const gitLoading = useClaude((s) => !!s.tabs[tabId]?.gitLoading);
@@ -84,13 +84,13 @@ export function DiffView({ tabId, cwd, active, onReview }: { tabId: string; cwd:
 
   return (
     <ChangesPanel cwd={cwd} git={git ?? null} gitError={gitError ?? null} gitLoading={gitLoading} gitTick={gitTick}
-      focus={focus ?? null} active={active} refresh={refresh} onReview={onReview} />
+      focus={focus ?? null} active={active} refresh={refresh} onReview={onReview} agent={agent} />
   );
 }
 
 /** Working-tree changes of the repo at `cwd`, independent of where the git status comes from
  *  (the Claude tab store, or the Git tab). `refresh` must re-read the status. */
-export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, active, refresh, onReview, actions }: {
+export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, active, refresh, onReview, agent = "Claude", actions }: {
   cwd: string;
   git: GitStatus | null;
   gitError: string | null;
@@ -101,6 +101,8 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
   active: boolean;
   refresh: () => Promise<void> | void;
   onReview?: () => void;
+  /** Name in "Ask … to review" (the AI connection the review goes to). */
+  agent?: string;
   /** Extra buttons on the right of the file list toolbar. */
   actions?: ReactNode;
 }) {
@@ -188,7 +190,7 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
   // `reload` re-reads the current selection after an action (which may also change the selection).
   const [reload, setReload] = useState(0);
   useEffect(() => { void loadVersions(sel); }, [sel, loadVersions, reload]);
-  // Re-read the open file on each git poll while visible (Claude edits it from the terminal).
+  // Re-read the open file on each git poll while visible (the AI agent edits it from the terminal).
   useEffect(() => { if (gitTick && active) void loadVersions(sel, true); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [gitTick]);
 
   const act = async (fn: () => Promise<unknown>, okMsg?: string) => {
@@ -327,7 +329,7 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
           ><ListChecks className="size-3.5" /></IconButton>
           <div className="flex-1" />
           {actions}
-          {onReview && <Button size="sm" variant="ghost" onClick={onReview} title="Ask Claude to review these changes"><ScanSearch className="size-3.5" />Ask Claude to review</Button>}
+          {onReview && <Button size="sm" variant="ghost" onClick={onReview} title={`Ask ${agent} to review these changes`}><ScanSearch className="size-3.5" />Ask {agent} to review</Button>}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           {git.files.length === 0 && <div className="px-3 py-6 text-center text-xs text-muted">Working tree clean</div>}
@@ -377,7 +379,7 @@ export function ChangesPanel({ cwd, git, gitError, gitLoading, gitTick, focus, a
         </div>
         <div className="relative min-h-0 flex-1">
           {vErr ? <ErrorBox error={vErr} /> : !sel ? (
-            <Empty icon={<FileDiff className="size-8" />} title="No changes">Edits made by Claude or by you show up here.</Empty>
+            <Empty icon={<FileDiff className="size-8" />} title="No changes">Edits made by the AI agent or by you show up here.</Empty>
           ) : versions?.binary ? (
             <Empty title="Binary file">This file is binary; no text diff available.</Empty>
           ) : versions ? (

@@ -63,12 +63,20 @@ async fn call(cmd: &str, args: &Value) -> Result<Value, Value> {
         "git_commit" => out(c!(git::git_commit, "cwd", "message", "paths")),
         "fs_list" => out(c!(files::fs_list, "dir", "showIgnored")),
         "fs_preview" => out(c!(files::fs_preview, "path")),
+        "ai_providers_list" => out(c!(crate::ai::ai_providers_list)),
+        "ai_provider_save" => out(c!(crate::ai::ai_provider_save, "provider")),
+        "ai_provider_delete" => out(c!(crate::ai::ai_provider_delete, "id")),
+        "ai_provider_detect" => out(c!(crate::ai::ai_provider_detect, "provider")),
+        "fs_write_text" => out(c!(files::fs_write_text, "path", "content", "expectedVersion", "lineEnding")),
         other => Err(json!(format!("devbridge: unsupported command {other}"))),
     }
 }
 
 /// Serve until the process is killed.
 pub async fn serve(port: u16) -> std::io::Result<()> {
+    if let Some(d) = dirs::data_dir() {
+        crate::ai::init(d.join("dev.devcat.app"));
+    }
     let listener = TcpListener::bind(("127.0.0.1", port)).await?;
     eprintln!("devbridge listening on http://127.0.0.1:{port}");
     loop {

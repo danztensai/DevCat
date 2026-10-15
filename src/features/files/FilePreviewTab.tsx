@@ -1,7 +1,8 @@
 // File preview tab: toolbar (path, size, kind, actions) + a viewer per FilePreview kind,
-// or git blame for text files inside a repository.
+// or git blame for text files inside a repository. Plain text files (code, config, .html, …)
+// open in an editor; markdown, pdf, images, sheets, csv and docx stay preview-only.
 import { Copy, ExternalLink, FolderSearch, History, RefreshCw, UserSearch } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Badge, ErrorBox, IconButton, Spinner, Toolbar } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { FilePreview } from "../../lib/types";
@@ -13,7 +14,8 @@ import { useRepoRoot } from "../git/repoOf";
 import { FileIcon } from "./FileIcon";
 import { copyText, fmtSize, openExternally, relPath, revealPath } from "./format";
 import { CsvViewer, SheetViewer } from "./viewers/SheetViewer";
-import { BinaryCard, DocxViewer, ImageViewer, MarkdownViewer, TextViewer } from "./viewers/simple";
+import { BinaryCard, DocxViewer, ImageViewer, MarkdownViewer } from "./viewers/simple";
+import { TextEditor } from "./viewers/TextEditor";
 
 const PdfViewer = lazy(() => import("./viewers/PdfViewer"));
 
@@ -28,21 +30,36 @@ export default function FilePreviewTab({ tab }: { tab: Extract<Tab, { type: "fil
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const [reload, setReload] = useState(0);
   const repo = useRepoRoot(tab.path);
+  const dirty = useRef(false);
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
+    // only the latest load applies (e.g. one started before a save must not undo it)
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
       const p = await api.fsPreview(tab.path);
+      if (seq !== loadSeq.current) return;
       setPreview(p);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      if (seq === loadSeq.current) setError(String(e));
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [tab.path]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Pick up changes made outside DevCat when the window regains focus (text files without edits).
+  const isText = preview?.kind === "text";
+  useEffect(() => {
+    if (!isText) return;
+    const onFocus = () => { if (!dirty.current && useTabs.getState().activeId === tab.id) void load(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [isText, load, tab.id]);
+  const onDirty = useCallback((d: boolean) => { dirty.current = d; }, []);
 
   const shown = relPath(tab.path, tab.root);
   const kind = preview?.kind;
@@ -75,15 +92,34 @@ export default function FilePreviewTab({ tab }: { tab: Extract<Tab, { type: "fil
         <IconButton title="Open with default app" onClick={() => void openExternally(tab.path)}><ExternalLink className="size-3.5" /></IconButton>
         <IconButton title="Reveal in Finder" onClick={() => void revealPath(tab.path)}><FolderSearch className="size-3.5" /></IconButton>
       </Toolbar>
-      <div className="min-h-0 flex-1">
-        {error ? (
+      {/* a failed refresh keeps the last content (and any unsaved edits) on screen */}
+      {error && preview && <div className="selectable shrink-0 truncate border-b border-danger/25 bg-danger/10 px-3 py-1 text-[12px] text-danger" title={error}>{error}</div>}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {error && !preview ? (
           <ErrorBox error={error} />
-        ) : !preview || (blame && !repo) ? (
+        ) : !preview ? (
           <div className="flex h-full items-center justify-center"><Spinner /></div>
-        ) : blame && repo ? (
-          <BlameView key={tab.path} path={tab.path} repo={repo} slot={slot} reload={reload} />
         ) : (
-          <Viewer key={preview.kind} preview={preview} slot={slot} root={tab.root ?? null} />
+          <>
+            {/* the editor stays mounted under blame so edits survive toggling it */}
+            {preview.kind === "text" && (
+              <TextEditor
+                key={tab.path}
+                preview={preview}
+                slot={slot}
+                tabId={tab.id}
+                hidden={blame}
+                reload={() => void load()}
+                onDirty={onDirty}
+                onSaved={() => { void load(); setReload((n) => n + 1); }}
+              />
+            )}
+            {blame ? (
+              repo ? <BlameView key={tab.path} path={tab.path} repo={repo} slot={slot} reload={reload} /> : <div className="flex h-full items-center justify-center"><Spinner /></div>
+            ) : preview.kind !== "text" && (
+              <Viewer key={preview.kind} preview={preview} slot={slot} root={tab.root ?? null} />
+            )}
+          </>
         )}
       </div>
     </div>
@@ -93,7 +129,6 @@ export default function FilePreviewTab({ tab }: { tab: Extract<Tab, { type: "fil
 function Viewer({ preview, slot, root }: { preview: FilePreview; slot: HTMLElement | null; root: string | null }) {
   const props = { preview, slot, root };
   switch (preview.kind) {
-    case "text": return <TextViewer {...props} />;
     case "markdown": return <MarkdownViewer {...props} />;
     case "image": return <ImageViewer {...props} />;
     case "pdf": return <Suspense fallback={<div className="flex h-full items-center justify-center"><Spinner /></div>}><PdfViewer preview={preview} slot={slot} /></Suspense>;

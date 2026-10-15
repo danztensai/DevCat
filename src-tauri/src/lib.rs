@@ -1,3 +1,4 @@
+mod ai;
 mod claude;
 mod commands;
 mod db;
@@ -32,6 +33,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir().expect("no app data dir");
             network::init(dir.clone());
+            ai::init(dir.clone());
             network::start(app.handle().clone());
             app.manage(state::AppState::new(dir));
             #[cfg(target_os = "macos")]
@@ -153,6 +155,7 @@ pub fn run() {
             claude::sessions::claude_transcript,
             claude::files::fs_list,
             claude::files::fs_preview,
+            claude::files::fs_write_text,
             claude::open_external::fs_open_external,
             claude::git::git_status,
             claude::git::git_file_versions,
@@ -162,6 +165,11 @@ pub fn run() {
             claude::git::git_discard,
             claude::git::git_discard_all,
             claude::git::git_commit,
+            // AI connections (providers for the AI workspace terminal)
+            ai::ai_providers_list,
+            ai::ai_provider_save,
+            ai::ai_provider_delete,
+            ai::ai_provider_detect,
             // git tools
             gitx::commands::git_repos,
             gitx::commands::git_log,

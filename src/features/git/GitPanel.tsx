@@ -99,7 +99,7 @@ function RootHeader({ root }: { root: string | null }) {
     const items: MenuItem[] = [
       { label: "Choose folder…", icon: <FolderOpen className="size-3.5" />, onClick: () => void pickScanRoot(root) },
       {
-        label: claudeCwd ? `Follow Claude workspace (${basename(claudeCwd)})` : "Follow Claude workspace",
+        label: claudeCwd ? `Follow AI workspace (${basename(claudeCwd)})` : "Follow AI workspace",
         icon: <Sparkles className="size-3.5" />,
         disabled: !claudeCwd || chosen === null,
         onClick: () => setRoot(null),
@@ -140,7 +140,7 @@ function RootHeader({ root }: { root: string | null }) {
           <div className={clsx("truncate text-[13px] font-medium", !root && "text-muted")}>{root ? basename(root) : "Choose folder…"}</div>
           {root && (
             <div className="truncate text-[11px] text-faint">
-              {tildify(root)}{chosen === null && " · Claude workspace"}
+              {tildify(root)}{chosen === null && " · AI workspace"}
             </div>
           )}
         </div>
@@ -224,12 +224,12 @@ function RepoList({ root }: { root: string }) {
       { label: "Push", icon: <ArrowUpFromLine className="size-3.5" />, disabled: busy.has(r.path) || !r.upstream, onClick: () => void remote(r, "push") },
       "separator",
       {
-        label: "Open in Claude workspace", icon: <Sparkles className="size-3.5" />, onClick: () => {
+        label: "Open in AI workspace", icon: <Sparkles className="size-3.5" />, onClick: () => {
           useWorkspace.getState().setCwd(r.path);
           useUi.getState().setSidebar("claude");
         },
       },
-      { label: "New Claude chat here", icon: <Sparkles className="size-3.5" />, onClick: () => openClaudeWorkspace(r.path) },
+      { label: "New AI chat here", icon: <Sparkles className="size-3.5" />, onClick: () => openClaudeWorkspace(r.path) },
       { label: "Scan from this folder", icon: <FolderSearch className="size-3.5" />, onClick: () => useGitScan.getState().setRoot(r.path) },
       "separator",
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(r.path) },

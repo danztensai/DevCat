@@ -263,6 +263,39 @@ export interface TrafficSample {
   txTotal: number;
 }
 
+// ---- AI connections (mirror src-tauri/src/ai/mod.rs)
+
+export type AiKind = "claude" | "codex" | "gemini" | "copilot" | "aider" | "opencode" | "custom";
+export interface AiEnvVar { key: string; value: string }
+/** Saved AI connection: the coding-agent CLI the AI workspace terminal runs. */
+export interface AiProvider {
+  /** "" = new. "claude" = the built-in Claude Code profile. */
+  id: string;
+  name: string;
+  kind: AiKind;
+  /** Program override (name on PATH or path); null = the kind's default binary. */
+  command?: string | null;
+  args: string[];
+  env: AiEnvVar[];
+  /** Variable the API key is passed in (null = the kind's default). */
+  apiKeyEnv?: string | null;
+  /** Write-only: a key to store in the keychain, "" = remove it, undefined = keep. */
+  apiKey?: string | null;
+  /** Read-only. */
+  hasApiKey?: boolean;
+  builtin?: boolean;
+}
+export interface AiDetect {
+  kind: AiKind;
+  providerId?: string | null;
+  program: string;
+  /** null = not installed / not found. */
+  path?: string | null;
+  version?: string | null;
+  installHint?: string | null;
+  error?: string | null;
+}
+
 // ---- Claude Code workspace (mirror src-tauri/src/claude/mod.rs)
 
 export type ClaudePermissionMode = "manual" | "acceptEdits" | "auto" | "plan" | "dontAsk" | "bypassPermissions";
@@ -283,6 +316,10 @@ export interface FilePreview {
   kind: "text" | "markdown" | "image" | "pdf" | "sheet" | "csv" | "docx" | "binary" | "too_large";
   path: string; mime?: string | null; size: number; text?: string | null; language?: string | null;
   dataBase64?: string | null; sheets?: SheetData[] | null; truncated: boolean;
+  /** kind "text" only: may be edited and saved with fsWriteText */
+  editable: boolean; readonlyReason?: string | null;
+  /** on-disk version token for conflict detection (pass back to fsWriteText) */
+  version?: string | null; lineEnding?: "lf" | "crlf" | null;
 }
 export interface GitFile { path: string; oldPath?: string | null; index: string; worktree: string }
 export interface GitStatus { isRepo: boolean; root?: string | null; branch?: string | null; ahead: number; behind: number; files: GitFile[] }

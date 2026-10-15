@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-export type SidebarView = "connections" | "history" | "network" | "claude" | "git";
+/** "claude" = the AI workspace (internal id kept). */
+export type SidebarView = "claude" | "connections" | "history" | "network" | "git";
 
 interface UiState {
   sidebar: SidebarView;
@@ -15,7 +16,7 @@ interface UiState {
 }
 
 export const useUi = create<UiState>((set) => ({
-  sidebar: "connections",
+  sidebar: "claude",
   setSidebar: (sidebar) => set({ sidebar }),
   connectionDialog: null,
   openConnectionDialog: (id = null, kind, projectId) => set({ connectionDialog: { id, kind, projectId } }),

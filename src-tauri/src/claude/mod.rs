@@ -113,6 +113,14 @@ pub struct FilePreview {
     pub data_base64: Option<String>,
     pub sheets: Option<Vec<SheetData>>,
     pub truncated: bool,
+    /// kind "text" only: can be edited and saved with `fs_write_text`.
+    pub editable: bool,
+    /// Why an otherwise editable text file is read-only (truncated, not UTF-8, no permission).
+    pub readonly_reason: Option<String>,
+    /// On-disk version token ("<mtime_ns>-<len>") taken before reading, for conflict detection.
+    pub version: Option<String>,
+    /// text kinds: dominant line ending, "lf" or "crlf".
+    pub line_ending: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,7 +159,7 @@ pub mod sessions;
 pub mod files;
 pub mod open_external;
 pub mod git;
-mod locate;
+pub(crate) mod locate;
 pub mod pty;
 
 #[allow(dead_code)]

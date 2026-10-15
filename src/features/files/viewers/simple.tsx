@@ -1,4 +1,4 @@
-// Text / Markdown / image / docx / binary previews.
+// Markdown / image / docx / binary previews (editable text lives in TextEditor.tsx).
 import Editor from "@monaco-editor/react";
 import clsx from "clsx";
 import { Code, Eye, ExternalLink, FileQuestion, Maximize, Minimize, WrapText, ZoomIn, ZoomOut } from "lucide-react";
@@ -43,24 +43,13 @@ function Code_({ text, language, wrap }: { text: string; language: string; wrap:
   );
 }
 
-function useWrap(): [boolean, (v: boolean) => void] {
+export function useWrap(): [boolean, (v: boolean) => void] {
   const [wrap, setWrap] = useState(() => localStorage.getItem(WRAP_KEY) === "1");
   return [wrap, (v) => { setWrap(v); localStorage.setItem(WRAP_KEY, v ? "1" : "0"); }];
 }
 
-function WrapButton({ wrap, setWrap }: { wrap: boolean; setWrap: (v: boolean) => void }) {
+export function WrapButton({ wrap, setWrap }: { wrap: boolean; setWrap: (v: boolean) => void }) {
   return <IconButton title={wrap ? "Disable word wrap" : "Word wrap"} active={wrap} onClick={() => setWrap(!wrap)}><WrapText className="size-3.5" /></IconButton>;
-}
-
-export function TextViewer({ preview, slot }: ViewerProps) {
-  const [wrap, setWrap] = useWrap();
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      {slot && createPortal(<WrapButton wrap={wrap} setWrap={setWrap} />, slot)}
-      {preview.truncated && <TruncatedBanner text="The file is large; only its beginning is shown." />}
-      <div className="min-h-0 flex-1"><Code_ text={preview.text ?? ""} language={preview.language ?? "plaintext"} wrap={wrap} /></div>
-    </div>
-  );
 }
 
 export function MarkdownViewer({ preview, slot, root }: ViewerProps) {

@@ -11,7 +11,7 @@ Lens-style tooling for Kubernetes and RabbitMQ, built with [Tauri 2](https://tau
 | Infrastructure | Kubernetes (any kubeconfig context), RabbitMQ (management API) |
 | Networking | OpenVPN, WireGuard, SSH tunnels (local forwards + SOCKS proxy) |
 | Git | Nested repo discovery, commit graph, blame, branches, tags, stashes, fetch/pull/push |
-| AI | Claude Code workspace (terminal, diff, code review) using your installed `claude` CLI |
+| AI | AI Workspace (terminal, diff, code review) running your installed coding agent: Claude Code (default), OpenAI Codex, Gemini CLI, GitHub Copilot, Aider, opencode or a custom CLI |
 
 ## Download
 
@@ -52,10 +52,14 @@ Grab the latest installer for macOS, Windows or Linux from the
   in a form; connect/disconnect with live status, logs and a realtime traffic graph. Connections can depend
   on a VPN or tunnel, which is connected automatically first. VPNs need administrator rights to connect
   (the OS asks for your password); OpenVPN / `wireguard-tools` must be installed.
-- **Claude Code workspace**: runs your installed [Claude Code](https://docs.claude.com/en/docs/claude-code)
-  CLI in a real terminal (like iTerm2), with **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2 · Code Review ⌥⇧⌘3**, your Claude
-  session list (resume any session), a git-aware file tree and file previews (code, Markdown, PDF, images,
-  Excel/CSV, Word). Uses your own Claude account; install Claude Code and run `claude` once to log in.
+- **AI Workspace**: runs your installed coding-agent CLI in a real terminal (like iTerm2), with
+  **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2**, a git-aware file tree and file previews (code, Markdown, PDF, images,
+  Excel/CSV, Word). The agent is an *AI connection* picked in the sidebar header: [Claude Code](https://docs.claude.com/en/docs/claude-code)
+  by default, or OpenAI Codex, Gemini CLI, GitHub Copilot CLI, Aider, opencode or any custom command
+  (args + env vars). Each uses its own login, or an optional API key kept in the OS keychain and passed as
+  the provider's env var (e.g. `OPENAI_API_KEY`). With Claude Code you also get **Code Review ⌥⇧⌘3**,
+  launch options and your Claude session list (resume any session); other agents get a Review button that
+  asks them in the terminal.
 
 - **Git**: scan a folder for every repository inside it (nested repos, submodules and worktrees; `node_modules`
   and build folders are skipped) and see branch, ahead/behind and changes at a glance. Each repo opens a Git tab
@@ -141,7 +145,8 @@ src-tauri/src/
   infra/                  kubernetes, rabbitmq
   network/                VPN (OpenVPN, WireGuard), SSH tunnels, traffic counters
   gitx/                   git tools: repo discovery, log/graph, blame, branches, stashes, remotes
-  claude/                 Claude Code CLI driver, PTY terminal, sessions, file previews, git
+  claude/                 AI workspace: Claude Code CLI driver, PTY terminal, sessions, file previews, git
+  ai/                     AI connections (agent CLI profiles, detection, keychain API keys)
   commands/               Tauri command handlers
   store.rs                saved connections (JSON) + OS keychain secrets
 ```

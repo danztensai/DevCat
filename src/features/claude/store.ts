@@ -1,5 +1,5 @@
-// Claude Code workspace state, keyed by tab id: the interactive `claude` terminal (pty id,
-// launch options, session to resume), git status and the last code review.
+// AI workspace state, keyed by tab id: the agent terminal (pty id, launch options, Claude session to
+// resume), git status and the last code review. Session / launch-option features are Claude-only.
 // Reviews stream over "claude-msg" / "claude-exit"; `initClaude()` subscribes once (idempotent)
 // and routes each event to its tab by runId.
 import { listen } from "@tauri-apps/api/event";
@@ -37,6 +37,8 @@ export interface LaunchOptions { model: string; permissionMode: ClaudePermission
 
 export interface TabState {
   cwd: string;
+  /** The tab runs Claude Code (sessions, launch options and reviews apply); false = another AI CLI. */
+  isClaude: boolean;
   /** Session the next `claude` launch resumes (null = fresh session). */
   sessionId: string | null;
   /** Launch options picked in the header vs. the ones the running process was started with. */
@@ -62,7 +64,7 @@ export interface TabState {
 const newReview = (): ReviewState => ({ runId: null, status: "idle", scope: "uncommitted", base: "main", model: "", progress: [] });
 
 const newTab = (cwd: string, sessionId: string | null): TabState => ({
-  cwd, sessionId, options: { model: "", permissionMode: "" }, launched: null, launchedAt: null, ptyId: null, startSeq: 0, shellOpen: false,
+  cwd, isClaude: true, sessionId, options: { model: "", permissionMode: "" }, launched: null, launchedAt: null, ptyId: null, startSeq: 0, shellOpen: false,
   git: null, gitError: null, gitLoading: false, gitTick: 0, diffFocus: null, review: newReview(),
 });
 
@@ -109,10 +111,19 @@ export async function loadInfo(force = false) {
 
 // ---------- claude terminal ----------
 
-/** CLI args for the next launch; records what was launched. */
+/** Whether the tab runs Claude Code (set by the tab from its AI connection). */
+export function setTabIsClaude(tabId: string, isClaude: boolean) {
+  if (get(tabId)?.isClaude !== isClaude) patch(tabId, { isClaude, ...(isClaude ? {} : { sessionId: null }) });
+}
+
+/** CLI args for the next launch (Claude: session / model / permission mode; others: none); records what was launched. */
 export function claudeLaunchArgs(tabId: string): string[] {
   const s = get(tabId);
   if (!s) return [];
+  if (!s.isClaude) {
+    patch(tabId, { launched: null, launchedAt: Date.now() });
+    return [];
+  }
   const args: string[] = [];
   if (s.sessionId) args.push("--resume", s.sessionId);
   if (s.options.model) args.push("--model", s.options.model);
@@ -133,6 +144,7 @@ export const setLaunchOptions = (tabId: string, p: Partial<LaunchOptions>) => pa
 export async function detectSession(tabId: string): Promise<string | null> {
   const s = get(tabId);
   if (!s) return null;
+  if (!s.isClaude) return null;
   try {
     const list = await api.claudeSessions(s.cwd);
     const since = (s.launchedAt ?? 0) - 2000;
@@ -147,13 +159,13 @@ export async function detectSession(tabId: string): Promise<string | null> {
   return s.sessionId;
 }
 
-/** Restart claude resuming the current session (e.g. after changing launch options or an exit). */
+/** Restart the agent (Claude: resuming the current session, e.g. after changing launch options or an exit). */
 export async function restartClaude(tabId: string) {
   await detectSession(tabId);
   patch(tabId, (s) => ({ startSeq: s.startSeq + 1 }));
 }
 
-/** Restart claude with a fresh session. */
+/** Restart the agent with a fresh session. */
 export function newSession(tabId: string) {
   patch(tabId, (s) => ({ sessionId: null, startSeq: s.startSeq + 1 }));
 }
@@ -164,6 +176,21 @@ export async function pasteToClaude(tabId: string, text: string): Promise<boolea
   if (!id) return false;
   try {
     await api.ptyWrite(id, `\x1b[200~${text}\x1b[201~`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Type a prompt into the agent and submit it (Enter). False when the agent isn't running. */
+export async function sendToAgent(tabId: string, text: string): Promise<boolean> {
+  const id = get(tabId)?.ptyId;
+  if (!id) return false;
+  try {
+    await api.ptyWrite(id, text);
+    // Separate write so TUIs don't take the Enter as part of a paste.
+    await new Promise((r) => setTimeout(r, 60));
+    await api.ptyWrite(id, "\r");
     return true;
   } catch {
     return false;

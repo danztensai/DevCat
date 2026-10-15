@@ -179,6 +179,10 @@ fn preview(kind: &str, path: &str, size: u64) -> FilePreview {
         data_base64: None,
         sheets: None,
         truncated: false,
+        editable: false,
+        readonly_reason: None,
+        version: None,
+        line_ending: None,
     }
 }
 
@@ -318,11 +322,44 @@ fn text_preview(kind: &str, path: &str, size: u64, language: Option<&str>, mime:
     let (bytes, truncated) = read_capped(Path::new(path), TEXT_CAP)?;
     let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
     let mut p = preview(kind, path, size);
-    p.text = Some(String::from_utf8_lossy(bytes).into_owned());
+    let valid_utf8 = std::str::from_utf8(bytes).is_ok();
+    let text = String::from_utf8_lossy(bytes).into_owned();
+    p.line_ending = Some(line_ending(&text).into());
+    p.text = Some(text);
     p.language = language.map(Into::into);
     p.mime = Some(mime.into());
     p.truncated = truncated;
+    if kind == "text" {
+        p.readonly_reason = if truncated {
+            Some(format!("This file is too large to edit here (over {} MB); only its beginning is shown.", TEXT_CAP / (1024 * 1024)))
+        } else if !valid_utf8 {
+            Some("This file isn't valid UTF-8 text, so it can't be edited here without corrupting it.".into())
+        } else if fs::OpenOptions::new().write(true).open(path).is_err() {
+            Some("You don't have permission to write this file.".into())
+        } else {
+            None
+        };
+        p.editable = p.readonly_reason.is_none();
+    }
     Ok(p)
+}
+
+/// Dominant line ending of `text`: "crlf" when most line breaks are CRLF, else "lf".
+fn line_ending(text: &str) -> &'static str {
+    let lf = text.matches('\n').count();
+    let crlf = text.matches("\r\n").count();
+    if crlf * 2 > lf { "crlf" } else { "lf" }
+}
+
+/// Version token for conflict detection: modification time (ns) + length.
+fn version_of(meta: &fs::Metadata) -> String {
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{mtime}-{}", meta.len())
 }
 
 fn format_float(f: f64) -> String {
@@ -468,12 +505,18 @@ fn read_docx(path: &Path) -> AppResult<String> {
 }
 
 fn preview_sync(path: &str) -> AppResult<FilePreview> {
-    let p = Path::new(path);
-    let meta = fs::metadata(p).map_err(|e| AppError::msg(format!("Cannot open {path}: {e}")))?;
+    let meta = fs::metadata(path).map_err(|e| AppError::msg(format!("Cannot open {path}: {e}")))?;
     if meta.is_dir() {
         return Err(AppError::msg(format!("{path} is a directory")));
     }
-    let size = meta.len();
+    // taken before reading: a write racing the read makes the token stale (→ conflict), never newer
+    let mut pv = preview_kind(path, meta.len())?;
+    pv.version = Some(version_of(&meta));
+    Ok(pv)
+}
+
+fn preview_kind(path: &str, size: u64) -> AppResult<FilePreview> {
+    let p = Path::new(path);
     let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
     let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
 
@@ -538,6 +581,87 @@ fn preview_sync(path: &str) -> AppResult<FilePreview> {
 #[tauri::command]
 pub async fn fs_preview(path: String) -> AppResult<FilePreview> {
     tauri::async_runtime::spawn_blocking(move || preview_sync(&path)).await.map_err(|e| AppError::msg(e.to_string()))?
+}
+
+// ---------- fs_write_text ----------
+
+/// Error prefix the frontend matches to offer Overwrite / Reload.
+const CONFLICT: &str = "CONFLICT:";
+
+fn normalize_eol(content: &str, eol: Option<&str>) -> String {
+    match eol {
+        Some("crlf") => content.replace("\r\n", "\n").replace('\n', "\r\n"),
+        Some("lf") => content.replace("\r\n", "\n"),
+        _ => content.to_string(),
+    }
+}
+
+fn write_text_sync(path: &str, content: &str, expected_version: Option<&str>, eol: Option<&str>) -> AppResult<String> {
+    let given = Path::new(path);
+    if !given.is_absolute() {
+        return Err(AppError::msg("Path must be absolute"));
+    }
+    // follow symlinks like the preview does, so the link itself survives the rename
+    let target = fs::canonicalize(given).unwrap_or_else(|_| given.to_path_buf());
+    let existing = match fs::metadata(&target) {
+        Ok(m) => Some(m),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(AppError::msg(format!("Cannot open {path}: {e}"))),
+    };
+    match (&existing, expected_version) {
+        (Some(m), _) if !m.is_file() => return Err(AppError::msg(format!("{path} is not a regular file"))),
+        (Some(m), Some(v)) if version_of(m) != v => {
+            return Err(AppError::msg(format!("{CONFLICT} {path} was changed on disk since it was opened.")))
+        }
+        (None, Some(_)) => return Err(AppError::msg(format!("{CONFLICT} {path} was deleted or moved since it was opened."))),
+        _ => {}
+    }
+    // the rename only needs a writable directory; don't let it bypass a read-only file
+    if existing.is_some() && fs::OpenOptions::new().write(true).open(&target).is_err() {
+        return Err(AppError::msg(format!("You don't have permission to write {path}")));
+    }
+
+    let mut bytes = Vec::with_capacity(content.len() + 3);
+    // keep a UTF-8 BOM the preview stripped
+    if existing.is_some() && read_head(&target, 3).map(|h| h == b"\xef\xbb\xbf").unwrap_or(false) && !content.starts_with('\u{feff}') {
+        bytes.extend_from_slice(b"\xef\xbb\xbf");
+    }
+    bytes.extend_from_slice(normalize_eol(content, eol).as_bytes());
+
+    let dir = target.parent().ok_or_else(|| AppError::msg("Invalid path"))?;
+    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = dir.join(format!(".{name}.devcat-{}.tmp", uuid::Uuid::new_v4().simple()));
+    let atomic = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        f.write_all(&bytes)?;
+        f.sync_all()?;
+        if let Some(m) = &existing {
+            fs::set_permissions(&tmp, m.permissions())?;
+        }
+        fs::rename(&tmp, &target)
+    })();
+    if let Err(e) = atomic {
+        let _ = fs::remove_file(&tmp);
+        // directory not writable (but the file may be): fall back to an in-place write
+        if e.kind() != std::io::ErrorKind::PermissionDenied || existing.is_none() {
+            return Err(AppError::msg(format!("Cannot save {path}: {e}")));
+        }
+        fs::write(&target, &bytes).map_err(|e| AppError::msg(format!("Cannot save {path}: {e}")))?;
+    }
+    Ok(version_of(&fs::metadata(&target)?))
+}
+
+/// Save text to a file atomically (temp file + rename, original permissions kept).
+/// `expected_version` (from `FilePreview.version`) guards against overwriting changes made on
+/// disk meanwhile — mismatches fail with a "CONFLICT:" error; pass None to overwrite (or
+/// recreate a deleted file). `line_ending` "lf" / "crlf" normalizes line breaks. Returns the
+/// new version token.
+#[tauri::command]
+pub async fn fs_write_text(path: String, content: String, expected_version: Option<String>, line_ending: Option<String>) -> AppResult<String> {
+    tauri::async_runtime::spawn_blocking(move || write_text_sync(&path, &content, expected_version.as_deref(), line_ending.as_deref()))
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?
 }
 
 #[cfg(test)]
@@ -745,6 +869,96 @@ mod tests {
         assert_eq!(pv.kind, "docx");
         assert_eq!(pv.text.as_deref(), Some("Hello & world\nA\tB\nCA\n"));
         assert!(fs_preview(fx.file("bad.docx", b"not a zip")).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn preview_editability() {
+        let fx = Fixtures::new();
+        let ok = fs_preview(fx.file("page.html", b"<p>hi</p>\n")).await.unwrap();
+        assert_eq!((ok.kind.as_str(), ok.editable, ok.readonly_reason.as_deref()), ("text", true, None));
+        assert_eq!(ok.line_ending.as_deref(), Some("lf"));
+        assert!(ok.version.is_some());
+
+        let crlf = fs_preview(fx.file("win.txt", b"a\r\nb\r\nc\n")).await.unwrap();
+        assert_eq!(crlf.line_ending.as_deref(), Some("crlf"));
+
+        let big = fs_preview(fx.file("big.txt", &vec![b'a'; (TEXT_CAP + 1) as usize])).await.unwrap();
+        assert!(!big.editable && big.readonly_reason.unwrap().contains("too large"));
+        let latin1 = fs_preview(fx.file("latin1.txt", b"caf\xe9\n")).await.unwrap();
+        assert!(!latin1.editable && latin1.readonly_reason.unwrap().contains("UTF-8"));
+        // preview-only kinds are never editable
+        assert!(!fs_preview(fx.file("README.md", b"# x\n")).await.unwrap().editable);
+        assert!(!fs_preview(fx.file("a.csv", b"a,b\n")).await.unwrap().editable);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let ro = fx.file("ro.txt", b"x\n");
+            fs::set_permissions(&ro, fs::Permissions::from_mode(0o444)).unwrap();
+            let pv = fs_preview(ro.clone()).await.unwrap();
+            assert!(!pv.editable && pv.readonly_reason.unwrap().contains("permission"));
+            assert!(fs_write_text(ro, "y".into(), pv.version, None).await.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn write_roundtrip_and_conflicts() {
+        let fx = Fixtures::new();
+        let path = fx.file("a.txt", b"one\n");
+        let v1 = fs_preview(path.clone()).await.unwrap().version;
+        let v2 = fs_write_text(path.clone(), "two\n".into(), v1.clone(), None).await.unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "two\n");
+        let pv = fs_preview(path.clone()).await.unwrap();
+        assert_eq!((pv.text.as_deref(), pv.version.as_deref()), (Some("two\n"), Some(v2.as_str())));
+        // no temp files left behind
+        assert_eq!(fs::read_dir(&fx.dir).unwrap().count(), 1);
+
+        // stale token → conflict, file untouched; None overwrites
+        let err = fs_write_text(path.clone(), "three\n".into(), v1, None).await.unwrap_err().to_string();
+        assert!(err.starts_with(CONFLICT), "{err}");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "two\n");
+        fs_write_text(path.clone(), "three\n".into(), None, None).await.unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "three\n");
+
+        // deleted since opened → conflict, unless overwriting
+        let gone = fx.file("gone.txt", b"x");
+        let v = fs_preview(gone.clone()).await.unwrap().version;
+        fs::remove_file(&gone).unwrap();
+        assert!(fs_write_text(gone.clone(), "y".into(), v, None).await.unwrap_err().to_string().starts_with(CONFLICT));
+        fs_write_text(gone.clone(), "y".into(), None, None).await.unwrap();
+        assert_eq!(fs::read_to_string(&gone).unwrap(), "y");
+
+        assert!(fs_write_text(fx.dir.to_string_lossy().into_owned(), "x".into(), None, None).await.is_err());
+        assert!(fs_write_text("relative.txt".into(), "x".into(), None, None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn write_preserves_eol_bom_permissions_and_symlinks() {
+        let fx = Fixtures::new();
+        let path = fx.file("win.txt", b"\xef\xbb\xbfa\r\nb\r\n");
+        let pv = fs_preview(path.clone()).await.unwrap();
+        assert_eq!(pv.text.as_deref(), Some("a\r\nb\r\n"));
+        fs_write_text(path.clone(), "a\nb\r\nc\n".into(), pv.version, pv.line_ending).await.unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"\xef\xbb\xbfa\r\nb\r\nc\r\n");
+        fs_write_text(path.clone(), "x\r\ny\r\n".into(), None, Some("lf".into())).await.unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"\xef\xbb\xbfx\ny\n");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let p = fx.file("mode.txt", b"x");
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o640)).unwrap();
+            fs_write_text(p.clone(), "y".into(), None, None).await.unwrap();
+            assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o640);
+
+            // writing through a symlink updates the target and keeps the link
+            let real = fx.file("real.txt", b"r");
+            let link = fx.path("link.txt");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            let v = fs_preview(link.clone()).await.unwrap().version;
+            fs_write_text(link.clone(), "via link".into(), v, None).await.unwrap();
+            assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+            assert_eq!(fs::read_to_string(&real).unwrap(), "via link");
+        }
     }
 
     #[test]

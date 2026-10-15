@@ -59,7 +59,7 @@ fn default_shell() -> CommandBuilder {
     }
 }
 
-async fn build_command(cwd: &str, program: Option<String>, args: Vec<String>) -> AppResult<CommandBuilder> {
+async fn build_command(cwd: &str, program: Option<String>, args: Vec<String>, env: Vec<(String, String)>) -> AppResult<CommandBuilder> {
     let mut cmd = match program.as_deref().filter(|p| !p.is_empty()) {
         None => default_shell(),
         Some("claude") => CommandBuilder::new(
@@ -79,14 +79,26 @@ async fn build_command(cwd: &str, program: Option<String>, args: Vec<String>) ->
     for k in ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"] {
         cmd.env_remove(k);
     }
+    // AI connection env (incl. its API key from the keychain) last, so it can override the above.
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
     Ok(cmd)
 }
 
-pub(super) async fn open(sink: Sink, cwd: &str, program: Option<String>, args: Vec<String>, cols: u16, rows: u16) -> AppResult<String> {
+pub(super) async fn open(
+    sink: Sink,
+    cwd: &str,
+    program: Option<String>,
+    args: Vec<String>,
+    env: Vec<(String, String)>,
+    cols: u16,
+    rows: u16,
+) -> AppResult<String> {
     if !Path::new(cwd).is_dir() {
         return Err(AppError::msg(format!("Not a directory: {cwd}")));
     }
-    let cmd = build_command(cwd, program, args).await?;
+    let cmd = build_command(cwd, program, args, env).await?;
     let pair = native_pty_system().openpty(size(cols, rows)).map_err(|e| AppError::msg(format!("openpty: {e}")))?;
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| AppError::msg(format!("Failed to start terminal program: {e}")))?;
     drop(pair.slave); // so the reader sees EOF once the child exits
@@ -150,9 +162,27 @@ pub(super) async fn open(sink: Sink, cwd: &str, program: Option<String>, args: V
 }
 
 /// Open a terminal in `cwd`. `program`: "claude" (resolved binary), None (login shell) or any program.
+/// With `provider_id` the AI connection decides program / env instead (its args come before `args`).
 #[tauri::command]
-pub async fn pty_open(app: tauri::AppHandle, window: tauri::Window, cwd: String, program: Option<String>, args: Vec<String>, cols: u16, rows: u16) -> AppResult<String> {
-    let id = open(app_sink(app), &cwd, program, args, cols, rows).await?;
+#[allow(clippy::too_many_arguments)]
+pub async fn pty_open(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    cwd: String,
+    program: Option<String>,
+    args: Vec<String>,
+    cols: u16,
+    rows: u16,
+    provider_id: Option<String>,
+) -> AppResult<String> {
+    let (program, args, env) = match provider_id.filter(|p| !p.is_empty()) {
+        Some(pid) => {
+            let l = crate::ai::launch(&pid, args).await?;
+            (Some(l.program), l.args, l.env)
+        }
+        None => (program, args, vec![]),
+    };
+    let id = open(app_sink(app), &cwd, program, args, env, cols, rows).await?;
     if let Some(p) = PTYS.lock().get(&id) {
         *p.owner.lock() = Some(window.label().to_string());
     }
@@ -229,10 +259,10 @@ mod tests {
     #[tokio::test]
     async fn runs_program_and_reports_exit() {
         let (sink, mut rx) = channel_sink();
-        let id = open(sink, "/tmp", Some("sh".into()), vec!["-c".into(), "printf hi-$TERM; exit 3".into()], 80, 24).await.unwrap();
+        let id = open(sink, "/tmp", Some("sh".into()), vec!["-c".into(), "printf hi-$TERM-$DEVCAT_T; exit 3".into()], vec![("DEVCAT_T".into(), "x1".into())], 80, 24).await.unwrap();
         pty_resize(id.clone(), 100, 30).await.unwrap();
         let (out, code) = collect_until_exit(&mut rx).await;
-        assert!(out.contains("hi-xterm-256color"), "{out:?}");
+        assert!(out.contains("hi-xterm-256color-x1"), "{out:?}");
         assert_eq!(code, 3);
         assert!(pty_write(id, "x".into()).await.is_err(), "closed after exit");
     }
@@ -240,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn interactive_input_and_close() {
         let (sink, mut rx) = channel_sink();
-        let id = open(sink, "/tmp", Some("cat".into()), vec![], 80, 24).await.unwrap();
+        let id = open(sink, "/tmp", Some("cat".into()), vec![], vec![], 80, 24).await.unwrap();
         pty_write(id.clone(), "ping\r".into()).await.unwrap();
         let mut seen = String::new();
         while !seen.contains("ping") {
@@ -260,7 +290,7 @@ mod tests {
     #[ignore]
     async fn real_claude_version() {
         let (sink, mut rx) = channel_sink();
-        open(sink, "/tmp", Some("claude".into()), vec!["--version".into()], 80, 24).await.unwrap();
+        open(sink, "/tmp", Some("claude".into()), vec!["--version".into()], vec![], 80, 24).await.unwrap();
         let (out, code) = collect_until_exit(&mut rx).await;
         println!("{out:?} {code}");
         assert!(out.contains("Claude Code") && code == 0);
@@ -269,6 +299,6 @@ mod tests {
     #[tokio::test]
     async fn rejects_bad_cwd() {
         let (sink, _rx) = channel_sink();
-        assert!(open(sink, "/definitely/not/here", None, vec![], 80, 24).await.is_err());
+        assert!(open(sink, "/definitely/not/here", None, vec![], vec![], 80, 24).await.is_err());
     }
 }

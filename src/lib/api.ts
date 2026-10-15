@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   UpdateInfo,
   GitRepo, GitLogQuery, GitCommit, GitCommitDetail, GitBlame, GitRefs, GitStash, CommitAction, RemoteOpts,
+  AiDetect, AiProvider,
   ClaudeInfo, ClaudeProject, ClaudeStartOptions, FileEntry, FilePreview, FileVersions, GitStatus, SessionMeta,
   ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
@@ -103,6 +104,10 @@ export const api = {
   claudeTranscript: (cwd: string, sessionId: string) => invoke<unknown[]>("claude_transcript", { cwd, sessionId }),
   fsList: (dir: string, showIgnored = false) => invoke<FileEntry[]>("fs_list", { dir, showIgnored }),
   fsPreview: (path: string) => invoke<FilePreview>("fs_preview", { path }),
+  /** Atomic save; returns the new version. Rejects with "CONFLICT: …" when the file changed on disk
+   *  since `expectedVersion` (pass null to overwrite). lineEnding normalizes line breaks. */
+  fsWriteText: (path: string, content: string, expectedVersion: string | null, lineEnding?: "lf" | "crlf" | null) =>
+    invoke<string>("fs_write_text", { path, content, expectedVersion, lineEnding: lineEnding ?? null }),
   /** Open a regular, non-executable file in its default app (scripts/executables are refused). */
   fsOpenExternal: (path: string) => invoke<void>("fs_open_external", { path }),
   gitStatus: (cwd: string) => invoke<GitStatus>("git_status", { cwd }),
@@ -162,10 +167,18 @@ export const api = {
   gitPull: (cwd: string, opts: RemoteOpts = {}) => invoke<string>("git_pull", { cwd, opts }),
   gitPush: (cwd: string, opts: RemoteOpts = {}) => invoke<string>("git_push", { cwd, opts }),
 
+  // AI connections (AI workspace providers). API keys are write-only (keychain).
+  aiProvidersList: () => invoke<AiProvider[]>("ai_providers_list"),
+  aiProviderSave: (provider: AiProvider) => invoke<AiProvider>("ai_provider_save", { provider }),
+  aiProviderDelete: (id: string) => invoke<void>("ai_provider_delete", { id }),
+  /** No provider: install status of every built-in CLI; with one: test that profile. */
+  aiProviderDetect: (provider?: AiProvider | null) => invoke<AiDetect[]>("ai_provider_detect", { provider: provider ?? null }),
+
   // Terminal (PTY). Events: "pty-output" ({ id, data: base64 }), "pty-exit" ({ id, code })
-  /** program: "claude" = the resolved Claude Code binary, null = the user's login shell, else a path/name. */
-  ptyOpen: (cwd: string, program: string | null, args: string[], cols: number, rows: number) =>
-    invoke<string>("pty_open", { cwd, program, args, cols, rows }),
+  /** program: "claude" = the resolved Claude Code binary, null = the user's login shell, else a path/name.
+   *  providerId: run that AI connection instead (backend resolves program, env and API key; args are appended). */
+  ptyOpen: (cwd: string, program: string | null, args: string[], cols: number, rows: number, providerId?: string | null) =>
+    invoke<string>("pty_open", { cwd, program, args, cols, rows, providerId: providerId ?? null }),
   ptyWrite: (id: string, data: string) => invoke<void>("pty_write", { id, data }),
   ptyResize: (id: string, cols: number, rows: number) => invoke<void>("pty_resize", { id, cols, rows }),
   ptyClose: (id: string) => invoke<void>("pty_close", { id }),

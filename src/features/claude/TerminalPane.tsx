@@ -48,6 +48,8 @@ export interface TerminalPaneProps {
   cwd: string;
   /** null = the user's login shell. */
   program: string | null;
+  /** AI connection to run instead of `program` (the backend resolves its command, env and API key). */
+  providerId?: string | null;
   /** Args for each (re)start. */
   getArgs?: () => string[] | Promise<string[]>;
   /** Change to kill and restart the process. */
@@ -62,7 +64,7 @@ export interface TerminalPaneProps {
   shiftEnterNewline?: boolean;
 }
 
-export function TerminalPane({ cwd, program, getArgs, startKey = 0, visible, name, onPty, beforeRestart, shiftEnterNewline }: TerminalPaneProps) {
+export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, visible, name, onPty, beforeRestart, shiftEnterNewline }: TerminalPaneProps) {
   const host = useRef<HTMLDivElement>(null);
   const termRef = useRef<{ term: Terminal; fit: FitAddon } | null>(null);
   const ptyRef = useRef<string | null>(null);
@@ -204,7 +206,7 @@ export function TerminalPane({ cwd, program, getArgs, startKey = 0, visible, nam
       try {
         const args = (await cb.current.getArgs?.()) ?? [];
         if (cancelled) return;
-        const id = await api.ptyOpen(cb.current.cwd, program, args, t.term.cols || 80, t.term.rows || 24);
+        const id = await api.ptyOpen(cb.current.cwd, program, args, t.term.cols || 80, t.term.rows || 24, providerId);
         if (cancelled) {
           void api.ptyClose(id).catch(() => {});
           return;
@@ -244,7 +246,7 @@ export function TerminalPane({ cwd, program, getArgs, startKey = 0, visible, nam
       if (termRef.current) termRef.current.term.write("\r\n");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startKey, restartNonce, program]);
+  }, [startKey, restartNonce, program, providerId]);
 
   // Fit + focus when shown.
   useEffect(() => {

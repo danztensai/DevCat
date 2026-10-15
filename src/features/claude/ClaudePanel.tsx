@@ -1,4 +1,5 @@
-// Sidebar for the Claude Code activity: workspace folder, past sessions, file tree.
+// Sidebar for the AI workspace activity: workspace folder, past sessions (Claude Code), file tree.
+// The AI connection new chats use is picked in the sidebar header (ProviderPicker).
 import clsx from "clsx";
 import {
   ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X,
@@ -13,6 +14,7 @@ import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
 import { basename, copyText, relTime, revealPath } from "../files/format";
 import { openGitRepo } from "../git/open";
 import { openClaudeWorkspace } from "./open";
+import { useSelectedProvider } from "./providers";
 import FileTree, { type FileTreeHandle } from "./sidebar/FileTree";
 import { SessionsList } from "./sidebar/SessionsList";
 import { pickFolder, useWorkspace } from "./sidebar/workspace";
@@ -40,15 +42,16 @@ function tildify(p: string): string {
 export default function ClaudePanel() {
   const cwd = useWorkspace((s) => s.cwd);
   const [info, setInfo] = useState<ClaudeInfo | null>(null);
+  const isClaude = useSelectedProvider().kind === "claude";
 
   useEffect(() => {
-    api.claudeInfo().then(setInfo).catch(() => setInfo(null));
-  }, []);
+    if (isClaude) api.claudeInfo().then(setInfo).catch(() => setInfo(null));
+  }, [isClaude]);
 
   return (
     <div className="flex h-full flex-col">
       <WorkspaceHeader />
-      {info && !info.path && <InstallBanner />}
+      {isClaude && info && !info.path && <InstallBanner />}
       {cwd ? <Workspace key={cwd} cwd={cwd} /> : <NoFolder />}
     </div>
   );
@@ -72,12 +75,13 @@ function InstallBanner() {
 }
 
 function NoFolder() {
+  const provider = useSelectedProvider();
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
       <Sparkles className="size-8 text-accent/70" />
       <div className="font-medium text-fg/85">No folder open</div>
       <div className="max-w-56 text-xs text-muted">
-        Pick a project folder to chat with Claude Code about it, browse its files and resume past sessions.
+        Pick a project folder to chat with {provider.name} about it{provider.kind === "claude" ? ", browse its files and resume past sessions" : " and browse its files"}.
       </div>
       <Button variant="primary" onClick={() => void pickFolder()}><FolderOpen className="size-3.5" /> Open folder…</Button>
     </div>
@@ -92,6 +96,8 @@ function WorkspaceHeader() {
   const forgetRecent = useWorkspace((s) => s.forgetRecent);
   const branch = useGitBranch(cwd);
   const gitRoot = useSharedGit(cwd)?.root ?? null;
+  const provider = useSelectedProvider();
+  const isClaude = provider.kind === "claude";
   const menu = useContextMenu();
 
   const showMenu = async (e: MouseEvent) => {
@@ -113,7 +119,9 @@ function WorkspaceHeader() {
     }
     const items: MenuItem[] = [
       { label: "Open folder…", icon: <FolderOpen className="size-3.5" />, onClick: () => void pickFolder() },
-      { label: "Projects with Claude history", icon: <Sparkles className="size-3.5" />, submenu: projects.length ? projects : [{ label: "None found", disabled: true, onClick: () => {} }] },
+      ...(isClaude
+        ? [{ label: "Projects with Claude history", icon: <Sparkles className="size-3.5" />, submenu: projects.length ? projects : [{ label: "None found", disabled: true, onClick: () => {} }] } as MenuItem]
+        : []),
     ];
     const others = recent.filter((r) => r !== cwd);
     if (others.length) {
@@ -154,7 +162,7 @@ function WorkspaceHeader() {
       </button>
       {cwd && (
         <Button variant="primary" className="mt-1.5 w-full justify-center" onClick={() => openClaudeWorkspace(cwd)}>
-          <Plus className="size-3.5" /> New chat
+          <Plus className="size-3.5" /> New {isClaude ? "" : `${provider.name} `}chat
         </Button>
       )}
       {menu.element}
@@ -212,6 +220,8 @@ function Workspace({ cwd }: { cwd: string }) {
   const sessionsOpen = useWorkspace((s) => s.sessionsOpen);
   const setSessionsOpen = useWorkspace((s) => s.setSessionsOpen);
   const git = useSharedGit(cwd);
+  // Sessions come from ~/.claude/projects: only shown while Claude Code is the selected AI connection.
+  const isClaude = useSelectedProvider().kind === "claude";
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
   const [sessErr, setSessErr] = useState<string | null>(null);
   const [sessLoading, setSessLoading] = useState(false);
@@ -223,6 +233,7 @@ function Workspace({ cwd }: { cwd: string }) {
   const filesPanel = usePanelRef();
 
   const loadSessions = useCallback(async (manual = false) => {
+    if (!isClaude) return;
     setSessLoading(true);
     try {
       setSessions(await api.claudeSessions(cwd));
@@ -234,7 +245,7 @@ function Workspace({ cwd }: { cwd: string }) {
       setSessLoading(false);
       setNow(Date.now());
     }
-  }, [cwd]);
+  }, [cwd, isClaude]);
 
   useEffect(() => { void loadSessions(); }, [loadSessions]);
   useVisibleInterval(() => {
@@ -274,12 +285,15 @@ function Workspace({ cwd }: { cwd: string }) {
         }}
       >
         <div className="flex h-full flex-col">
-          <SectionHeader title="Sessions" open={sessionsOpen} onToggle={toggleSessions} count={sessions?.length}>
+          <SectionHeader title="Sessions" open={sessionsOpen} onToggle={toggleSessions} count={isClaude ? sessions?.length : undefined}>
             <IconButton title="Refresh sessions" className="size-5.5" onClick={() => { void loadSessions(true); void refreshGit(cwd); }}>
               <RefreshCw className={clsx("size-3.5", sessLoading && "animate-spin")} />
             </IconButton>
           </SectionHeader>
-          {sessionsOpen && (
+          {sessionsOpen && !isClaude && (
+            <div className="px-3 py-2 text-[12px] text-faint">Sessions are available for Claude Code. Pick it in the header above to browse and resume them.</div>
+          )}
+          {sessionsOpen && isClaude && (
             <div className="min-h-0 flex-1">
               <SessionsList cwd={cwd} sessions={sessions} error={sessErr} loading={sessLoading} query={query} setQuery={setQuery} now={now} />
             </div>

@@ -10,6 +10,7 @@ import ConnectionTree from "../../features/connections/ConnectionTree";
 import HistoryPanel from "../../features/history/HistoryPanel";
 import NetworkPanel from "../../features/network/NetworkPanel";
 import ClaudePanel from "../../features/claude/ClaudePanel";
+import { AiConnectionsDialog, ProviderPicker } from "../../features/claude/AiProviders";
 import GitPanel from "../../features/git/GitPanel";
 import { inFocus, useConnections, useFocusProject } from "../../store/connections";
 import { useContextMenu, type MenuItem } from "../../features/connections/ContextMenu";
@@ -68,6 +69,7 @@ export default function AppShell() {
       </div>
       <StatusBar />
       <ConnectionDialog />
+      <AiConnectionsDialog />
       <UpdateDialog />
       <Toaster theme="dark" position="bottom-right" richColors closeButton />
     </div>
@@ -90,10 +92,10 @@ function ActivityBar() {
   );
   return (
     <div className="flex w-11 shrink-0 flex-col items-center border-r border-line bg-app pt-1">
+      {item("claude", <Sparkles className="size-5" />, "AI Workspace")}
       {item("connections", <Database className="size-5" />, "Connections")}
       {item("history", <History className="size-5" />, "History & saved queries")}
       {item("network", <Shield className="size-5" />, "VPN & SSH tunnels")}
-      {item("claude", <Sparkles className="size-5" />, "Claude Code")}
       {item("git", <GitBranch className="size-5" />, "Git repositories")}
     </div>
   );
@@ -106,11 +108,12 @@ function Sidebar() {
     <div className="flex h-full flex-col bg-panel">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-          {sidebar === "connections" ? "Connections" : sidebar === "network" ? "VPN & Tunnels" : sidebar === "claude" ? "Claude Code" : sidebar === "git" ? "Git" : "History"}
+          {sidebar === "connections" ? "Connections" : sidebar === "network" ? "VPN & Tunnels" : sidebar === "claude" ? "AI Workspace" : sidebar === "git" ? "Git" : "History"}
         </span>
         {sidebar === "connections" && (
           <IconButton title="New connection" onClick={() => openDialog(null)}><Plus className="size-4" /></IconButton>
         )}
+        {sidebar === "claude" && <ProviderPicker />}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {sidebar === "connections" ? <ConnectionTree /> : sidebar === "network" ? <NetworkPanel /> : sidebar === "claude" ? <ClaudePanel /> : sidebar === "git" ? <GitPanel /> : <HistoryPanel />}
@@ -200,7 +203,7 @@ function ProjectBar() {
 /** Spec + title of a tab, to recreate it in another window. */
 async function tabTransfer(t: Tab): Promise<TabTransfer> {
   const { id, dirty, ...spec } = t;
-  // Claude: resume the session the terminal is on (it may have changed since the tab opened).
+  // AI workspace on Claude: resume the session the terminal is on (it may have changed since the tab opened).
   if (spec.type === "claude") return { ...spec, sessionId: (await detectSession(id)) ?? spec.sessionId ?? null };
   return spec;
 }
@@ -215,7 +218,7 @@ async function moveTabToWindow(t: Tab) {
     });
     if (!ok) return;
   }
-  if (await openNewWindow(useConnections.getState().focusProjectId, await tabTransfer(t))) useTabs.getState().close(t.id);
+  if (await openNewWindow(useConnections.getState().focusProjectId, await tabTransfer(t))) useTabs.getState().close(t.id, true);
 }
 
 function Workspace() {
@@ -226,7 +229,7 @@ function Workspace() {
     const transferable = t.type !== "welcome";
     menu.show(e, [
       { label: "Move to new window", icon: <SquareArrowOutUpRight className="size-3.5" />, disabled: !transferable, onClick: () => void moveTabToWindow(t) },
-      // A copy of a Claude tab would run a second claude on the same session.
+      // A copy of an AI workspace tab would run a second agent on the same session.
       ...(t.type !== "claude"
         ? [{ label: "Open copy in new window", icon: <Copy className="size-3.5" />, disabled: !transferable, onClick: async () => void openNewWindow(focusId, await tabTransfer(t)) } as MenuItem]
         : []),

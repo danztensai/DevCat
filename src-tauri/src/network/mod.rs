@@ -11,7 +11,7 @@ mod openvpn;
 mod parse;
 mod registry;
 mod ssh_tunnel;
-mod store;
+pub(crate) mod store;
 mod tools;
 pub mod traffic;
 mod wireguard;
