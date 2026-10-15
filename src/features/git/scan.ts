@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { useWorkspace } from "../claude/sidebar/workspace";
 
 const KEY_ROOT = "devcat.git.root";
+/** Scan folder per focused project: { [projectId]: root }. */
+const KEY_ROOT_BY_PROJECT = "devcat.git.rootByProject";
 const KEY_RECENT = "devcat.git.recent";
 const KEY_DEPTH = "devcat.git.depth";
 const MAX_RECENT = 10;
@@ -24,22 +26,33 @@ function save(key: string, v: unknown) {
 interface ScanState {
   /** null = follow the Claude workspace folder. */
   root: string | null;
+  /** Focused project the root belongs to (null = no focus: the global root). */
+  project: string | null;
   recent: string[];
   depth: number;
   setRoot: (root: string | null) => void;
+  setProject: (projectId: string | null) => void;
   forgetRecent: (root: string) => void;
   setDepth: (depth: number) => void;
 }
 
 export const useGitScan = create<ScanState>((set, get) => ({
   root: load<string | null>(KEY_ROOT, null),
+  project: null,
   recent: load<string[]>(KEY_RECENT, []),
   depth: load(KEY_DEPTH, DEFAULT_DEPTH),
   setRoot: (root) => {
     const recent = root ? [root, ...get().recent.filter((r) => r !== root)].slice(0, MAX_RECENT) : get().recent;
-    save(KEY_ROOT, root);
+    const project = get().project;
+    if (project) save(KEY_ROOT_BY_PROJECT, { ...load<Record<string, string>>(KEY_ROOT_BY_PROJECT, {}), [project]: root ?? undefined });
+    else save(KEY_ROOT, root);
     save(KEY_RECENT, recent);
     set({ root, recent });
+  },
+  setProject: (project) => {
+    if (project === get().project) return;
+    const root = project ? load<Record<string, string>>(KEY_ROOT_BY_PROJECT, {})[project] ?? null : load<string | null>(KEY_ROOT, null);
+    set({ project, root });
   },
   forgetRecent: (root) => {
     const recent = get().recent.filter((r) => r !== root);

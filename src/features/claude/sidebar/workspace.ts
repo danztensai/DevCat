@@ -3,6 +3,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { create } from "zustand";
 
 const KEY_CWD = "devcat.claude.cwd";
+/** Folder per focused project: { [projectId]: cwd }. */
+const KEY_CWD_BY_PROJECT = "devcat.claude.cwdByProject";
 const KEY_RECENT = "devcat.claude.recent";
 const KEY_IGNORED = "devcat.claude.showIgnored";
 const KEY_SPLIT = "devcat.claude.sessionsOpen";
@@ -22,10 +24,14 @@ function save(key: string, v: unknown) {
 
 interface WorkspaceState {
   cwd: string | null;
+  /** Focused project the folder belongs to (null = no focus: the global folder). */
+  project: string | null;
   recent: string[];
   showIgnored: boolean;
   sessionsOpen: boolean;
   setCwd: (cwd: string | null) => void;
+  /** Switch to the folder remembered for a focused project (null = the global one). */
+  setProject: (projectId: string | null) => void;
   forgetRecent: (cwd: string) => void;
   setShowIgnored: (v: boolean) => void;
   setSessionsOpen: (v: boolean) => void;
@@ -33,14 +39,22 @@ interface WorkspaceState {
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   cwd: load<string | null>(KEY_CWD, null),
+  project: null,
   recent: load<string[]>(KEY_RECENT, []),
   showIgnored: load(KEY_IGNORED, false),
   sessionsOpen: load(KEY_SPLIT, true),
   setCwd: (cwd) => {
     const recent = cwd ? [cwd, ...get().recent.filter((r) => r !== cwd)].slice(0, MAX_RECENT) : get().recent;
-    save(KEY_CWD, cwd);
+    const project = get().project;
+    if (project) save(KEY_CWD_BY_PROJECT, { ...load<Record<string, string>>(KEY_CWD_BY_PROJECT, {}), [project]: cwd ?? undefined });
+    else save(KEY_CWD, cwd);
     save(KEY_RECENT, recent);
     set({ cwd, recent });
+  },
+  setProject: (project) => {
+    if (project === get().project) return;
+    const cwd = project ? load<Record<string, string>>(KEY_CWD_BY_PROJECT, {})[project] ?? null : load<string | null>(KEY_CWD, null);
+    set({ project, cwd });
   },
   forgetRecent: (cwd) => {
     const recent = get().recent.filter((r) => r !== cwd);

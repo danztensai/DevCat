@@ -22,6 +22,7 @@ import { KeepAwakeButton } from "../../features/keepawake/KeepAwakeButton";
 import { UpdateDialog } from "../../features/update/UpdateDialog";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
 import { IS_MAC, IS_MAIN_WINDOW, NEW_WINDOW_SHORTCUT, openNewWindow, takeLaunchTab, type TabTransfer } from "../../lib/windows";
+import "../../store/projectFolders";
 import { openTab, useTabs } from "../../store/tabs";
 import { useUi, type SidebarView } from "../../store/ui";
 import { TabContent } from "../../tabs/registry";
@@ -188,7 +189,7 @@ function ProjectBar() {
         <>
           <span className="rounded bg-black/25 px-1.5 py-px text-[10px] font-semibold tracking-wider text-fg/80 uppercase">Focus mode</span>
           <span className="truncate text-muted">
-            {count} connection{count === 1 ? "" : "s"} · other projects are hidden
+            {count} connection{count === 1 ? "" : "s"}
           </span>
           <button onClick={() => setFocus(null)} className="ml-auto flex h-6 items-center gap-1.5 rounded px-2 text-muted hover:bg-hover hover:text-fg">
             <LogOut className="size-3.5" />Exit focus
