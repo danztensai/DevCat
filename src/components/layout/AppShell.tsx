@@ -17,6 +17,7 @@ import { useContextMenu, type MenuItem } from "../../features/connections/Contex
 import { createProject, focusProject } from "../../features/connections/tree/projectActions";
 import { confirmDialog } from "../../features/connections/dialogs";
 import { detectSession } from "../../features/claude/store";
+import { KeepAwakeButton } from "../../features/keepawake/KeepAwakeButton";
 import { UpdateDialog } from "../../features/update/UpdateDialog";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
 import { IS_MAC, IS_MAIN_WINDOW, NEW_WINDOW_SHORTCUT, openNewWindow, takeLaunchTab, type TabTransfer } from "../../lib/windows";
@@ -192,9 +193,12 @@ function ProjectBar() {
           </button>
         </>
       )}
-      <IconButton title={`New window (${NEW_WINDOW_SHORTCUT})`} className={focus ? undefined : "ml-auto"} onClick={() => void openNewWindow(focus?.id)}>
-        <AppWindow className="size-3.5" />
-      </IconButton>
+      <div className={clsx("flex items-center gap-0.5", !focus && "ml-auto")}>
+        <KeepAwakeButton />
+        <IconButton title={`New window (${NEW_WINDOW_SHORTCUT})`} onClick={() => void openNewWindow(focus?.id)}>
+          <AppWindow className="size-3.5" />
+        </IconButton>
+      </div>
       {menu.element}
     </div>
   );

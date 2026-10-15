@@ -350,3 +350,6 @@ export interface RemoteOpts { remote?: string | null; rebase?: boolean; setUpstr
 
 // ---- app updates (mirror src-tauri/src/updater.rs)
 export interface UpdateInfo { version: string; currentVersion: string; date?: string | null; notes?: string | null; canInstall: boolean }
+
+// ---- keep awake (mirror src-tauri/src/keep_awake.rs)
+export interface KeepAwakeState { on: boolean; until?: number | null }

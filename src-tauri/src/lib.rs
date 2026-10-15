@@ -9,6 +9,7 @@ mod error;
 mod gitx;
 mod history;
 mod infra;
+mod keep_awake;
 mod models;
 mod network;
 mod projects;
@@ -47,6 +48,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            // keep awake
+            keep_awake::keep_awake_status,
+            keep_awake::keep_awake_set,
             // updates
             updater::update_check,
             updater::update_install,
@@ -220,6 +224,7 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 network::shutdown();
                 claude::runner::shutdown_all();
+                keep_awake::shutdown();
             }
         });
 }

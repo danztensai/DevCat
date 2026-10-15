@@ -2,6 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  KeepAwakeState,
   UpdateInfo,
   GitRepo, GitLogQuery, GitCommit, GitCommitDetail, GitBlame, GitRefs, GitStash, CommitAction, RemoteOpts,
   AiDetect, AiProvider,
@@ -121,6 +122,11 @@ export const api = {
   gitDiscardAll: (cwd: string, includeUntracked: boolean) => invoke<void>("git_discard_all", { cwd, includeUntracked }),
   /** paths: commit only these files (staged or not); others stay as they are. */
   gitCommit: (cwd: string, message: string, paths?: string[] | null) => invoke<string>("git_commit", { cwd, message, paths: paths ?? null }),
+
+  // Keep the display/system awake (Caffeine-style). Event: "keep-awake" (KeepAwakeState) to all windows.
+  keepAwakeStatus: () => invoke<KeepAwakeState>("keep_awake_status"),
+  /** minutes null = until turned off. */
+  keepAwakeSet: (on: boolean, minutes?: number | null) => invoke<KeepAwakeState>("keep_awake_set", { on, minutes: minutes ?? null }),
 
   // App updates. Event: "update-progress" ({ downloaded, total? })
   /** null = up to date. */

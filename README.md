@@ -24,6 +24,8 @@ Grab the latest installer for macOS, Windows or Linux from the
 - **Automatic updates**: DevCat checks GitHub releases and offers new versions in a popup (Update and restart / Later /
   Skip this version), or use *Check for updates…* in the project menu or click the version in the status bar. Updates are
   signed and verified before installing. Linux .deb/.rpm installs get a download link instead (the AppImage self-updates).
+- **Keep awake**: the coffee cup at the top right keeps the screen and computer from sleeping (like Caffeine /
+  Amphetamine). Click to toggle; right-click to keep awake for 15 minutes to 8 hours.
 - **Multiple windows**: ⇧⌘N (Ctrl+Shift+N) opens another window; open a project in its own window or move a tab
   to a new window. Each window has its own tabs and project focus.
 - **Connections**: saved profiles with color tags, SSH tunnels, SSL, read-only mode.
