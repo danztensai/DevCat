@@ -146,7 +146,10 @@ pub mod runner;
 pub mod review;
 pub mod sessions;
 pub mod files;
+pub mod open_external;
 pub mod git;
+mod locate;
+pub mod pty;
 
 #[allow(dead_code)]
 fn _keep(_: AppResult<()>) {}

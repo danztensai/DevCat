@@ -122,12 +122,18 @@ pub fn run() {
             claude::runner::claude_permission,
             claude::runner::claude_control,
             claude::runner::claude_stop,
+            claude::runner::claude_run_info,
+            claude::pty::pty_open,
+            claude::pty::pty_write,
+            claude::pty::pty_resize,
+            claude::pty::pty_close,
             claude::review::claude_review,
             claude::sessions::claude_projects,
             claude::sessions::claude_sessions,
             claude::sessions::claude_transcript,
             claude::files::fs_list,
             claude::files::fs_preview,
+            claude::open_external::fs_open_external,
             claude::git::git_status,
             claude::git::git_file_versions,
             claude::git::git_diff_text,
@@ -160,6 +166,7 @@ pub fn run() {
             // Tear down VPNs / tunnels so no elevated openvpn or wg interface outlives the app.
             if let tauri::RunEvent::Exit = event {
                 network::shutdown();
+                claude::runner::shutdown_all();
             }
         });
 }

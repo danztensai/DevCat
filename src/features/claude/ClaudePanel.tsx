@@ -1,5 +1,303 @@
-// PLACEHOLDER — sidebar: workspace folder, sessions list, file tree.
-import { Empty } from "../../components/ui";
+// Sidebar for the Claude Code activity: workspace folder, past sessions, file tree.
+import clsx from "clsx";
+import {
+  ChevronDown, ChevronRight, Copy, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
+import { toast } from "sonner";
+import { Button, IconButton } from "../../components/ui";
+import { api } from "../../lib/api";
+import type { ClaudeInfo, GitStatus, SessionMeta } from "../../lib/types";
+import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
+import { basename, copyText, relTime, revealPath } from "../files/format";
+import { openClaudeWorkspace } from "./open";
+import FileTree, { type FileTreeHandle } from "./sidebar/FileTree";
+import { SessionsList } from "./sidebar/SessionsList";
+import { pickFolder, useWorkspace } from "./sidebar/workspace";
+
+const REFRESH_MS = 15_000;
+const INSTALL_CMD = "curl -fsSL https://claude.ai/install.sh | bash";
+
+/** Runs `fn` every `ms` while the window is visible (and once when it becomes visible again). */
+function useVisibleInterval(fn: () => void, ms: number) {
+  const ref = useRef(fn);
+  ref.current = fn;
+  useEffect(() => {
+    const t = setInterval(() => { if (!document.hidden) ref.current(); }, ms);
+    const vis = () => { if (!document.hidden) ref.current(); };
+    document.addEventListener("visibilitychange", vis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", vis); };
+  }, [ms]);
+}
+
+/** Shorten a path for display: /Users/me/x → ~/x */
+function tildify(p: string): string {
+  return p.replace(/^\/(Users|home)\/[^/]+/, "~");
+}
+
 export default function ClaudePanel() {
-  return <Empty title="Claude Code">Open a folder to start.</Empty>;
+  const cwd = useWorkspace((s) => s.cwd);
+  const [info, setInfo] = useState<ClaudeInfo | null>(null);
+
+  useEffect(() => {
+    api.claudeInfo().then(setInfo).catch(() => setInfo(null));
+  }, []);
+
+  return (
+    <div className="flex h-full flex-col">
+      <WorkspaceHeader />
+      {info && !info.path && <InstallBanner />}
+      {cwd ? <Workspace key={cwd} cwd={cwd} /> : <NoFolder />}
+    </div>
+  );
+}
+
+function InstallBanner() {
+  return (
+    <div className="mx-2 mt-2 rounded-md border border-warn/30 bg-warn/10 p-2 text-[12px]">
+      <div className="flex items-center gap-1.5 font-medium text-warn"><Terminal className="size-3.5" /> Claude Code CLI not found</div>
+      <div className="mt-1 text-muted">Install it, then restart DevCat:</div>
+      <button
+        className="selectable mt-1 flex w-full items-center gap-1 rounded bg-app px-1.5 py-1 text-left font-mono text-[11px] text-fg/90 hover:bg-hover"
+        title="Copy command"
+        onClick={() => void copyText(INSTALL_CMD, "Install command copied")}
+      >
+        <span className="min-w-0 flex-1 truncate">{INSTALL_CMD}</span>
+        <Copy className="size-3 shrink-0 text-faint" />
+      </button>
+    </div>
+  );
+}
+
+function NoFolder() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+      <Sparkles className="size-8 text-accent/70" />
+      <div className="font-medium text-fg/85">No folder open</div>
+      <div className="max-w-56 text-xs text-muted">
+        Pick a project folder to chat with Claude Code about it, browse its files and resume past sessions.
+      </div>
+      <Button variant="primary" onClick={() => void pickFolder()}><FolderOpen className="size-3.5" /> Open folder…</Button>
+    </div>
+  );
+}
+
+/** Current folder + picker menu (open…, recents, projects with Claude history). */
+function WorkspaceHeader() {
+  const cwd = useWorkspace((s) => s.cwd);
+  const recent = useWorkspace((s) => s.recent);
+  const setCwd = useWorkspace((s) => s.setCwd);
+  const forgetRecent = useWorkspace((s) => s.forgetRecent);
+  const branch = useGitBranch(cwd);
+  const menu = useContextMenu();
+
+  const showMenu = async (e: MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const at = { clientX: r.left, clientY: r.bottom + 2 };
+    let projects: MenuItem[] = [];
+    try {
+      const list = await api.claudeProjects();
+      projects = [...list]
+        .sort((a, b) => (b.lastActive ?? "").localeCompare(a.lastActive ?? ""))
+        .slice(0, 20)
+        .map((p) => ({
+          label: `${tildify(p.cwd)}  ·  ${p.sessionCount} session${p.sessionCount === 1 ? "" : "s"}${p.lastActive ? ` · ${relTime(p.lastActive)}` : ""}`,
+          icon: <History className="size-3.5" />,
+          onClick: () => setCwd(p.cwd),
+        }));
+    } catch {
+      projects = [{ label: "Unavailable", disabled: true, onClick: () => {} }];
+    }
+    const items: MenuItem[] = [
+      { label: "Open folder…", icon: <FolderOpen className="size-3.5" />, onClick: () => void pickFolder() },
+      { label: "Projects with Claude history", icon: <Sparkles className="size-3.5" />, submenu: projects.length ? projects : [{ label: "None found", disabled: true, onClick: () => {} }] },
+    ];
+    const others = recent.filter((r) => r !== cwd);
+    if (others.length) {
+      items.push("separator");
+      for (const r of others) items.push({ label: tildify(r), icon: <FolderOpen className="size-3.5" />, onClick: () => setCwd(r) });
+      items.push({ label: "Clear recent folders", icon: <X className="size-3.5" />, onClick: () => others.forEach(forgetRecent) });
+    }
+    if (cwd) {
+      items.push(
+        "separator",
+        { label: "Copy folder path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(cwd) },
+        { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(cwd) },
+        { label: "Close folder", icon: <X className="size-3.5" />, onClick: () => setCwd(null) },
+      );
+    }
+    menu.show(at, items);
+  };
+
+  return (
+    <div className="shrink-0 border-b border-line px-2 py-1.5">
+      <button
+        className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-hover"
+        title={cwd ?? "Open a folder"}
+        onClick={(e) => void showMenu(e)}
+      >
+        <FolderOpen className={clsx("size-4 shrink-0", cwd ? "text-accent" : "text-faint")} />
+        <div className="min-w-0 flex-1">
+          <div className={clsx("truncate text-[13px] font-medium", !cwd && "text-muted")}>{cwd ? basename(cwd) : "Open folder…"}</div>
+          {cwd && <div className="truncate text-[11px] text-faint">{tildify(cwd)}</div>}
+        </div>
+        {branch && (
+          <span className="inline-flex max-w-[45%] shrink-0 items-center gap-0.5 rounded bg-hover px-1.5 py-px font-mono text-[11px] text-muted" title={`Branch ${branch}`}>
+            <GitBranch className="size-3 shrink-0" /><span className="truncate">{branch}</span>
+          </span>
+        )}
+        <ChevronDown className="size-3.5 shrink-0 text-faint" />
+      </button>
+      {cwd && (
+        <Button variant="primary" className="mt-1.5 w-full justify-center" onClick={() => openClaudeWorkspace(cwd)}>
+          <Plus className="size-3.5" /> New chat
+        </Button>
+      )}
+      {menu.element}
+    </div>
+  );
+}
+
+/** Branch name for the header — read from the shared git status store below. */
+function useGitBranch(cwd: string | null) {
+  const git = useSharedGit(cwd);
+  return git?.isRepo ? (git.branch ?? "detached") : null;
+}
+
+// Git status is needed by both the header (branch) and the tree (coloring); keep a tiny shared cache.
+const gitListeners = new Set<() => void>();
+let gitCache: { cwd: string; status: GitStatus | null } | null = null;
+async function refreshGit(cwd: string) {
+  try {
+    const status = await api.gitStatus(cwd);
+    gitCache = { cwd, status };
+  } catch {
+    gitCache = { cwd, status: null };
+  }
+  gitListeners.forEach((l) => l());
+}
+function useSharedGit(cwd: string | null): GitStatus | null {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const l = () => force((n) => n + 1);
+    gitListeners.add(l);
+    return () => void gitListeners.delete(l);
+  }, []);
+  useEffect(() => {
+    if (cwd && gitCache?.cwd !== cwd) void refreshGit(cwd);
+  }, [cwd]);
+  return cwd && gitCache?.cwd === cwd ? gitCache.status : null;
+}
+
+function SectionHeader({ title, open, onToggle, count, children }: {
+  title: string; open: boolean; onToggle: () => void; count?: number; children?: ReactNode;
+}) {
+  return (
+    <div className="group flex h-7 shrink-0 items-center gap-1 pr-1.5 pl-1">
+      <button className="flex min-w-0 flex-1 items-center gap-1 text-[11px] font-semibold tracking-wider text-muted uppercase hover:text-fg" onClick={onToggle}>
+        <ChevronRight className={clsx("size-3 transition-transform duration-100", open && "rotate-90")} />
+        <span className="truncate">{title}</span>
+        {count != null && <span className="font-normal text-faint normal-case">{count}</span>}
+      </button>
+      {children}
+    </div>
+  );
+}
+
+function Workspace({ cwd }: { cwd: string }) {
+  const sessionsOpen = useWorkspace((s) => s.sessionsOpen);
+  const setSessionsOpen = useWorkspace((s) => s.setSessionsOpen);
+  const git = useSharedGit(cwd);
+  const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
+  const [sessErr, setSessErr] = useState<string | null>(null);
+  const [sessLoading, setSessLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [now, setNow] = useState(Date.now());
+  const [filesOpen, setFilesOpen] = useState(true);
+  const tree = useRef<FileTreeHandle>(null);
+  const sessPanel = usePanelRef();
+  const filesPanel = usePanelRef();
+
+  const loadSessions = useCallback(async (manual = false) => {
+    setSessLoading(true);
+    try {
+      setSessions(await api.claudeSessions(cwd));
+      setSessErr(null);
+    } catch (e) {
+      setSessErr(String(e));
+      if (manual) toast.error(`Couldn't load sessions: ${String(e)}`);
+    } finally {
+      setSessLoading(false);
+      setNow(Date.now());
+    }
+  }, [cwd]);
+
+  useEffect(() => { void loadSessions(); }, [loadSessions]);
+  useVisibleInterval(() => {
+    void loadSessions();
+    void refreshGit(cwd);
+    tree.current?.refresh();
+  }, REFRESH_MS);
+
+  const toggleSessions = () => {
+    const p = sessPanel.current;
+    if (!p) return;
+    if (p.isCollapsed()) p.expand(); else p.collapse();
+  };
+  const toggleFiles = () => {
+    const p = filesPanel.current;
+    if (!p) return;
+    if (p.isCollapsed()) p.expand(); else p.collapse();
+  };
+
+  // Restore the persisted collapsed state once panels exist.
+  useEffect(() => {
+    if (!sessionsOpen) sessPanel.current?.collapse();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Group orientation="vertical" className="min-h-0 flex-1">
+      <Panel
+        panelRef={sessPanel}
+        defaultSize="38%"
+        minSize="90px"
+        collapsible
+        collapsedSize="28px"
+        onResize={() => {
+          const open = !(sessPanel.current?.isCollapsed() ?? false);
+          if (open !== sessionsOpen) setSessionsOpen(open);
+        }}
+      >
+        <div className="flex h-full flex-col">
+          <SectionHeader title="Sessions" open={sessionsOpen} onToggle={toggleSessions} count={sessions?.length}>
+            <IconButton title="Refresh sessions" className="size-5.5" onClick={() => { void loadSessions(true); void refreshGit(cwd); }}>
+              <RefreshCw className={clsx("size-3.5", sessLoading && "animate-spin")} />
+            </IconButton>
+          </SectionHeader>
+          {sessionsOpen && (
+            <div className="min-h-0 flex-1">
+              <SessionsList cwd={cwd} sessions={sessions} error={sessErr} loading={sessLoading} query={query} setQuery={setQuery} now={now} />
+            </div>
+          )}
+        </div>
+      </Panel>
+      <Separator className="h-px bg-line hover:bg-accent data-[separator=active]:bg-accent" />
+      <Panel
+        panelRef={filesPanel}
+        minSize="80px"
+        collapsible
+        collapsedSize="28px"
+        onResize={() => setFilesOpen(!(filesPanel.current?.isCollapsed() ?? false))}
+      >
+        <div className="flex h-full flex-col">
+          <SectionHeader title="Files" open={filesOpen} onToggle={toggleFiles} />
+          <div className={clsx("min-h-0 flex-1", !filesOpen && "hidden")}>
+            <FileTree ref={tree} cwd={cwd} git={git} />
+          </div>
+        </div>
+      </Panel>
+    </Group>
+  );
 }

@@ -96,6 +96,8 @@ export const api = {
   claudeTranscript: (cwd: string, sessionId: string) => invoke<unknown[]>("claude_transcript", { cwd, sessionId }),
   fsList: (dir: string, showIgnored = false) => invoke<FileEntry[]>("fs_list", { dir, showIgnored }),
   fsPreview: (path: string) => invoke<FilePreview>("fs_preview", { path }),
+  /** Open a regular, non-executable file in its default app (scripts/executables are refused). */
+  fsOpenExternal: (path: string) => invoke<void>("fs_open_external", { path }),
   gitStatus: (cwd: string) => invoke<GitStatus>("git_status", { cwd }),
   gitFileVersions: (cwd: string, path: string, staged: boolean) => invoke<FileVersions>("git_file_versions", { cwd, path, staged }),
   gitDiffText: (cwd: string, staged: boolean) => invoke<string>("git_diff_text", { cwd, staged }),
@@ -103,6 +105,14 @@ export const api = {
   gitUnstage: (cwd: string, paths: string[]) => invoke<void>("git_unstage", { cwd, paths }),
   gitDiscard: (cwd: string, paths: string[]) => invoke<void>("git_discard", { cwd, paths }),
   gitCommit: (cwd: string, message: string) => invoke<string>("git_commit", { cwd, message }),
+
+  // Terminal (PTY). Events: "pty-output" ({ id, data: base64 }), "pty-exit" ({ id, code })
+  /** program: "claude" = the resolved Claude Code binary, null = the user's login shell, else a path/name. */
+  ptyOpen: (cwd: string, program: string | null, args: string[], cols: number, rows: number) =>
+    invoke<string>("pty_open", { cwd, program, args, cols, rows }),
+  ptyWrite: (id: string, data: string) => invoke<void>("pty_write", { id, data }),
+  ptyResize: (id: string, cols: number, rows: number) => invoke<void>("pty_resize", { id, cols, rows }),
+  ptyClose: (id: string) => invoke<void>("pty_close", { id }),
 
   // kubernetes contexts (used by the connection dialog; implemented in infra/k8s.rs)
   k8sContexts: (kubeconfigPath?: string | null) => invoke<string[]>("k8s_contexts", { kubeconfigPath }),
