@@ -19,7 +19,7 @@
 //! Events to the frontend:
 //!   `claude-msg`  → { runId, msg }   (every stdout JSON object, unmodified)
 //!   `claude-exit` → { runId, code, error? }
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -142,41 +142,11 @@ pub struct FileVersions {
     pub binary: bool,
 }
 
-const TODO: &str = "Claude Code integration not implemented yet";
-fn todo<T>() -> AppResult<T> { Err(AppError::Unsupported(TODO.into())) }
+pub mod runner;
+pub mod review;
+pub mod sessions;
+pub mod files;
+pub mod git;
 
-// ---- Claude process
-#[tauri::command] pub async fn claude_info() -> AppResult<ClaudeInfo> { todo() }
-/// Start a session in `cwd`; returns a run id. Messages arrive as `claude-msg` events.
-#[tauri::command] pub async fn claude_start(_app: tauri::AppHandle, _cwd: String, _opts: StartOptions) -> AppResult<String> { todo() }
-/// Send a user message (text; optional image paths are attached as base64 image blocks).
-#[tauri::command] pub async fn claude_send(_run_id: String, _text: String, _images: Option<Vec<String>>) -> AppResult<()> { todo() }
-/// Answer a can_use_tool request. `decision` = {behavior:"allow", updatedInput?, updatedPermissions?} | {behavior:"deny", message}.
-#[tauri::command] pub async fn claude_permission(_run_id: String, _request_id: String, _decision: Value) -> AppResult<()> { todo() }
-/// Send a control request: subtype "interrupt" | "set_permission_mode" ({mode}) | "set_model" ({model}).
-#[tauri::command] pub async fn claude_control(_run_id: String, _subtype: String, _payload: Option<Value>) -> AppResult<Value> { todo() }
-#[tauri::command] pub async fn claude_stop(_run_id: String) -> AppResult<()> { todo() }
-/// Start a one-shot code review run (read-only tools) of `scope`: "uncommitted" | "staged" | "branch" (vs `base`).
-/// Streams like a chat run; the final `result` carries the review (structured findings when supported).
-#[tauri::command] pub async fn claude_review(_app: tauri::AppHandle, _cwd: String, _scope: String, _base: Option<String>, _model: Option<String>) -> AppResult<String> { todo() }
-
-// ---- Sessions (~/.claude/projects)
-#[tauri::command] pub async fn claude_projects() -> AppResult<Vec<ClaudeProject>> { todo() }
-#[tauri::command] pub async fn claude_sessions(_cwd: String) -> AppResult<Vec<SessionMeta>> { todo() }
-/// Transcript lines of a session (only user/assistant/system/result-like entries, raw JSON).
-#[tauri::command] pub async fn claude_transcript(_cwd: String, _session_id: String) -> AppResult<Vec<Value>> { todo() }
-
-// ---- Files
-#[tauri::command] pub async fn fs_list(_dir: String, _show_ignored: Option<bool>) -> AppResult<Vec<FileEntry>> { todo() }
-#[tauri::command] pub async fn fs_preview(_path: String) -> AppResult<FilePreview> { todo() }
-
-// ---- Git
-#[tauri::command] pub async fn git_status(_cwd: String) -> AppResult<GitStatus> { todo() }
-/// original = HEAD (or index when `staged` is false and the file is staged), modified = index (staged) or worktree.
-#[tauri::command] pub async fn git_file_versions(_cwd: String, _path: String, _staged: bool) -> AppResult<FileVersions> { todo() }
-#[tauri::command] pub async fn git_diff_text(_cwd: String, _staged: bool) -> AppResult<String> { todo() }
-#[tauri::command] pub async fn git_stage(_cwd: String, _paths: Vec<String>) -> AppResult<()> { todo() }
-#[tauri::command] pub async fn git_unstage(_cwd: String, _paths: Vec<String>) -> AppResult<()> { todo() }
-/// Discard worktree changes (and delete untracked files) for `paths`.
-#[tauri::command] pub async fn git_discard(_cwd: String, _paths: Vec<String>) -> AppResult<()> { todo() }
-#[tauri::command] pub async fn git_commit(_cwd: String, _message: String) -> AppResult<String> { todo() }
+#[allow(dead_code)]
+fn _keep(_: AppResult<()>) {}
