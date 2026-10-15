@@ -310,3 +310,6 @@ export interface GitRefs { current?: string | null; headSha?: string | null; loc
 export interface GitStash { index: number; name: string; sha: string; message: string; time: number }
 export type CommitAction = "checkout" | "cherry-pick" | "revert" | "reset-soft" | "reset-mixed" | "reset-hard";
 export interface RemoteOpts { remote?: string | null; rebase?: boolean; setUpstream?: boolean; force?: boolean; tags?: boolean }
+
+// ---- app updates (mirror src-tauri/src/updater.rs)
+export interface UpdateInfo { version: string; currentVersion: string; date?: string | null; notes?: string | null; canInstall: boolean }

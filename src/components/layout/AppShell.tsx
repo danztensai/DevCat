@@ -1,7 +1,8 @@
 import clsx from "clsx";
+import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AppWindow, ChevronDown, Copy, Crosshair, Database, Folder, FolderPlus, GitBranch, History, LogOut, Plus, Shield, Sparkles, SquareArrowOutUpRight, X } from "lucide-react";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { AppWindow, ArrowUpCircle, ChevronDown, Copy, Crosshair, Database, Folder, FolderPlus, GitBranch, History, LogOut, Plus, Shield, Sparkles, SquareArrowOutUpRight, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
 import ConnectionDialog from "../../features/connections/ConnectionDialog";
@@ -15,7 +16,9 @@ import { useContextMenu, type MenuItem } from "../../features/connections/Contex
 import { createProject, focusProject } from "../../features/connections/tree/projectActions";
 import { confirmDialog } from "../../features/connections/dialogs";
 import { detectSession } from "../../features/claude/store";
-import { IS_MAC, NEW_WINDOW_SHORTCUT, openNewWindow, takeLaunchTab, type TabTransfer } from "../../lib/windows";
+import { UpdateDialog } from "../../features/update/UpdateDialog";
+import { startUpdateChecks, useUpdate } from "../../features/update/store";
+import { IS_MAC, IS_MAIN_WINDOW, NEW_WINDOW_SHORTCUT, openNewWindow, takeLaunchTab, type TabTransfer } from "../../lib/windows";
 import { openTab, useTabs } from "../../store/tabs";
 import { useUi, type SidebarView } from "../../store/ui";
 import { TabContent } from "../../tabs/registry";
@@ -65,6 +68,7 @@ export default function AppShell() {
       </div>
       <StatusBar />
       <ConnectionDialog />
+      <UpdateDialog />
       <Toaster theme="dark" position="bottom-right" richColors closeButton />
     </div>
   );
@@ -144,6 +148,7 @@ function ProjectBar() {
       { label: "New project…", icon: <FolderPlus className="size-3.5" />, onClick: async () => { const p = await createProject(); if (p) focusProject(p.id); } },
       "separator",
       { label: "New window", icon: <AppWindow className="size-3.5" />, shortcut: NEW_WINDOW_SHORTCUT, onClick: () => void openNewWindow() },
+      { label: "Check for updates…", icon: <ArrowUpCircle className="size-3.5" />, onClick: () => void useUpdate.getState().check(true) },
       ...(projects.length
         ? [{
             label: "Open project in new window",
@@ -288,10 +293,28 @@ function Workspace() {
 function StatusBar() {
   const status = useUi((s) => s.status);
   const open = useConnections((s) => s.open);
+  const update = useUpdate((s) => (s.phase === "available" || s.phase === "error" ? s.info : null));
+  const checking = useUpdate((s) => s.phase === "checking");
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+    // One window checks for updates in the background.
+    if (IS_MAIN_WINDOW) startUpdateChecks();
+  }, []);
   return (
-    <div className="flex h-6 shrink-0 items-center justify-between border-t border-line bg-app px-3 text-[11px] text-muted">
-      <span className="truncate">{status}</span>
+    <div className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-line bg-app px-3 text-[11px] text-muted">
+      <span className="min-w-0 flex-1 truncate">{status}</span>
+      {update && (
+        <button className="flex items-center gap-1 rounded px-1.5 text-accent hover:bg-hover" onClick={() => useUpdate.getState().show()} title="Show the update">
+          <ArrowUpCircle className="size-3" />Update to {update.version}
+        </button>
+      )}
       <span>{open.size} open connection{open.size === 1 ? "" : "s"}</span>
+      {version && (
+        <button className="text-faint hover:text-muted" onClick={() => void useUpdate.getState().check(true)} title="Check for updates">
+          {checking ? "Checking…" : `v${version}`}
+        </button>
+      )}
     </div>
   );
 }

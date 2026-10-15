@@ -21,6 +21,9 @@ Grab the latest installer for macOS, Windows or Linux from the
 ## Features
 
 - **Projects**: group connections into projects and focus on one project at a time.
+- **Automatic updates**: DevCat checks GitHub releases and offers new versions in a popup (Update and restart / Later /
+  Skip this version), or use *Check for updates…* in the project menu or click the version in the status bar. Updates are
+  signed and verified before installing. Linux .deb/.rpm installs get a download link instead (the AppImage self-updates).
 - **Multiple windows**: ⇧⌘N (Ctrl+Shift+N) opens another window; open a project in its own window or move a tab
   to a new window. Each window has its own tabs and project focus.
 - **Connections**: saved profiles with color tags, SSH tunnels, SSL, read-only mode.
@@ -109,6 +112,10 @@ pnpm tauri build        # builds for the current OS
 
 - **macOS** → `src-tauri/target/release/bundle/dmg/DevCat_<version>_aarch64.dmg` (and `.app`)
 - **Windows** → `src-tauri/target/release/bundle/msi/*.msi` and `nsis/*-setup.exe`
+
+Release builds also produce signed update bundles, so they need the updater signing key
+(`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; CI reads them from repository secrets). Without it,
+build with `pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
 
 Each OS's installers must be built on that OS. CI does all of them: push a tag (`git tag v0.1.0 && git push --tags`)
 or run the **build** workflow manually. `.github/workflows/build.yml` builds macOS (Apple Silicon and Intel),

@@ -2,6 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  UpdateInfo,
   GitRepo, GitLogQuery, GitCommit, GitCommitDetail, GitBlame, GitRefs, GitStash, CommitAction, RemoteOpts,
   ClaudeInfo, ClaudeProject, ClaudeStartOptions, FileEntry, FilePreview, FileVersions, GitStatus, SessionMeta,
   ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
@@ -115,6 +116,12 @@ export const api = {
   gitDiscardAll: (cwd: string, includeUntracked: boolean) => invoke<void>("git_discard_all", { cwd, includeUntracked }),
   /** paths: commit only these files (staged or not); others stay as they are. */
   gitCommit: (cwd: string, message: string, paths?: string[] | null) => invoke<string>("git_commit", { cwd, message, paths: paths ?? null }),
+
+  // App updates. Event: "update-progress" ({ downloaded, total? })
+  /** null = up to date. */
+  updateCheck: () => invoke<UpdateInfo | null>("update_check"),
+  /** Install the update found by the last check, then the app restarts. */
+  updateInstall: () => invoke<void>("update_install"),
 
   // Git tools (src-tauri/src/gitx). `cwd` = any path inside the repo.
   /** Find repos at/under `root` (and the repo enclosing it). maxDepth default 6. */

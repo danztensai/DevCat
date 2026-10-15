@@ -27,6 +27,9 @@ export function getCurrentWindow() {
 }
 export const getCurrentWebviewWindow = getCurrentWindow;
 
+// app
+export async function getVersion() { return "0.0.0-bridge"; }
+
 // path
 export async function homeDir() { return "/Users"; }
 export async function join(...p: string[]) { return p.join("/").replace(/\/+/g, "/"); }

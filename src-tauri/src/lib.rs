@@ -13,6 +13,7 @@ mod network;
 mod projects;
 mod state;
 mod store;
+mod updater;
 mod windows;
 
 use tauri::Manager;
@@ -27,6 +28,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let dir = app.path().app_data_dir().expect("no app data dir");
             network::init(dir.clone());
@@ -43,6 +45,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            // updates
+            updater::update_check,
+            updater::update_install,
             // windows
             windows::open_window,
             // connections
