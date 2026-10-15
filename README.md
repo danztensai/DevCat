@@ -10,9 +10,15 @@ Lens-style tooling for Kubernetes and RabbitMQ, built with [Tauri 2](https://tau
 | NoSQL | MongoDB, Redis |
 | Infrastructure | Kubernetes (any kubeconfig context), RabbitMQ (management API) |
 
+## Download
+
+Grab the latest installer for macOS, Windows or Linux from the
+[Releases page](https://github.com/devileya/DevCat/releases/latest).
+
 ## Features
 
-- **Connections**: saved profiles with groups and color tags, SSH tunnels, SSL, read-only mode.
+- **Projects**: group connections into projects and focus on one project at a time.
+- **Connections**: saved profiles with color tags, SSH tunnels, SSL, read-only mode.
   Passwords are stored in the OS keychain (macOS Keychain / Windows Credential Manager),
   never in plain files.
 - **Object browser**: databases, schemas, tables, views, functions, procedures, triggers,
@@ -28,8 +34,9 @@ Lens-style tooling for Kubernetes and RabbitMQ, built with [Tauri 2](https://tau
   SQL backup and restore, and copying tables between connections, even across dialects.
 - **MongoDB**: document/table/JSON views, editing, aggregation pipeline builder, shell-style queries.
 - **Redis**: key browser, editors for every data type, TTL, CLI console.
-- **Kubernetes**: cluster overview, workloads, config, network, storage, events and CRDs with live updates,
-  YAML editing, logs, shell (exec), port-forwarding, scale/restart/delete.
+- **Kubernetes**: cluster overview, applications, workloads, config, network, storage, events, Helm releases and
+  CRDs with live updates; per-row actions (logs, shell, port-forward, scale, restart, edit YAML, delete),
+  including logs and shell on Deployments with a pod switcher.
 - **RabbitMQ**: overview with live message-rate charts; queues, exchanges, bindings, connections,
   channels and consumers; publish and get messages; declare, purge and delete.
 
@@ -74,9 +81,9 @@ pnpm tauri build        # builds for the current OS
 - **macOS** → `src-tauri/target/release/bundle/dmg/DevCat_<version>_aarch64.dmg` (and `.app`)
 - **Windows** → `src-tauri/target/release/bundle/msi/*.msi` and `nsis/*-setup.exe`
 
-Windows installers must be built on Windows. The easiest way is CI: push a tag (`git tag v0.1.0 && git push --tags`)
-or run the **build** workflow manually. `.github/workflows/build.yml` builds the macOS (Apple Silicon and
-Intel) and Windows installers and attaches them to a draft GitHub release.
+Each OS's installers must be built on that OS. CI does all of them: push a tag (`git tag v0.1.0 && git push --tags`)
+or run the **build** workflow manually. `.github/workflows/build.yml` builds macOS (Apple Silicon and Intel),
+Windows (`.exe`/`.msi`) and Linux (`.AppImage`/`.deb`/`.rpm`) installers and publishes them on the GitHub release.
 
 Unsigned macOS builds need to be allowed once via *System Settings → Privacy & Security → Open Anyway*
 (or `xattr -dr com.apple.quarantine /Applications/DevCat.app`). For distribution, configure code signing and
