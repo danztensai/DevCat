@@ -96,8 +96,9 @@ Each OS's installers must be built on that OS. CI does all of them: push a tag (
 or run the **build** workflow manually. `.github/workflows/build.yml` builds macOS (Apple Silicon and Intel),
 Windows (`.exe`/`.msi`) and Linux (`.AppImage`/`.deb`/`.rpm`) installers and publishes them on the GitHub release.
 
-Unsigned macOS builds need to be allowed once via *System Settings → Privacy & Security → Open Anyway*
-(or `xattr -dr com.apple.quarantine /Applications/DevCat.app`). For distribution, configure code signing and
+macOS builds are ad-hoc signed but not notarized, so allow DevCat once via *System Settings → Privacy & Security →
+Open Anyway* (or run `xattr -dr com.apple.quarantine /Applications/DevCat.app`). If macOS says the app "is damaged"
+(builds before v0.2.1), run `codesign --force --deep --sign - /Applications/DevCat.app` and the `xattr` command above. For distribution, configure code signing and
 notarization ([macOS](https://tauri.app/distribute/sign/macos/), [Windows](https://tauri.app/distribute/sign/windows/)).
 
 ## Project layout

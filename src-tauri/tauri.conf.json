@@ -40,7 +40,8 @@
     "longDescription": "DevCat is a cross-platform developer workbench for PostgreSQL, MySQL, SQLite, SQL Server, MongoDB, Redis, Kubernetes and RabbitMQ.",
     "copyright": "",
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-"
     },
     "windows": {
       "nsis": {
