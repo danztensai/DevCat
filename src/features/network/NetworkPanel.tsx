@@ -11,6 +11,7 @@ import {
   connectProfile, deleteProfile, disconnectProfile, duplicateProfile, importProfileFile, openNewProfile, openProfileTab, toggleProfile,
 } from "./actions";
 import { copyText, isBusy, isUp, NET_KIND_META, NetKindIcon, portsLabel, StatusDot, Switch } from "./meta";
+import { InstallToolButton } from "./InstallToolButton";
 import { PasswordlessVpnRow } from "./PasswordlessVpn";
 import { SshConfigImportDialog } from "./SshConfigImport";
 import { useNet, useScopedNetProfiles, fmtRate } from "./store";
@@ -56,6 +57,8 @@ export default function NetworkPanel() {
   };
 
   const missing = (kind: NetKind) => tools !== null && kind !== "ssh" && !tools[kind];
+  /** Missing and DevCat can't install it: connecting is pointless. */
+  const blocked = (kind: NetKind) => missing(kind) && !tools?.installable?.[kind];
 
   // Arrow keys move between rows.
   const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -117,10 +120,10 @@ export default function NetworkPanel() {
             {vpns.length > 0 && (
               <Group title="VPN" count={vpns.length}>
                 {(["openvpn", "wireguard"] as const).filter((k) => missing(k) && vpns.some((p) => p.kind === k)).map((k) => (
-                  <ToolWarning key={k} kind={k} hint={tools?.installHints?.[k]} />
+                  <ToolWarning key={k} kind={k} hint={tools?.installHints?.[k]} installVersion={tools?.installable?.[k]} />
                 ))}
                 <PasswordlessVpnRow kinds={(["openvpn", "wireguard"] as const).filter((k) => vpns.some((p) => p.kind === k))} />
-                {vpns.map((p) => <ProfileRow key={p.id} p={p} focused={!!focus} toolMissing={missing(p.kind)} menu={menu.show} />)}
+                {vpns.map((p) => <ProfileRow key={p.id} p={p} focused={!!focus} toolMissing={blocked(p.kind)} menu={menu.show} />)}
               </Group>
             )}
             {tunnels.length > 0 && (
@@ -149,13 +152,15 @@ function Group({ title, count, children }: { title: string; count: number; child
   );
 }
 
-function ToolWarning({ kind, hint }: { kind: NetKind; hint?: string }) {
+function ToolWarning({ kind, hint, installVersion }: { kind: NetKind; hint?: string; installVersion?: string }) {
   return (
     <div className="mx-2 mb-1 flex items-start gap-1.5 rounded border border-warn/30 bg-warn/10 px-2 py-1 text-[11px] text-warn">
       <AlertTriangle className="mt-px size-3 shrink-0" />
       <div className="min-w-0 flex-1">
         {NET_KIND_META[kind].label} isn't installed.
-        {hint && (
+        {installVersion ? (
+          <InstallToolButton kind={kind as "openvpn" | "wireguard"} version={installVersion} className="mt-1" />
+        ) : hint && (
           <button
             className="mt-0.5 flex max-w-full items-center gap-1 rounded bg-app/60 px-1 font-mono text-[10.5px] text-fg/90 hover:bg-app"
             title="Copy install command"

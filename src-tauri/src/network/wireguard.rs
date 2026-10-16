@@ -61,8 +61,8 @@ pub struct WgRun {
 async fn run_helper(id: &str, cmd: &str, conf: &Path) -> Option<AppResult<elevate::Output>> {
     let args = [cmd.to_string(), "--conf".into(), conf.to_string_lossy().into()];
     match helper::run(&args).await {
-        Outcome::Done(stdout) => Some(Ok(elevate::Output { success: true, stdout, stderr: String::new() })),
-        Outcome::Failed(stderr) => Some(Ok(elevate::Output { success: false, stdout: String::new(), stderr })),
+        Outcome::Done(stdout) => Some(Ok(elevate::Output { success: true, code: Some(0), stdout, stderr: String::new() })),
+        Outcome::Failed(stderr) => Some(Ok(elevate::Output { success: false, code: None, stdout: String::new(), stderr })),
         Outcome::Rejected(m) => Some(Err(AppError::msg(helper::rejection(&m)))),
         Outcome::Unavailable(why) => {
             registry::log(id, &format!("Passwordless helper unavailable ({why}); asking for the administrator password instead"));

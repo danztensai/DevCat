@@ -7,6 +7,7 @@
 //!   `net-status` → `NetStatus`             (on every state change)
 //!   `net-log`    → `{ id, lines: [..] }`   (batched log lines)
 mod elevate;
+pub mod installers;
 pub(crate) mod helper;
 mod openvpn;
 mod parse;
@@ -114,6 +115,9 @@ pub struct NetTools {
     pub elevation: String,
     /// Install hints per tool for the current OS, e.g. {"openvpn": "brew install openvpn"}.
     pub install_hints: HashMap<String, String>,
+    /// Tools DevCat can install itself (Windows), with the version it would install.
+    #[serde(default)]
+    pub installable: HashMap<String, String>,
 }
 
 /// A host from ~/.ssh/config, for "Import from SSH config".
@@ -382,6 +386,18 @@ pub async fn net_logs(id: String) -> AppResult<Vec<String>> {
     Ok(registry::logs(&id))
 }
 
+/// Windows: install OpenVPN / WireGuard with the official installer DevCat ships (one UAC
+/// prompt), then report the tools again. `restartNeeded` is set when Windows asks for a reboot.
+#[tauri::command]
+pub async fn net_install_tool(app: tauri::AppHandle, tool: String) -> AppResult<serde_json::Value> {
+    if tool != "openvpn" && tool != "wireguard" {
+        return Err(AppError::msg(format!("Unknown tool {tool}")));
+    }
+    let restart_needed = installers::install(&app, &tool).await?;
+    let tools = net_tools().await?;
+    Ok(serde_json::json!({ "tools": tools, "restartNeeded": restart_needed }))
+}
+
 #[tauri::command]
 pub async fn net_tools() -> AppResult<NetTools> {
     tauri::async_runtime::spawn_blocking(|| NetTools {
@@ -392,6 +408,7 @@ pub async fn net_tools() -> AppResult<NetTools> {
             ("openvpn".to_string(), tools::openvpn_hint()),
             ("wireguard".to_string(), tools::wireguard_hint()),
         ]),
+        installable: installers::available(),
     })
     .await
     .map_err(|e| AppError::msg(e.to_string()))

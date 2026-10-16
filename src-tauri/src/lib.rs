@@ -152,6 +152,7 @@ pub fn run() {
             network::net_status,
             network::net_logs,
             network::net_tools,
+            network::net_install_tool,
             network::net_ssh_config_hosts,
             network::net_traffic,
             network::net_helper_status,

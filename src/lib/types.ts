@@ -257,6 +257,8 @@ export interface NetTools {
   wireguard?: string | null;
   elevation: "osascript" | "pkexec" | "uac" | "none";
   installHints: Record<string, string>;
+  /** Tools DevCat can install itself (Windows), with the version it would install. */
+  installable?: Record<string, string>;
 }
 
 /** Passwordless VPN helper (mirror of network/helper.rs HelperStatus). */

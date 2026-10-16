@@ -99,7 +99,55 @@ export async function deleteProfile(p: Pick<NetProfile, "id" | "name">): Promise
 export const isHelperRejection = (err: string | null | undefined) => !!err && err.includes("passwordless helper");
 
 /** `passwordPrompt`: connect with the admin password prompt instead of the passwordless helper. */
+/** Tools being installed right now (buttons show a spinner). */
+export const useToolInstall = create<{ busy: Partial<Record<NetKind, boolean>> }>(() => ({ busy: {} }));
+
+/** Windows: install OpenVPN / WireGuard with the installer DevCat ships. True when it's ready. */
+export async function installTool(kind: "openvpn" | "wireguard"): Promise<boolean> {
+  const tools = useNet.getState().tools;
+  const label = NET_KIND_META[kind].label;
+  const version = tools?.installable?.[kind];
+  if (useToolInstall.getState().busy[kind]) return false;
+  useToolInstall.setState((s) => ({ busy: { ...s.busy, [kind]: true } }));
+  const t = toast.loading(`Installing ${label}${version ? ` ${version}` : ""}…`, { description: "Windows will ask for permission." });
+  try {
+    const res = await api.netInstallTool(kind);
+    useNet.setState({ tools: res.tools });
+    const ok = !!res.tools[kind];
+    if (ok) {
+      toast.success(`${label} is installed`, { id: t, description: res.restartNeeded ? "Windows asks for a restart to finish installing its network driver." : undefined, duration: res.restartNeeded ? 12_000 : 4000 });
+    } else {
+      toast.error(`${label} was installed but DevCat can't find it`, { id: t, description: "Try reopening DevCat." });
+    }
+    return ok;
+  } catch (e) {
+    const msg = errMsg(e);
+    if (/cancel/i.test(msg)) toast.info(`${label} wasn't installed`, { id: t, description: "The Windows permission prompt was cancelled." });
+    else toast.error(`Couldn't install ${label}`, { id: t, description: msg, duration: 12_000 });
+    return false;
+  } finally {
+    useToolInstall.setState((s) => ({ busy: { ...s.busy, [kind]: false } }));
+  }
+}
+
+/** Before connecting: a missing tool DevCat can install is offered first. False = don't connect. */
+async function ensureTool(id: string): Promise<boolean> {
+  const { profiles, tools } = useNet.getState();
+  const kind = profiles.find((x) => x.id === id)?.kind;
+  if (!tools || (kind !== "openvpn" && kind !== "wireguard") || tools[kind]) return true;
+  const version = tools.installable?.[kind];
+  if (!version) return true; // the backend reports what's missing
+  const label = NET_KIND_META[kind].label;
+  const ok = await confirmDialog({
+    title: `Install ${label}?`,
+    message: `${label} isn't installed on this computer. DevCat includes the official ${label} ${version} installer; Windows will ask for permission once, then the connection starts.`,
+    confirmLabel: `Install ${label}`,
+  });
+  return ok && installTool(kind);
+}
+
 export async function connectProfile(p: Pick<NetProfile, "id" | "name">, passwordPrompt = false) {
+  if (!(await ensureTool(p.id))) return;
   try {
     await useNet.getState().connect(p.id, passwordPrompt);
   } catch (e) {

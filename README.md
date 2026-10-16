@@ -58,6 +58,11 @@ Grab the latest installer for macOS, Windows or Linux from the
   in a form; connect/disconnect with live status, logs and a realtime traffic graph. Connections can depend
   on a VPN or tunnel, which is connected automatically first. VPNs need administrator rights to connect
   (the OS asks for your password); OpenVPN / `wireguard-tools` must be installed.
+  - **Windows**: nothing to install up front. The Windows build includes the official OpenVPN Community and
+    WireGuard installers (versions and SHA-256 pinned in `src-tauri/vpn-installers.json`). The first time you
+    connect, DevCat offers to install the missing one with a single UAC prompt. OpenVPN goes in without its
+    tray app, WireGuard without opening its window. Windows on ARM downloads the ARM installer from the
+    publisher instead, checked against the same pins.
   - **Passwordless VPN** (macOS / Linux, opt-in): *Set up passwordless VPN…* in the VPN list installs a
     root-owned copy of DevCat as a helper (`/Library/PrivilegedHelperTools/dev.devcat.vpn-helper` on macOS,
     `/usr/local/libexec/devcat-vpn-helper` on Linux) plus a sudoers rule for your account only
@@ -146,6 +151,15 @@ back to ad-hoc signing) but not notarized, so allow DevCat once via *System Sett
 Open Anyway* (or run `xattr -dr com.apple.quarantine /Applications/DevCat.app`). If macOS says the app "is damaged"
 (builds before v0.2.1), run `codesign --force --deep --sign - /Applications/DevCat.app` and the `xattr` command above. For distribution, configure code signing and
 notarization ([macOS](https://tauri.app/distribute/sign/macos/), [Windows](https://tauri.app/distribute/sign/windows/)).
+
+## Third-party software
+
+The Windows build ships the unmodified official installers of
+[OpenVPN Community](https://openvpn.net/community-downloads/) (GPLv2, source:
+[github.com/OpenVPN/openvpn](https://github.com/OpenVPN/openvpn)) and
+[WireGuard for Windows](https://www.wireguard.com/install/) (MIT / GPLv2, source:
+[git.zx2c4.com/wireguard-windows](https://git.zx2c4.com/wireguard-windows)). They are installed only when you
+choose to, under their own licenses.
 
 ## Project layout
 

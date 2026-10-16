@@ -1,0 +1,33 @@
+{
+  "_comment": "Official Windows installers DevCat ships / installs on demand. Hashes checked against the publishers' signatures (OpenVPN: PGP key 33DA8C9EAE0EAE8C73172C10822F6DF096D04874). Used by src/network/installers.rs and scripts/fetch-vpn-installers.mjs.",
+  "openvpn": {
+    "label": "OpenVPN",
+    "version": "2.7.8",
+    "msiProperties": ["ADDLOCAL=OpenVPN,Drivers,Drivers.TAPWindows6,Drivers.OvpnDco"],
+    "files": {
+      "x64": {
+        "url": "https://swupdate.openvpn.org/community/releases/OpenVPN-2.7.8-I001-amd64.msi",
+        "sha256": "1ea61a3056905b90607d4b0f084c04e5cf3043e07cf192d9cd44b0474f29cc49"
+      },
+      "arm64": {
+        "url": "https://swupdate.openvpn.org/community/releases/OpenVPN-2.7.8-I001-arm64.msi",
+        "sha256": "6fc0e8899cc5275ee297fb837bc84aa2bc49f8ef96d7ad93ee3fee1e7163a25c"
+      }
+    }
+  },
+  "wireguard": {
+    "label": "WireGuard",
+    "version": "1.1.1",
+    "msiProperties": ["DO_NOT_LAUNCH=1"],
+    "files": {
+      "x64": {
+        "url": "https://download.wireguard.com/windows-client/wireguard-amd64-1.1.1.msi",
+        "sha256": "7bfed60ad61b785c914b38b61555a975488e1d3ec472dbfb2fcdf498fca75242"
+      },
+      "arm64": {
+        "url": "https://download.wireguard.com/windows-client/wireguard-arm64-1.1.1.msi",
+        "sha256": "8336335c738d4aff040fa9d11b752da65a80b6f41d3262d6ba5e82f97ebd1bd4"
+      }
+    }
+  }
+}

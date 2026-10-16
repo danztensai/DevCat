@@ -91,6 +91,8 @@ export const api = {
   netStatus: () => invoke<NetStatus[]>("net_status"),
   netLogs: (id: string) => invoke<string[]>("net_logs", { id }),
   netTools: () => invoke<NetTools>("net_tools"),
+  /** Windows: install OpenVPN / WireGuard from the installer DevCat ships (one UAC prompt). */
+  netInstallTool: (tool: "openvpn" | "wireguard") => invoke<{ tools: NetTools; restartNeeded: boolean }>("net_install_tool", { tool }),
   netSshConfigHosts: () => invoke<SshConfigHost[]>("net_ssh_config_hosts"),
   /** Last ≤5 minutes of traffic samples; live updates arrive as "net-traffic" events. */
   netTraffic: (id: string) => invoke<TrafficSample[]>("net_traffic", { id }),

@@ -1,0 +1,11 @@
+{
+  "build": {
+    "beforeDevCommand": "node scripts/fetch-vpn-installers.mjs && pnpm dev",
+    "beforeBuildCommand": "node scripts/fetch-vpn-installers.mjs && pnpm build"
+  },
+  "bundle": {
+    "resources": {
+      "vpn-installers/": "vpn-installers/"
+    }
+  }
+}

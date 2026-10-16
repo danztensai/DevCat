@@ -10,6 +10,7 @@ import type { NetKind, NetProfile, NetProfileFull, NetStatus, NetTools } from ".
 import { useConnections } from "../../store/connections";
 import { useTabs } from "../../store/tabs";
 import type { Tab } from "../../tabs/types";
+import { InstallToolButton } from "./InstallToolButton";
 import { connectProfile, deleteProfile, disconnectProfile, draftFor, isHelperRejection, useNetTabNav } from "./actions";
 import { IdentityRows, SectionTitle } from "./formBits";
 import { LogsView } from "./LogsView";
@@ -218,8 +219,8 @@ export default function NetworkTab({ tab }: { tab: NetworkTabSpec }) {
           <Button
             size="sm"
             variant={dirty ? "default" : "primary"}
-            disabled={toolMissing || state === "disconnecting"}
-            title={toolMissing ? `${NET_KIND_META[p.kind].label} isn't installed` : undefined}
+            disabled={(toolMissing && !tools?.installable?.[p.kind]) || state === "disconnecting"}
+            title={toolMissing ? `${NET_KIND_META[p.kind].label} isn't installed${tools?.installable?.[p.kind] ? " (DevCat can install it)" : ""}` : undefined}
             loading={isBusy(state)}
             onClick={() => void connect()}
           >
@@ -343,7 +344,9 @@ function ToolMissing({ kind, tools }: { kind: NetKind; tools: NetTools }) {
       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
       <div className="min-w-0 flex-1">
         {NET_KIND_META[kind].label} isn't installed on this computer — you can still save the profile.
-        {hint && (
+        {tools.installable?.[kind] ? (
+          <InstallToolButton kind={kind as "openvpn" | "wireguard"} version={tools.installable[kind]} className="mt-1.5" />
+        ) : hint && (
           <div className="mt-1 flex items-center gap-1.5">
             <code className="selectable rounded bg-app px-1.5 py-0.5 font-mono text-[11px] text-fg">{hint}</code>
             <IconButton title="Copy install command" onClick={() => void copyText(hint)}><Copy className="size-3" /></IconButton>

@@ -114,6 +114,8 @@ pub fn mechanism() -> &'static str {
 
 pub struct Output {
     pub success: bool,
+    /// Exit code (on Windows, the elevated program's own, passed through PowerShell).
+    pub code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
 }
@@ -188,7 +190,7 @@ pub async fn run(program: &str, args: &[String], wait: bool, env_path: Option<&s
     if cfg!(target_os = "macos") && !out.status.success() {
         stderr = clean_osascript_error(&stderr);
     }
-    Ok(Output { success: out.status.success(), stdout: String::from_utf8_lossy(&out.stdout).to_string(), stderr })
+    Ok(Output { success: out.status.success(), code: out.status.code(), stdout: String::from_utf8_lossy(&out.stdout).to_string(), stderr })
 }
 
 #[cfg(test)]
