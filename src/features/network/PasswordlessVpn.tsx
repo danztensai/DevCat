@@ -17,7 +17,9 @@ export function PasswordlessVpnRow({ kinds }: { kinds: ("openvpn" | "wireguard")
   // Windows asks through UAC; the helper only exists for macOS / Linux.
   if (!helper?.supported || elevation === "uac") return null;
 
-  const issues = kinds.map((k) => (k === "openvpn" ? helper.openvpnIssue : helper.wireguardIssue)).filter((x): x is string => !!x);
+  const toolIssues = kinds
+    .map((k) => ({ label: k === "openvpn" ? "OpenVPN" : "WireGuard", issue: k === "openvpn" ? helper.openvpnIssue : helper.wireguardIssue }))
+    .filter((x): x is { label: string; issue: string } => !!x.issue);
 
   const remove = async () => {
     const ok = await confirmDialog({
@@ -54,15 +56,23 @@ export function PasswordlessVpnRow({ kinds }: { kinds: ("openvpn" | "wireguard")
       <div className="flex items-start gap-1.5">
         <ShieldCheck className="mt-px size-3 shrink-0 text-ok" />
         <div className="min-w-0 flex-1">
-          <span className="text-ok">Passwordless VPN is on</span>
-          {!helper.upToDate && <span className="text-warn"> · needs an update</span>}
-          {" · "}
+          {helper.upToDate
+            ? <span className="text-ok">Passwordless VPN is on</span>
+            : <span className="text-warn">Passwordless VPN is paused: DevCat was updated, so its helper needs updating too.</span>}
+          {" "}
           {!helper.upToDate && (
-            <><button className="font-semibold text-accent hover:underline disabled:opacity-50" disabled={busy} onClick={() => setOpen(true)}>Update helper</button>{" · "}</>
+            <><button className="font-semibold text-accent hover:underline disabled:opacity-50" disabled={busy} onClick={() => setOpen(true)}
+              title="Asks for your password once">Update helper</button>{" · "}</>
           )}
           <button className="text-muted hover:text-fg hover:underline disabled:opacity-50" disabled={busy} onClick={() => void remove()}>Remove</button>
-          {issues.map((i) => <div key={i} className="mt-0.5 text-warn" title={i}>Still asks for a password: {i}</div>)}
-          {issues.length > 0 && <RootOwnedHint />}
+          {toolIssues.map(({ label, issue }) => (
+            <div key={label} className="mt-1 text-warn" title={issue}>
+              {/owned by a regular user|writable by/.test(issue) && /homebrew/i.test(issue)
+                ? <>{label} still asks for a password: your copy comes from Homebrew, whose files any app you run can change, so DevCat won't run it as administrator without asking.</>
+                : <>{label} still asks for a password: {issue}</>}
+            </div>
+          ))}
+          {toolIssues.length > 0 && <RootOwnedHint />}
         </div>
       </div>
     );
@@ -152,7 +162,7 @@ function RootOwnedHint() {
   if (!navigator.userAgent.includes("Mac")) return null;
   return (
     <div className="mt-1 text-muted">
-      Fix: install the tools with MacPorts, which keeps them root-owned in /opt/local:{" "}
+      To fix it, install them with MacPorts (its files are owned by the system):{" "}
       <code className="selectable font-mono text-fg/90">sudo port install openvpn2 wireguard-tools</code>, then reopen DevCat.
     </div>
   );
