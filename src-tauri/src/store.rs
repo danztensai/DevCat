@@ -3,7 +3,6 @@ use crate::error::{AppError, AppResult};
 use crate::models::ConnectionConfig;
 use std::path::PathBuf;
 
-const KEYRING_SERVICE: &str = "dev.devcat.app";
 
 pub struct ConnectionStore {
     path: PathBuf,
@@ -82,22 +81,4 @@ impl ConnectionStore {
     }
 }
 
-fn get_secret(key: &str) -> Option<String> {
-    keyring::Entry::new(KEYRING_SERVICE, key).ok()?.get_password().ok()
-}
-
-fn set_secret(key: &str, value: &str) -> AppResult<()> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, key)?;
-    if value.is_empty() {
-        let _ = entry.delete_credential();
-    } else {
-        entry.set_password(value)?;
-    }
-    Ok(())
-}
-
-fn delete_secret(key: &str) {
-    if let Ok(e) = keyring::Entry::new(KEYRING_SERVICE, key) {
-        let _ = e.delete_credential();
-    }
-}
+use crate::secrets::{delete as delete_secret, get as get_secret, set as set_secret};

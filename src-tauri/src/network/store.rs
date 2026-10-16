@@ -5,8 +5,6 @@ use crate::error::{AppError, AppResult};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const KEYRING_SERVICE: &str = "dev.devcat.app";
-
 pub trait Secrets: Send + Sync {
     fn get(&self, key: &str) -> Option<String>;
     fn set(&self, key: &str, value: &str) -> AppResult<()>;
@@ -17,21 +15,13 @@ pub struct Keyring;
 
 impl Secrets for Keyring {
     fn get(&self, key: &str) -> Option<String> {
-        keyring::Entry::new(KEYRING_SERVICE, key).ok()?.get_password().ok()
+        crate::secrets::get(key)
     }
     fn set(&self, key: &str, value: &str) -> AppResult<()> {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, key)?;
-        if value.is_empty() {
-            let _ = entry.delete_credential();
-        } else {
-            entry.set_password(value)?;
-        }
-        Ok(())
+        crate::secrets::set(key, value)
     }
     fn delete(&self, key: &str) {
-        if let Ok(e) = keyring::Entry::new(KEYRING_SERVICE, key) {
-            let _ = e.delete_credential();
-        }
+        crate::secrets::delete(key)
     }
 }
 

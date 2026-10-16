@@ -14,6 +14,7 @@ mod models;
 mod network;
 mod notes;
 mod projects;
+mod secrets;
 mod state;
 mod store;
 mod updater;
