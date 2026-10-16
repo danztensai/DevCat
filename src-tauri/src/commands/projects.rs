@@ -40,6 +40,7 @@ pub async fn delete_project(state: State<'_, AppState>, id: String, delete_conne
             }
         })?;
     }
+    state.notes.unassign_project(&id)?;
     state.projects.delete(&id)
 }
 

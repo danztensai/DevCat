@@ -141,7 +141,12 @@ mod tests {
         r.unwrap();
         #[cfg(target_os = "macos")]
         {
-            let pm = || String::from_utf8_lossy(&std::process::Command::new("pmset").args(["-g", "assertions"]).output().unwrap().stdout).into_owned();
+            // Only this process's assertions: a running DevCat may hold its own.
+            let mine = format!("pid {}(", std::process::id());
+            let pm = || {
+                let out = String::from_utf8_lossy(&std::process::Command::new("pmset").args(["-g", "assertions"]).output().unwrap().stdout).into_owned();
+                out.lines().filter(|l| l.contains(&mine)).collect::<Vec<_>>().join("\n")
+            };
             assert!(pm().contains("Keep awake is on in DevCat"), "assertion not registered");
             h.tx.send(Cmd::Off).unwrap();
             std::thread::sleep(Duration::from_millis(300));

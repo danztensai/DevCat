@@ -44,6 +44,16 @@ export interface ConnectionConfig {
 }
 
 /** User-created folder that groups connections in the sidebar. */
+/** Markdown note; projectId null = General (shown in every project). Times are Unix ms. */
+export interface Note {
+  id: string;
+  projectId: string | null;
+  body: string;
+  pinned: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Project {
   id: string;
   name: string;

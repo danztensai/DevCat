@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AppWindow, ArrowUpCircle, Cable, Sparkle, ChevronDown, Copy, Crosshair, Folder, Layers, FolderPlus, GitBranch, History, LogOut, Plus, Shield, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, ArrowUpCircle, Cable, Sparkle, ChevronDown, Copy, Crosshair, Folder, Layers, FolderPlus, GitBranch, History, LogOut, NotebookPen, Plus, Shield, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { Toaster } from "sonner";
@@ -12,6 +12,8 @@ import NetworkPanel from "../../features/network/NetworkPanel";
 import ClaudePanel from "../../features/claude/ClaudePanel";
 import { AiConnectionsDialog, ProviderPicker } from "../../features/claude/AiProviders";
 import GitPanel from "../../features/git/GitPanel";
+import NotesPanel from "../../features/notes/NotesPanel";
+import { createNote, noteInFocus, useNotes } from "../../features/notes/store";
 import { inFocus, useConnections, useFocusProject } from "../../store/connections";
 import { useContextMenu, type MenuItem } from "../../features/connections/ContextMenu";
 import { createProject, focusProject } from "../../features/connections/tree/projectActions";
@@ -101,6 +103,7 @@ function ActivityBar() {
       {item("history", <History className="size-5" />, "History & saved queries")}
       {item("network", <Shield className="size-5" />, "VPN & SSH tunnels")}
       {item("git", <GitBranch className="size-5" />, "Git repositories")}
+      {item("notes", <NotebookPen className="size-5" />, "Notes")}
     </div>
   );
 }
@@ -112,15 +115,18 @@ function Sidebar() {
     <div className="flex h-full flex-col bg-panel">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line px-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-          {sidebar === "connections" ? "Connections" : sidebar === "network" ? "VPN & Tunnels" : sidebar === "claude" ? "AI Workspace" : sidebar === "git" ? "Git" : "History"}
+          {sidebar === "connections" ? "Connections" : sidebar === "network" ? "VPN & Tunnels" : sidebar === "claude" ? "AI Workspace" : sidebar === "git" ? "Git" : sidebar === "notes" ? "Notes" : "History"}
         </span>
         {sidebar === "connections" && (
           <IconButton title="New connection" onClick={() => openDialog(null)}><Plus className="size-4" /></IconButton>
         )}
         {sidebar === "claude" && <ProviderPicker />}
+        {sidebar === "notes" && (
+          <IconButton title="New note" onClick={() => void createNote()}><Plus className="size-4" /></IconButton>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {sidebar === "connections" ? <ConnectionTree /> : sidebar === "network" ? <NetworkPanel /> : sidebar === "claude" ? <ClaudePanel /> : sidebar === "git" ? <GitPanel /> : <HistoryPanel />}
+        {sidebar === "connections" ? <ConnectionTree /> : sidebar === "network" ? <NetworkPanel /> : sidebar === "claude" ? <ClaudePanel /> : sidebar === "git" ? <GitPanel /> : sidebar === "notes" ? <NotesPanel /> : <HistoryPanel />}
       </div>
     </div>
   );
@@ -260,12 +266,15 @@ function Workspace() {
       { label: "Close others", disabled: allTabs.length < 2, onClick: () => closeOthers(t.id) },
     ]);
   };
-  // Focus mode hides tabs of other projects' connections (they stay mounted and come back on exit).
+  // Focus mode hides tabs of other projects' connections and notes (they stay mounted and come back on exit).
   const focusId = useConnections((s) => s.focusProjectId);
   const connections = useConnections((s) => s.connections);
+  const notes = useNotes((s) => s.notes);
   const tabs = useMemo(
-    () => allTabs.filter((t) => inFocus(tabConnId(t))),
-    [allTabs, focusId, connections], // eslint-disable-line react-hooks/exhaustive-deps
+    () => allTabs.filter((t) => t.type === "note"
+      ? noteInFocus(notes.find((n) => n.id === t.noteId)?.projectId)
+      : inFocus(tabConnId(t))),
+    [allTabs, focusId, connections, notes], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const hiddenCount = allTabs.length - tabs.length;
   useEffect(() => {

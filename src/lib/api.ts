@@ -7,7 +7,7 @@ import type {
   GitRepo, GitLogQuery, GitCommit, GitCommitDetail, GitBlame, GitRefs, GitStash, CommitAction, RemoteOpts,
   AiDetect, AiProvider,
   ClaudeInfo, ClaudeProject, ClaudeStartOptions, FileEntry, FilePreview, FileVersions, GitStatus, SessionMeta,
-  ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetHelperStatus, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
+  Note, ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetHelperStatus, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
   SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
 } from "./types";
 
@@ -26,6 +26,11 @@ export const api = {
   openConnection: (id: string) => invoke<string>("open_connection", { id }),
   closeConnection: (id: string) => invoke<void>("close_connection", { id }),
   openConnectionIds: () => invoke<string[]>("open_connection_ids"),
+
+  // notes
+  notesList: () => invoke<Note[]>("notes_list"),
+  noteSave: (note: Note) => invoke<Note>("note_save", { note }),
+  noteDelete: (id: string) => invoke<void>("note_delete", { id }),
 
   // projects
   listProjects: () => invoke<Project[]>("list_projects"),

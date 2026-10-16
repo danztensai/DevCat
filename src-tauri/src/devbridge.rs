@@ -68,8 +68,24 @@ async fn call(cmd: &str, args: &Value) -> Result<Value, Value> {
         "ai_provider_delete" => out(c!(crate::ai::ai_provider_delete, "id")),
         "ai_provider_detect" => out(c!(crate::ai::ai_provider_detect, "provider")),
         "fs_write_text" => out(c!(files::fs_write_text, "path", "content", "expectedVersion", "lineEnding")),
+        // notes + projects use a throwaway store (see `bridge_stores`), never the real app data
+        "notes_list" => out(bridge_stores().0.list()),
+        "note_save" => out(arg(args, "note").and_then(|n| Ok(crate::notes::save_checked(&bridge_stores().0, &bridge_stores().1, n)))?),
+        "note_delete" => out(arg::<String>(args, "id").map(|id| bridge_stores().0.delete(&id))?),
+        "list_projects" => out(bridge_stores().1.list()),
+        "save_project" => out(arg(args, "project").map(|p| bridge_stores().1.save(p))?),
         other => Err(json!(format!("devbridge: unsupported command {other}"))),
     }
+}
+
+/// Notes / projects for the bridge, in a temp folder that lives as long as the process.
+fn bridge_stores() -> &'static (crate::notes::NoteStore, crate::projects::ProjectStore) {
+    static S: std::sync::OnceLock<(crate::notes::NoteStore, crate::projects::ProjectStore)> = std::sync::OnceLock::new();
+    S.get_or_init(|| {
+        let d = std::env::temp_dir().join(format!("devcat-bridge-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&d);
+        (crate::notes::NoteStore::new(d.clone()), crate::projects::ProjectStore::new(d))
+    })
 }
 
 /// Serve until the process is killed.

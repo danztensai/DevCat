@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 /** "claude" = the AI workspace (internal id kept). */
-export type SidebarView = "claude" | "connections" | "history" | "network" | "git";
+export type SidebarView = "claude" | "connections" | "history" | "network" | "git" | "notes";
 
 interface UiState {
   sidebar: SidebarView;

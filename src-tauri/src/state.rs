@@ -1,6 +1,7 @@
 use crate::db::DynDriver;
 use crate::error::{AppError, AppResult};
 use crate::history::HistoryStore;
+use crate::notes::NoteStore;
 use crate::projects::ProjectStore;
 use crate::store::ConnectionStore;
 use std::collections::HashMap;
@@ -10,6 +11,7 @@ pub struct AppState {
     pub store: ConnectionStore,
     pub history: HistoryStore,
     pub projects: ProjectStore,
+    pub notes: NoteStore,
     /// Open database sessions keyed by connection id.
     pub sessions: RwLock<HashMap<String, DynDriver>>,
 }
@@ -23,7 +25,8 @@ impl AppState {
         }
         Self {
             store,
-            history: HistoryStore::new(data_dir),
+            history: HistoryStore::new(data_dir.clone()),
+            notes: NoteStore::new(data_dir),
             projects,
             sessions: RwLock::new(HashMap::new()),
         }

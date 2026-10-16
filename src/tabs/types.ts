@@ -24,6 +24,8 @@ export type TabSpec =
   | { type: "file"; path: string; root?: string | null; blame?: boolean }
   /** Git repository: history graph / working-tree changes / branches / stashes.
    *  path = file-history filter, sha = commit to select in History (consumed once shown). */
+  /** Markdown note (see features/notes). */
+  | { type: "note"; noteId: string }
   | { type: "git"; repo: string; view?: GitView; path?: string | null; sha?: string | null };
 
 export type GitView = "history" | "changes" | "branches" | "stashes";

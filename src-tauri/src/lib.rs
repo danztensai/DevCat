@@ -12,6 +12,7 @@ mod infra;
 mod keep_awake;
 mod models;
 mod network;
+mod notes;
 mod projects;
 mod state;
 mod store;
@@ -183,6 +184,10 @@ pub fn run() {
             claude::git::git_discard,
             claude::git::git_discard_all,
             claude::git::git_commit,
+            // notes
+            notes::notes_list,
+            notes::note_save,
+            notes::note_delete,
             // AI connections (providers for the AI workspace terminal)
             ai::ai_providers_list,
             ai::ai_provider_save,

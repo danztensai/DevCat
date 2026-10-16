@@ -23,6 +23,8 @@ Grab the latest installer for macOS, Windows or Linux from the
 ## Features
 
 - **Projects**: group connections into projects and focus on one project at a time.
+- **Notes**: Markdown notes with Edit / Preview, saved as you type. Each note belongs to a project (shown only
+  while that project is focused) or to General (shown everywhere); pin, search and move them between projects.
 - **Automatic updates**: DevCat checks GitHub releases and offers new versions in a popup (Update and restart / Later /
   Skip this version), or use *Check for updates…* in the project menu or click the version in the status bar. Updates are
   signed and verified before installing. Linux .deb/.rpm installs get a download link instead (the AppImage self-updates).
