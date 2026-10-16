@@ -72,11 +72,20 @@ jobs:
         run: |
           # codesign only uses identities the system trusts; trust the cert on this throwaway runner.
           sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain .github/devcat-codesign.crt
-          {
-            echo "APPLE_CERTIFICATE=$CERT_P12"
-            echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PASSWORD"
-            echo "APPLE_SIGNING_IDENTITY=DevCat Self-Signed"
-          } >> "$GITHUB_ENV"
+          # Import it into a keychain on the search list ourselves: Tauri's own APPLE_CERTIFICATE
+          # import only accepts Apple-issued names ("Developer ID Application: …"). With just
+          # APPLE_SIGNING_IDENTITY set, Tauri runs `codesign -s "DevCat Self-Signed"`.
+          kc="$RUNNER_TEMP/devcat-signing.keychain-db"; kp=$(openssl rand -hex 16)
+          security create-keychain -p "$kp" "$kc"
+          security set-keychain-settings "$kc"
+          security unlock-keychain -p "$kp" "$kc"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/devcat.p12"
+          security import "$RUNNER_TEMP/devcat.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/devcat.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kp" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$kc"
+          echo "APPLE_SIGNING_IDENTITY=DevCat Self-Signed" >> "$GITHUB_ENV"
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -114,7 +123,8 @@ jobs:
           codesign --verify --deep --strict "$app"
           req=$(codesign -d -r- "$app" 2>&1)
           echo "$req"
-          echo "$req" | grep -q 'certificate leaf' || { echo "::error::DevCat.app is not signed with the release certificate"; exit 1; }
+          # self-signed: the certificate is its own root; check it's ours by fingerprint
+          echo "$req" | grep -qi 'certificate root = H"ae681e9b28c61cdcce19d63e05a6aac8a67f637d"' || { echo "::error::DevCat.app is not signed with the release certificate"; exit 1; }
 
       # The OpenVPN / WireGuard installers DevCat ships for Windows: present in the app's
       # resources, and they install with the same options DevCat uses (no OpenVPN tray app).

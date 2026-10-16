@@ -7,10 +7,6 @@ on:
 
 jobs:
   sign:
-    strategy:
-      fail-fast: false
-      matrix:
-        trust: ["-r trustRoot -p codeSign", "-r trustAsRoot -p codeSign", "-r trustRoot", "-r trustAsRoot"]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,9 +15,7 @@ jobs:
           CERT_P12: ${{ secrets.APPLE_CERTIFICATE }}
           CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
-          set -x
-          sudo security add-trusted-cert -d ${{ matrix.trust }} -k /Library/Keychains/System.keychain .github/devcat-codesign.crt || echo "add-trusted-cert exit $?"
-          security dump-trust-settings -d 2>&1 | grep -A3 "DevCat" || true
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain .github/devcat-codesign.crt
           kc="$RUNNER_TEMP/sign.keychain-db"; kp=$(openssl rand -hex 12)
           security create-keychain -p "$kp" "$kc"
           security set-keychain-settings "$kc"
@@ -30,9 +24,8 @@ jobs:
           security import "$RUNNER_TEMP/c.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kp" "$kc" > /dev/null
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
-          echo "--- all identities"; security find-identity -p codesigning "$kc"
-          echo "--- valid identities"; security find-identity -v -p codesigning "$kc"
+          security find-identity -v -p codesigning "$kc" | grep -q '1 valid identities found'
           cp /bin/echo "$RUNNER_TEMP/t"
           codesign --force --keychain "$kc" -s "DevCat Self-Signed" -i dev.devcat.app --options runtime "$RUNNER_TEMP/t"
-          codesign -d -r- "$RUNNER_TEMP/t" 2>&1 | tail -1
+          codesign -d -r- "$RUNNER_TEMP/t" 2>&1 | grep -i 'certificate root = H"ae681e9b28c61cdcce19d63e05a6aac8a67f637d"'
           "$RUNNER_TEMP/t" signed-binary-runs
