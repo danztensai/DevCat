@@ -1,9 +1,9 @@
 import clsx from "clsx";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AppWindow, ArrowUpCircle, Cable, Sparkle, ChevronDown, Copy, Crosshair, Folder, Layers, FolderPlus, GitBranch, History, LogOut, NotebookPen, Plus, Shield, SquareArrowOutUpRight, X } from "lucide-react";
+import { AppWindow, ArrowUpCircle, Cable, Sparkle, ChevronDown, Copy, Crosshair, Folder, Layers, FolderPlus, GitBranch, History, LogOut, NotebookPen, PanelLeftClose, PanelLeftOpen, Plus, Shield, SquareArrowOutUpRight, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Group, Panel, Separator } from "react-resizable-panels";
+import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { Toaster } from "sonner";
 import ConnectionDialog from "../../features/connections/ConnectionDialog";
 import ConnectionTree from "../../features/connections/ConnectionTree";
@@ -58,13 +58,52 @@ export default function AppShell() {
     return () => window.removeEventListener("keydown", h, true);
   }, []);
 
+  // Sidebar hide / show: the store is the source of truth; the panel follows it.
+  const sidebarPanel = usePanelRef();
+  const collapsed = useUi((s) => s.sidebarCollapsed);
+  useEffect(() => {
+    const p = sidebarPanel.current;
+    if (!p) return;
+    if (collapsed && !p.isCollapsed()) p.collapse();
+    else if (!collapsed && p.isCollapsed()) {
+      p.expand();
+      // started collapsed: there's no earlier width to go back to, so use the default
+      if (p.getSize().asPercentage < 18) p.resize("22%");
+    }
+  }, [collapsed, sidebarPanel]);
+  // ⌘B / Ctrl+B. Not inside a terminal on Windows/Linux, where Ctrl+B belongs to the shell (tmux, readline).
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (!mod || e.shiftKey || e.altKey || e.key.toLowerCase() !== "b") return;
+      if (!IS_MAC && (e.target as HTMLElement | null)?.closest?.(".xterm")) return;
+      e.preventDefault();
+      const ui = useUi.getState();
+      ui.setSidebarCollapsed(!ui.sidebarCollapsed);
+    };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, []);
+
   return (
     <div className="flex h-full flex-col">
       <ProjectBar />
       <div className="flex min-h-0 flex-1">
         <ActivityBar />
         <Group orientation="horizontal" className="min-w-0 flex-1">
-          <Panel defaultSize="22%" minSize="14%" maxSize="45%">
+          <Panel
+            panelRef={sidebarPanel}
+            defaultSize="22%"
+            minSize="14%"
+            maxSize="45%"
+            collapsible
+            collapsedSize="0px"
+            onResize={() => {
+              // dragging the divider all the way left collapses it too
+              const c = sidebarPanel.current?.isCollapsed() ?? false;
+              if (c !== useUi.getState().sidebarCollapsed) useUi.getState().setSidebarCollapsed(c);
+            }}
+          >
             <Sidebar />
           </Panel>
           <Separator className="w-px bg-line hover:bg-accent data-[separator=active]:bg-accent" />
@@ -83,14 +122,21 @@ export default function AppShell() {
 }
 
 function ActivityBar() {
-  const { sidebar, setSidebar } = useUi();
+  const { sidebar, setSidebar, sidebarCollapsed, setSidebarCollapsed } = useUi();
+  const toggleKey = IS_MAC ? "⌘B" : "Ctrl+B";
+  // Clicking the active view hides / shows the sidebar (like VS Code); another view opens it.
+  const pick = (v: SidebarView) => {
+    if (v === sidebar) setSidebarCollapsed(!sidebarCollapsed);
+    else { setSidebar(v); setSidebarCollapsed(false); }
+  };
   const item = (v: SidebarView, icon: ReactNode, title: string) => (
     <button
-      title={title}
-      onClick={() => setSidebar(v)}
+      title={sidebar === v ? `${title} (click to ${sidebarCollapsed ? "show" : "hide"} the sidebar, ${toggleKey})` : title}
+      onClick={() => pick(v)}
       className={clsx(
         "relative flex size-11 items-center justify-center text-muted hover:text-fg",
-        sidebar === v && "text-fg before:absolute before:left-0 before:h-6 before:w-0.5 before:rounded-r before:bg-accent",
+        sidebar === v && "text-fg",
+        sidebar === v && !sidebarCollapsed && "before:absolute before:left-0 before:h-6 before:w-0.5 before:rounded-r before:bg-accent",
       )}
     >
       {icon}
@@ -104,6 +150,14 @@ function ActivityBar() {
       {item("network", <Shield className="size-5" />, "VPN & SSH tunnels")}
       {item("git", <GitBranch className="size-5" />, "Git repositories")}
       {item("notes", <NotebookPen className="size-5" />, "Notes")}
+      <div className="flex-1" />
+      <button
+        title={`${sidebarCollapsed ? "Show" : "Hide"} sidebar (${toggleKey})`}
+        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+        className="mb-1 flex size-11 items-center justify-center text-muted hover:text-fg"
+      >
+        {sidebarCollapsed ? <PanelLeftOpen className="size-4.5" /> : <PanelLeftClose className="size-4.5" />}
+      </button>
     </div>
   );
 }
