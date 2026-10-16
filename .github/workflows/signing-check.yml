@@ -1,0 +1,38 @@
+# Quick check that the macOS release certificate can sign on a GitHub runner (no app build).
+# Run it from the Actions tab after changing the certificate or the signing setup in build.yml.
+name: signing-check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sign:
+    strategy:
+      fail-fast: false
+      matrix:
+        trust: ["-r trustRoot -p codeSign", "-r trustAsRoot -p codeSign", "-r trustRoot", "-r trustAsRoot"]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trust, import and sign a test binary
+        env:
+          CERT_P12: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -x
+          sudo security add-trusted-cert -d ${{ matrix.trust }} -k /Library/Keychains/System.keychain .github/devcat-codesign.crt || echo "add-trusted-cert exit $?"
+          security dump-trust-settings -d 2>&1 | grep -A3 "DevCat" || true
+          kc="$RUNNER_TEMP/sign.keychain-db"; kp=$(openssl rand -hex 12)
+          security create-keychain -p "$kp" "$kc"
+          security set-keychain-settings "$kc"
+          security unlock-keychain -p "$kp" "$kc"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/c.p12"
+          security import "$RUNNER_TEMP/c.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kp" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          echo "--- all identities"; security find-identity -p codesigning "$kc"
+          echo "--- valid identities"; security find-identity -v -p codesigning "$kc"
+          cp /bin/echo "$RUNNER_TEMP/t"
+          codesign --force --keychain "$kc" -s "DevCat Self-Signed" -i dev.devcat.app --options runtime "$RUNNER_TEMP/t"
+          codesign -d -r- "$RUNNER_TEMP/t" 2>&1 | tail -1
+          "$RUNNER_TEMP/t" signed-binary-runs
