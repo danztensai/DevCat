@@ -143,7 +143,7 @@ jobs:
         run: |
           arch=${{ matrix.label == 'macos-arm64' && 'arm64' || 'x86_64' }}
           app=$(find src-tauri/target -maxdepth 6 -path '*/release/bundle/macos/DevCat.app' | head -1)
-          bin="$app/Contents/Resources/vpn/openvpn"
+          bin="$PWD/$app/Contents/Resources/vpn/openvpn"   # absolute: the loopback test runs in $RUNNER_TEMP
           test -x "$bin" || { echo "::error::$bin is missing"; exit 1; }
           lipo -archs "$bin" | grep -qx "$arch"
           if otool -L "$bin" | tail -n +2 | grep -vE '^\s+(/usr/lib/|/System/Library/)'; then echo "::error::non-system library linked"; exit 1; fi
