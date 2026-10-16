@@ -1,6 +1,6 @@
 // File preview tab: toolbar (path, size, kind, actions) + a viewer per FilePreview kind,
-// or git blame for text files inside a repository. Plain text files (code, config, .html, …)
-// open in an editor; markdown, pdf, images, sheets, csv and docx stay preview-only.
+// or git blame for text files inside a repository. Plain text files (code, config, …) open in an
+// editor (.html also gets a rendered Preview); markdown, pdf, images, sheets, csv and docx stay preview-only.
 import { Copy, ExternalLink, FolderSearch, History, RefreshCw, UserSearch } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Badge, ErrorBox, IconButton, Spinner, Toolbar } from "../../components/ui";

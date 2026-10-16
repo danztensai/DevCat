@@ -1,9 +1,11 @@
 // Editable Monaco editor for kind "text" files (read-only with a reason banner when the backend
 // says the file can't be edited). Save with ⌘S / Save button; conflicts with on-disk changes are
-// detected via FilePreview.version and offer Overwrite / Reload.
+// detected via FilePreview.version and offer Overwrite / Reload. HTML files get a Preview / Source
+// switch; the preview renders the editor's current (possibly unsaved) text.
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { AlertTriangle, Lock, Save, Undo2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import clsx from "clsx";
+import { AlertTriangle, Code, Eye, Lock, Save, Undo2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../../components/ui";
 import { api } from "../../../lib/api";
@@ -11,6 +13,7 @@ import type { FilePreview } from "../../../lib/types";
 import { setCloseGuard, useTabs } from "../../../store/tabs";
 import { confirmDialog } from "../../connections/dialogs";
 import { basename } from "../format";
+import { HtmlPreview, ScriptsButton, useHtmlScripts } from "./HtmlPreview";
 import { WrapButton, useWrap } from "./simple";
 
 type Ed = Parameters<OnMount>[0];
@@ -45,6 +48,15 @@ export function TextEditor({ preview, slot, tabId, hidden, reload, onDirty, onSa
   const forceNext = useRef(false);
   const readOnly = !preview.editable;
   const path = preview.path;
+  const isHtml = /\.html?$/i.test(path);
+  const [showPreview, setShowPreview] = useState(isHtml);
+  const [scripts, setScripts] = useHtmlScripts();
+  /** bumped when the editor's text is replaced from disk, so the preview re-reads it */
+  const [textRev, setTextRev] = useState(0);
+  const previewText = useMemo(
+    () => (showPreview ? edRef.current?.getValue() ?? preview.text ?? "" : ""),
+    [showPreview, textRev, preview.text], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const markDirty = useCallback((d: boolean) => {
     if (dirtyRef.current === d) return;
@@ -78,6 +90,7 @@ export function TextEditor({ preview, slot, tabId, hidden, reload, onDirty, onSa
     ed.getModel()?.setValue(preview.text ?? "");
     applyEol(ed, monaco, preview.lineEnding);
     if (view) ed.restoreViewState(view);
+    setTextRev((n) => n + 1);
     setConflict(null);
     setSaveError(null);
     markDirty(false);
@@ -145,7 +158,21 @@ export function TextEditor({ preview, slot, tabId, hidden, reload, onDirty, onSa
                 {!saving && <Save className="size-3.5" />}Save
               </Button>
             </>}
-          <WrapButton wrap={wrap} setWrap={setWrap} />
+          {/* after Save, so it doesn't shift when "Modified" appears */}
+          {isHtml && (
+            <div className="flex h-6 items-center rounded-md border border-line bg-app p-px text-[12px]">
+              {([[true, "Preview", Eye], [false, "Source", Code]] as const).map(([v, label, I]) => (
+                <button
+                  key={label}
+                  onClick={() => setShowPreview(v)}
+                  className={clsx("inline-flex h-full items-center gap-1 rounded px-2", showPreview === v ? "bg-hover text-fg" : "text-muted hover:text-fg")}
+                >
+                  <I className="size-3" /> {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {showPreview ? <ScriptsButton on={scripts} set={setScripts} /> : <WrapButton wrap={wrap} setWrap={setWrap} />}
         </>,
         slot,
       )}
@@ -169,7 +196,9 @@ export function TextEditor({ preview, slot, tabId, hidden, reload, onDirty, onSa
           <Button size="sm" variant="ghost" onClick={() => setSaveError(null)}>Dismiss</Button>
         </Banner>
       )}
-      <div className="min-h-0 flex-1">
+      {showPreview && <HtmlPreview html={previewText} scripts={scripts} title={basename(path)} />}
+      {/* stays mounted while previewing so edits (and undo) survive */}
+      <div className={showPreview ? "hidden" : "min-h-0 flex-1"}>
         <Editor
           theme="devcat"
           language={preview.language ?? "plaintext"}
