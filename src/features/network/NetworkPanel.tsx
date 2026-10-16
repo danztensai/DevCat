@@ -10,7 +10,7 @@ import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
 import {
   connectProfile, deleteProfile, disconnectProfile, duplicateProfile, importProfileFile, openNewProfile, openProfileTab, toggleProfile,
 } from "./actions";
-import { copyText, isBusy, isUp, NET_KIND_META, NetKindIcon, portsLabel, StatusDot, Switch } from "./meta";
+import { copyText, isBusy, isUp, isVpn, NET_KIND_META, NetKindIcon, portsLabel, StatusDot, Switch } from "./meta";
 import { InstallToolButton } from "./InstallToolButton";
 import { PasswordlessVpnRow } from "./PasswordlessVpn";
 import { SshConfigImportDialog } from "./SshConfigImport";
@@ -31,8 +31,8 @@ export default function NetworkPanel() {
     const list = q ? profiles.filter((p) => p.name.toLowerCase().includes(q) || (p.summary ?? "").toLowerCase().includes(q)) : profiles;
     return [...list].sort((a, b) => a.name.localeCompare(b.name));
   }, [profiles, query]);
-  const vpns = filtered.filter((p) => p.kind !== "ssh");
-  const tunnels = filtered.filter((p) => p.kind === "ssh");
+  const vpns = filtered.filter((p) => isVpn(p.kind));
+  const tunnels = filtered.filter((p) => !isVpn(p.kind));
 
   const addItems: MenuItem[] = [
     { label: "Import file…", icon: <FileUp className="size-3.5" />, onClick: () => void importProfileFile() },
@@ -40,6 +40,7 @@ export default function NetworkPanel() {
     { label: "New OpenVPN", icon: <Shield className="size-3.5" />, onClick: () => openNewProfile("openvpn") },
     { label: "New WireGuard", icon: <ShieldHalf className="size-3.5" />, onClick: () => openNewProfile("wireguard") },
     { label: "New SSH tunnel", icon: <Cable className="size-3.5" />, onClick: () => openNewProfile("ssh") },
+    { label: "New Kubernetes port-forward", icon: <NetKindIcon kind="k8s" />, onClick: () => openNewProfile("k8s") },
     "separator",
     { label: "Import from ~/.ssh/config…", icon: <Terminal className="size-3.5" />, onClick: () => setSshImport(true) },
   ];
@@ -56,7 +57,7 @@ export default function NetworkPanel() {
     void s.loadHelper();
   };
 
-  const missing = (kind: NetKind) => tools !== null && kind !== "ssh" && !tools[kind];
+  const missing = (kind: NetKind) => tools !== null && isVpn(kind) && !tools[kind as "openvpn" | "wireguard"];
   /** Missing and DevCat can't install it: connecting is pointless. */
   const blocked = (kind: NetKind) => missing(kind) && !tools?.installable?.[kind];
 
@@ -106,6 +107,7 @@ export default function NetworkPanel() {
             <div className="flex flex-col items-stretch gap-1.5">
               <Button size="sm" variant="primary" onClick={() => void importProfileFile()}><FileUp className="size-3.5" />Import .ovpn / .conf…</Button>
               <Button size="sm" onClick={() => openNewProfile("ssh")}><Cable className="size-3.5" />New SSH tunnel</Button>
+              <Button size="sm" onClick={() => openNewProfile("k8s")}><NetKindIcon kind="k8s" />Kubernetes port-forward</Button>
               <div className="flex gap-1.5">
                 <Button size="sm" className="flex-1 justify-center" onClick={() => openNewProfile("openvpn")}>OpenVPN</Button>
                 <Button size="sm" className="flex-1 justify-center" onClick={() => openNewProfile("wireguard")}>WireGuard</Button>

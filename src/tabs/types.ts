@@ -16,7 +16,7 @@ export type TabSpec =
   | { type: "k8s"; connId: string }
   | { type: "rabbitmq"; connId: string }
   /** Network profile (VPN / SSH tunnel) details; profileId "" = new (kind preselected). */
-  | { type: "network"; profileId: string; kind?: "ssh" | "openvpn" | "wireguard"; importPath?: string }
+  | { type: "network"; profileId: string; kind?: "ssh" | "openvpn" | "wireguard" | "k8s"; importPath?: string }
   /** AI workspace for a folder: Chat / Diff / Code Review. providerId = AI connection the chat runs
    *  (absent = Claude Code); sessionId resumes a past Claude session. */
   | { type: "claude"; cwd: string; sessionId?: string | null; view?: "chat" | "diff" | "review" | "terminal"; providerId?: string | null }

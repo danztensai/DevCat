@@ -9,6 +9,7 @@
 mod elevate;
 pub mod installers;
 pub(crate) mod helper;
+mod kube_forward;
 mod openvpn;
 mod parse;
 mod registry;
@@ -35,6 +36,8 @@ pub enum NetKind {
     Ssh,
     Openvpn,
     Wireguard,
+    /// Kubernetes port-forward(s) through one of DevCat's Kubernetes connections.
+    K8s,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -48,6 +51,9 @@ pub struct PortForward {
     pub remote_host: String,
     #[serde(default)]
     pub remote_port: u16,
+    /// Kubernetes forwards: namespace of the service / pod ("" = the connection's default).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub namespace: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +229,7 @@ async fn start_connect(id: &str, prompt: bool) -> AppResult<()> {
                 NetKind::Ssh => ssh_tunnel::connect(id.clone(), generation, profile).await,
                 NetKind::Openvpn => openvpn::connect(id.clone(), generation, profile, st, prompt).await,
                 NetKind::Wireguard => wireguard::connect(id.clone(), generation, profile, st, prompt).await,
+                NetKind::K8s => kube_forward::connect_boxed(id.clone(), generation, profile).await,
             },
         };
         if let Err(e) = res {
@@ -261,6 +268,11 @@ async fn disconnect(id: &str) -> AppResult<()> {
         }
         Some(registry::Run::Openvpn(r)) => r.stop(id).await,
         Some(registry::Run::Wireguard(r)) => r.stop(id).await,
+        Some(registry::Run::Kube(r)) => {
+            registry::log(id, "Disconnecting");
+            drop(r);
+            Ok(())
+        }
     };
     match &res {
         Ok(()) => {
@@ -351,7 +363,7 @@ pub async fn net_parse(kind: NetKind, text: String) -> AppResult<serde_json::Val
     match kind {
         NetKind::Openvpn => Ok(serde_json::to_value(parse::parse_ovpn(&text))?),
         NetKind::Wireguard => Ok(serde_json::to_value(parse::parse_wireguard(&text))?),
-        NetKind::Ssh => Err(AppError::msg("SSH tunnels have no config text to parse")),
+        NetKind::Ssh | NetKind::K8s => Err(AppError::msg("Tunnels have no config text to parse")),
     }
 }
 

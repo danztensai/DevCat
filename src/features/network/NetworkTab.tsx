@@ -19,6 +19,7 @@ import {
 } from "./meta";
 import { emptyOvpnForm, generateOvpn } from "./ovpnGen";
 import { forwardLabel, SshTunnelEditor } from "./SshTunnelEditor";
+import { K8S_CONN_OPTION, K8sForwardEditor, k8sForwardLabel } from "./K8sForwardEditor";
 import { useNet, useNetStatus, useNetTraffic } from "./store";
 import { OpenVpnEditor, WireGuardEditor, type EditMode } from "./VpnEditors";
 import { emptyWgForm, generateWg } from "./wgGen";
@@ -88,6 +89,14 @@ function problems(p: NetProfile, text: string): string[] {
     });
     const ports = p.forwards.map((f) => f.bindPort).filter(Boolean);
     if (new Set(ports).size !== ports.length) out.push("Two forwards use the same local port.");
+  } else if (p.kind === "k8s") {
+    if (!p.options[K8S_CONN_OPTION]) out.push("Pick the Kubernetes connection to use.");
+    if (!p.forwards.length) out.push("Add at least one forward.");
+    p.forwards.forEach((f, i) => {
+      if (!f.remoteHost || !f.remotePort) out.push(`Forward ${i + 1}: the service / pod name and its port are required.`);
+    });
+    const ports = p.forwards.map((f) => f.bindPort).filter(Boolean);
+    if (new Set(ports).size !== ports.length) out.push("Two forwards use the same local port.");
   } else if (!text.trim()) {
     out.push("The configuration is empty.");
   }
@@ -96,6 +105,7 @@ function problems(p: NetProfile, text: string): string[] {
 
 function suggestName(p: NetProfile): string {
   if (p.kind === "ssh") return p.ssh?.host ? `${p.ssh.user ? `${p.ssh.user}@` : ""}${p.ssh.host}` : "";
+  if (p.kind === "k8s") return p.forwards[0]?.remoteHost ?? "";
   return p.summary?.split(/\s+/).pop()?.replace(/:\d+$/, "") ?? "";
 }
 
@@ -257,12 +267,13 @@ export default function NetworkTab({ tab }: { tab: NetworkTabSpec }) {
                 </div>
               )}
               <SectionTitle>General</SectionTitle>
-              <IdentityRows p={p} set={set} namePlaceholder={suggestName(p) || (p.kind === "ssh" ? "Bastion tunnel" : "Office VPN")} />
+              <IdentityRows p={p} set={set} namePlaceholder={suggestName(p) || (p.kind === "ssh" ? "Bastion tunnel" : p.kind === "k8s" ? "Prod database" : "Office VPN")} />
               {p.kind === "openvpn" && (
                 <OpenVpnEditor p={p} set={set} text={text} setText={setText} initialMode={data.mode} saved={!!profileId} />
               )}
               {p.kind === "wireguard" && <WireGuardEditor p={p} set={set} text={text} setText={setText} initialMode={data.mode} />}
               {p.kind === "ssh" && <SshTunnelEditor p={p} set={set} saved={!!profileId} status={status} />}
+              {p.kind === "k8s" && <K8sForwardEditor p={p} set={set} status={status} />}
               {isVpn(p.kind) && <ElevationNote kind={p.kind} tools={tools} />}
             </div>
           </div>
@@ -317,7 +328,7 @@ function StatusStrip({ status, p }: { status: NetStatus | null; p: NetProfile })
           <button
             key={i}
             className="flex items-center gap-1 rounded bg-ok/10 px-1.5 font-mono text-[11px] text-ok hover:bg-ok/20"
-            title={p.forwards[i] ? `${forwardLabel(p.forwards[i], port)} — click to copy` : "Copy"}
+            title={p.forwards[i] ? `${(p.kind === "k8s" ? k8sForwardLabel : forwardLabel)(p.forwards[i], port)} — click to copy` : "Copy"}
             onClick={() => void copyText(`127.0.0.1:${port}`)}
           >
             127.0.0.1:{port}<Copy className="size-2.5" />

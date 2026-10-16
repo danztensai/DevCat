@@ -496,7 +496,7 @@ fn pod_ready(p: &Pod) -> bool {
 }
 
 /// Resolves a service + port to a ready backing pod and the container port.
-async fn resolve_service(client: &kube::Client, namespace: &str, svc: &str, port: u16) -> AppResult<(String, u16)> {
+pub(crate) async fn resolve_service(client: &kube::Client, namespace: &str, svc: &str, port: u16) -> AppResult<(String, u16)> {
     let svcs: Api<Service> = Api::namespaced(client.clone(), namespace);
     let s = svcs.get(svc).await.map_err(friendly)?;
     let spec = s.spec.unwrap_or_default();

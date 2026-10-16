@@ -68,6 +68,11 @@ Grab the latest installer for macOS, Windows or Linux from the
   - **macOS**: DevCat includes its own OpenVPN 2.7.8 (built from the official source with OpenSSL, LZO and LZ4
     linked in; `scripts/build-openvpn-macos.sh`), so nothing has to be installed for OpenVPN. A Homebrew / MacPorts
     OpenVPN is still used if DevCat's isn't there (development builds).
+  - **Kubernetes port-forward** (in the Tunnels list): forwards a service or pod to a local port through one of
+    your Kubernetes connections (its kubeconfig / context), switched on and off like a VPN; a database connection can use
+    it as its Network so it starts first. Every client connection gets its own port-forward (one closing can't drop the
+    others, unlike a shared `kubectl port-forward` on some clusters such as RKE2), and services are looked up again for
+    new connections, so a failover to a new pod (e.g. a CloudNativePG primary behind `-rw`) is followed.
   - **Open .ovpn files with DevCat**: double-click one in Finder / Explorer (or use *Open With*) to import it.
   - **Passwordless VPN** (macOS / Linux, opt-in): *Set up passwordless VPN…* in the VPN list installs a
     root-owned copy of DevCat as a helper (`/Library/PrivilegedHelperTools/dev.devcat.vpn-helper` on macOS,

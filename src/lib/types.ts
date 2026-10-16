@@ -212,15 +212,19 @@ export type ExportFormat = "csv" | "json" | "sql" | "xlsx";
 
 // ---- Network profiles (mirror src-tauri/src/network/mod.rs)
 
-export type NetKind = "ssh" | "openvpn" | "wireguard";
+/** "k8s" = Kubernetes port-forward(s) through one of DevCat's Kubernetes connections. */
+export type NetKind = "ssh" | "openvpn" | "wireguard" | "k8s";
 
 export interface PortForward {
-  /** "local" = -L bindPort:remoteHost:remotePort ; "dynamic" = SOCKS5 proxy on bindPort */
-  kind: "local" | "dynamic";
+  /** SSH: "local" = -L bindPort:remoteHost:remotePort ; "dynamic" = SOCKS5 proxy on bindPort.
+   *  Kubernetes: "service" | "pod" named remoteHost in `namespace`. */
+  kind: "local" | "dynamic" | "service" | "pod";
   /** 0 = pick a free port */
   bindPort: number;
   remoteHost: string;
   remotePort: number;
+  /** Kubernetes forwards: "" = the connection's default namespace. */
+  namespace?: string;
 }
 
 export interface NetProfile {

@@ -23,6 +23,7 @@ pub enum Run {
     Ssh(super::ssh_tunnel::SshRun),
     Openvpn(super::openvpn::OvpnRun),
     Wireguard(super::wireguard::WgRun),
+    Kube(super::kube_forward::KubeRun),
 }
 
 struct Entry {

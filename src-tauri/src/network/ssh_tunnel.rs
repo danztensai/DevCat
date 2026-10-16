@@ -251,9 +251,9 @@ mod tests {
 
     #[test]
     fn details() {
-        let l = PortForward { kind: "local".into(), bind_port: 0, remote_host: "db.internal".into(), remote_port: 5432 };
+        let l = PortForward { kind: "local".into(), bind_port: 0, remote_host: "db.internal".into(), remote_port: 5432, namespace: String::new() };
         assert_eq!(forward_detail(&l, 5433), "127.0.0.1:5433 → db.internal:5432");
-        let d = PortForward { kind: "dynamic".into(), bind_port: 1080, remote_host: String::new(), remote_port: 0 };
+        let d = PortForward { kind: "dynamic".into(), bind_port: 1080, remote_host: String::new(), remote_port: 0, namespace: String::new() };
         assert_eq!(forward_detail(&d, 1080), "SOCKS5 127.0.0.1:1080");
     }
 
@@ -282,8 +282,8 @@ mod tests {
             password: Some("devcat".into()),
         });
         p.forwards = vec![
-            PortForward { kind: "local".into(), bind_port: 0, remote_host: th.into(), remote_port: tp },
-            PortForward { kind: "dynamic".into(), bind_port: 0, remote_host: String::new(), remote_port: 0 },
+            PortForward { kind: "local".into(), bind_port: 0, remote_host: th.into(), remote_port: tp, namespace: String::new() },
+            PortForward { kind: "dynamic".into(), bind_port: 0, remote_host: String::new(), remote_port: 0, namespace: String::new() },
         ];
         let generation = registry::begin_connect(&p.id).unwrap();
         connect(p.id.clone(), generation, p.clone()).await.unwrap();

@@ -137,7 +137,7 @@ impl NetStore {
             s.password = self.secrets.get(&ssh_key(id));
         }
         let config_text = match p.kind {
-            NetKind::Ssh => None,
+            NetKind::Ssh | NetKind::K8s => None,
             k => std::fs::read_to_string(self.config_path(id, k)?).ok(),
         };
         Ok(NetProfileFull { profile: p, config_text })
@@ -169,6 +169,18 @@ impl NetStore {
                         k => return Err(AppError::msg(format!("Unknown forward kind \"{k}\""))),
                     }
                 }
+            }
+            NetKind::K8s => {
+                if p.options.get(super::kube_forward::CONN_OPTION).is_none_or(|s| s.trim().is_empty()) {
+                    return Err(AppError::msg("Pick the Kubernetes connection this tunnel uses"));
+                }
+                if p.forwards.is_empty() {
+                    return Err(AppError::msg("Add at least one port forward"));
+                }
+                if let Some(e) = p.forwards.iter().find_map(super::kube_forward::validate) {
+                    return Err(AppError::msg(e));
+                }
+                p.summary = Some(super::kube_forward::summary(&p.forwards));
             }
             kind => {
                 let path = self.config_path(&p.id, kind)?;
@@ -339,7 +351,7 @@ pub mod tests {
         let mut p = profile(NetKind::Ssh);
         assert!(store.save(p.clone(), None).is_err());
         p.ssh = Some(SshConfig { enabled: true, host: "bastion".into(), port: 22, user: "u".into(), auth: "password".into(), key_path: None, password: Some("sshpw".into()) });
-        p.forwards = vec![super::super::PortForward { kind: "local".into(), bind_port: 0, remote_host: "".into(), remote_port: 0 }];
+        p.forwards = vec![super::super::PortForward { kind: "local".into(), bind_port: 0, remote_host: "".into(), remote_port: 0, namespace: String::new() }];
         assert!(store.save(p.clone(), None).is_err(), "local forward without target");
         p.forwards[0].remote_host = "db".into();
         p.forwards[0].remote_port = 5432;
@@ -351,5 +363,24 @@ pub mod tests {
         assert!(full.config_text.is_none());
         assert!(store.get("../x").is_err());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn k8s_profiles_need_a_connection_and_valid_forwards() {
+        let dir = tmp();
+        let st = NetStore::new(dir.clone(), Box::new(MemSecrets::default()));
+        let mut p = profile(NetKind::K8s);
+        p.forwards = vec![super::super::PortForward { kind: "service".into(), bind_port: 6543, remote_host: "postgres-prod-rw".into(), remote_port: 5432, namespace: "database".into() }];
+        assert!(st.save(p.clone(), None).unwrap_err().to_string().contains("Kubernetes connection"));
+        p.options.insert("k8sConnId".into(), "conn-1".into());
+        let saved = st.save(p.clone(), None).unwrap();
+        let back = st.get(&saved.id).unwrap();
+        assert!(back.config_text.is_none());
+        assert_eq!(back.profile.forwards[0].namespace, "database");
+        p.forwards[0].remote_port = 0;
+        assert!(st.save(p.clone(), None).is_err());
+        p.forwards.clear();
+        assert!(st.save(p, None).unwrap_err().to_string().contains("port forward"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

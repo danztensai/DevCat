@@ -1,6 +1,7 @@
 // Shared bits for the network feature: kind icons/labels, status dot, small helpers.
 import clsx from "clsx";
 import { Cable, Shield, ShieldHalf } from "lucide-react";
+import { KindIcon } from "../../components/ui/KindIcon";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { NetKind, NetProfile, NetState, NetStatus } from "../../lib/types";
@@ -9,14 +10,17 @@ export const NET_KIND_META: Record<NetKind, { label: string; short: string; colo
   openvpn: { label: "OpenVPN", short: "OpenVPN", color: "#f59e5b" },
   wireguard: { label: "WireGuard", short: "WireGuard", color: "#f87171" },
   ssh: { label: "SSH tunnel", short: "SSH", color: "#60a5fa" },
+  k8s: { label: "Kubernetes port-forward", short: "K8s", color: "#326ce5" },
 };
 
-export const isVpn = (k: NetKind) => k !== "ssh";
+/** OpenVPN / WireGuard (config file, admin rights); the others are tunnels. */
+export const isVpn = (k: NetKind) => k === "openvpn" || k === "wireguard";
 
 export function NetKindIcon({ kind, className = "size-3.5" }: { kind: NetKind; className?: string }) {
   const style = { color: NET_KIND_META[kind].color };
   if (kind === "openvpn") return <Shield className={className} style={style} />;
   if (kind === "wireguard") return <ShieldHalf className={className} style={style} />;
+  if (kind === "k8s") return <KindIcon kind="kubernetes" className={className} />;
   return <Cable className={className} style={style} />;
 }
 
@@ -116,7 +120,8 @@ export function newProfile(kind: NetKind, projectId: string | null = null): NetP
   return {
     id: "", name: "", kind, projectId, color: null, autoConnect: false,
     ssh: kind === "ssh" ? { enabled: true, host: "", port: 22, user: "", auth: "key", keyPath: null, password: null } : null,
-    forwards: kind === "ssh" ? [{ kind: "local", bindPort: 0, remoteHost: "", remotePort: 0 }] : [],
+    forwards: kind === "ssh" ? [{ kind: "local", bindPort: 0, remoteHost: "", remotePort: 0 }]
+      : kind === "k8s" ? [{ kind: "service", bindPort: 0, remoteHost: "", remotePort: 0, namespace: "" }] : [],
     vpnUser: null, vpnPassword: null, summary: null, options: {},
   };
 }
