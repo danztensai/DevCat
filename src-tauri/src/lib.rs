@@ -1,6 +1,7 @@
 mod ai;
 mod claude;
 mod commands;
+mod crashlog;
 mod db;
 #[cfg(debug_assertions)]
 #[doc(hidden)]
@@ -36,6 +37,7 @@ pub fn gui_refusal() -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    crashlog::install();
     // Both the `ring` and `aws-lc-rs` rustls backends end up in the dependency tree,
     // so rustls can't pick one automatically; choose it once for every TLS client.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();

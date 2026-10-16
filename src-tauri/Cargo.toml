@@ -77,7 +77,9 @@ debug = false
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+# unwind: a panic in a background task fails that task, not the whole app (and with it every
+# VPN's management connection). Panics are logged by crashlog.rs.
+panic = "unwind"
 strip = true
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]

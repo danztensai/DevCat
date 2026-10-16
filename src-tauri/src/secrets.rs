@@ -15,6 +15,9 @@ pub fn get(key: &str) -> Option<String> {
     if let Some(v) = CACHE.lock().get(key) {
         return Some(v.clone());
     }
+    if cfg!(test) {
+        return None; // tests never touch the real keychain
+    }
     let v = keyring::Entry::new(SERVICE, key).ok()?.get_password().ok()?;
     CACHE.lock().insert(key.to_string(), v.clone());
     Some(v)
@@ -22,6 +25,10 @@ pub fn get(key: &str) -> Option<String> {
 
 /// Store `value`; an empty value deletes the entry.
 pub fn set(key: &str, value: &str) -> AppResult<()> {
+    if cfg!(test) {
+        if value.is_empty() { CACHE.lock().remove(key); } else { CACHE.lock().insert(key.into(), value.into()); }
+        return Ok(());
+    }
     let entry = keyring::Entry::new(SERVICE, key)?;
     if value.is_empty() {
         let _ = entry.delete_credential();
@@ -35,6 +42,9 @@ pub fn set(key: &str, value: &str) -> AppResult<()> {
 
 pub fn delete(key: &str) {
     CACHE.lock().remove(key);
+    if cfg!(test) {
+        return;
+    }
     if let Ok(e) = keyring::Entry::new(SERVICE, key) {
         let _ = e.delete_credential();
     }

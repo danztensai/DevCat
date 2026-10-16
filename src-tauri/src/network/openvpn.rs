@@ -321,6 +321,98 @@ impl OvpnRun {
     }
 }
 
+/// Management session of a running daemon, kept in the keychain so a DevCat that restarted
+/// (crash, update) re-attaches to it instead of leaving OpenVPN running unattended: after a
+/// restart (e.g. ping-restart) OpenVPN waits for "hold release" from the management client and
+/// removes its routes until it gets it.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub(crate) struct Session {
+    pub port: u16,
+    pub token: String,
+    pub pid_file: PathBuf,
+    pub via_helper: bool,
+}
+
+fn session_key(id: &str) -> String {
+    format!("net:{id}:session")
+}
+
+fn save_session(id: &str, s: &Session) {
+    if let Ok(json) = serde_json::to_string(s) {
+        let _ = crate::secrets::set(&session_key(id), &json);
+    }
+}
+
+/// A previous DevCat process saved a session for this profile (cheap: one keychain lookup).
+pub fn has_session(id: &str) -> bool {
+    load_session(id).is_some()
+}
+
+fn load_session(id: &str) -> Option<Session> {
+    crate::secrets::get(&session_key(id)).and_then(|j| serde_json::from_str(&j).ok())
+}
+
+/// Forget the session, but only if it is still the one with `token` (a newer one may exist).
+fn forget_session(id: &str, token: &str) {
+    if load_session(id).is_some_and(|s| s.token == token) {
+        crate::secrets::delete(&session_key(id));
+    }
+}
+
+/// Re-attach to the OpenVPN daemon a previous DevCat process started (see [`Session`]).
+/// Returns false when there is nothing to re-attach to.
+pub async fn adopt(id: String, profile: NetProfile) -> bool {
+    let Some(s) = load_session(&id) else { return false };
+    let stream = match tokio::time::timeout(Duration::from_secs(2), TcpStream::connect(("127.0.0.1", s.port))).await {
+        Ok(Ok(stream)) => stream,
+        _ => {
+            forget_session(&id, &s.token); // the daemon is gone
+            return false;
+        }
+    };
+    let Some(generation) = registry::begin_connect(&id) else { return false };
+    registry::log(&id, "Re-attached to the OpenVPN that was running before DevCat restarted");
+    let (tx, rx) = mpsc::unbounded_channel();
+    // "hold release": a daemon that restarted meanwhile is waiting for it (no routes until then).
+    for cmd in [s.token.as_str(), "log on all", "state on all", "bytecount 1", "hold release"] {
+        let _ = tx.send(cmd.to_string());
+    }
+    let machine = Machine::new(profile.vpn_user.clone(), profile.vpn_password.clone());
+    let reader = tokio::spawn(mgmt_task(id.clone(), generation, stream, rx, machine, s.token.clone()));
+    let run = OvpnRun { tx, reader, pid_file: s.pid_file.clone(), via_helper: s.via_helper };
+    match registry::store_run(&id, generation, Run::Openvpn(run)) {
+        Ok(()) => {
+            registry::set_connecting(&id, generation, Some("re-attaching".into()));
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// An OpenVPN of this profile still running without DevCat (left over from a DevCat that
+/// crashed before it could save a session): its pid, if the pid file points at a live
+/// openvpn process using this profile's config.
+#[cfg(unix)]
+fn leftover_pid(pid_file: &Path, config: &Path) -> Option<u32> {
+    let pid: i32 = std::fs::read_to_string(pid_file).ok()?.trim().parse().ok()?;
+    if pid <= 1 {
+        return None;
+    }
+    // SAFETY: signal 0 only checks that the process exists (EPERM = exists, owned by root).
+    let alive = unsafe { libc::kill(pid, 0) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+    if !alive {
+        return None;
+    }
+    let out = std::process::Command::new("/bin/ps").args(["-o", "command=", "-p", &pid.to_string()]).output().ok()?;
+    let cmd = String::from_utf8_lossy(&out.stdout);
+    (cmd.contains("openvpn") && cmd.contains(&*config.to_string_lossy())).then_some(pid as u32)
+}
+
+#[cfg(not(unix))]
+fn leftover_pid(_pid_file: &Path, _config: &Path) -> Option<u32> {
+    None
+}
+
 fn free_port() -> AppResult<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
@@ -400,6 +492,12 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
     if !paths.config.exists() {
         return Err(AppError::msg("The OpenVPN configuration file is missing; edit the profile and paste it again"));
     }
+    // A daemon left running by a DevCat that crashed is stopped first (in the same admin prompt).
+    let leftover = leftover_pid(&paths.pid, &paths.config);
+    if let Some(pid) = leftover {
+        registry::log(&id, &format!("An OpenVPN from an earlier DevCat session is still running (pid {pid}); it will be stopped first"));
+    }
+    let prompt = prompt || leftover.is_some();
     let port = free_port()?;
     let token = uuid::Uuid::new_v4().simple().to_string();
     write_private(&paths.mgmt_pw, format!("{token}\n").as_bytes())?;
@@ -418,7 +516,7 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
     }
     let launched = match launched {
         Some(r) => r,
-        None => launch_with_prompt(&id, generation, &paths, port, &extra).await,
+        None => launch_with_prompt(&id, generation, &paths, port, &extra, leftover).await,
     };
     if let Err(e) = launched {
         let _ = std::fs::remove_file(&paths.mgmt_pw);
@@ -441,12 +539,13 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
             if tail.is_empty() { String::new() } else { format!(":\n{tail}") }
         )));
     };
+    save_session(&id, &Session { port, token: token.clone(), pid_file: paths.pid.clone(), via_helper });
     let (tx, rx) = mpsc::unbounded_channel();
     for cmd in [token.as_str(), "log on all", "state on all", "bytecount 1", "hold release"] {
         let _ = tx.send(cmd.to_string());
     }
     let machine = Machine::new(profile.vpn_user.clone(), profile.vpn_password.clone());
-    let reader = tokio::spawn(mgmt_task(id.clone(), generation, stream, rx, machine));
+    let reader = tokio::spawn(mgmt_task(id.clone(), generation, stream, rx, machine, token));
     let run = OvpnRun { tx, reader, pid_file: paths.pid.clone(), via_helper };
     match registry::store_run(&id, generation, Run::Openvpn(run)) {
         Ok(()) => {
@@ -462,7 +561,7 @@ pub async fn connect(id: String, generation: u64, profile: NetProfile, store: &N
 }
 
 /// Start the daemon elevated with the OS password prompt.
-async fn launch_with_prompt(id: &str, generation: u64, paths: &Paths, port: u16, extra: &str) -> AppResult<()> {
+async fn launch_with_prompt(id: &str, generation: u64, paths: &Paths, port: u16, extra: &str, leftover: Option<u32>) -> AppResult<()> {
     let bin = tools::find_openvpn()
         .ok_or_else(|| AppError::msg(format!("OpenVPN is not installed. {}", tools::openvpn_hint())))?;
     // Created by us so the log stays readable after root writes to it.
@@ -471,7 +570,14 @@ async fn launch_with_prompt(id: &str, generation: u64, paths: &Paths, port: u16,
     let args = build_args(paths, port, extra, cfg!(windows));
     registry::log(id, &format!("Starting {} (administrator rights required)", bin.display()));
     registry::set_connecting(id, generation, Some("waiting for authorization".into()));
-    match elevate::run(&bin.to_string_lossy(), &args, !cfg!(windows), None).await {
+    let (program, args) = match leftover {
+        Some(pid) if !cfg!(windows) => (
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), format!("/bin/kill {pid} 2>/dev/null; sleep 1; exec {}", elevate::sh_command(&bin.to_string_lossy(), &args))],
+        ),
+        _ => (bin.to_string_lossy().into_owned(), args),
+    };
+    match elevate::run(&program, &args, !cfg!(windows), None).await {
         Ok(o) if o.success => Ok(()),
         Ok(o) => {
             let tail = log_tail(&paths.log, 5);
@@ -481,7 +587,7 @@ async fn launch_with_prompt(id: &str, generation: u64, paths: &Paths, port: u16,
     }
 }
 
-async fn mgmt_task(id: String, generation: u64, stream: TcpStream, mut rx: mpsc::UnboundedReceiver<String>, mut m: Machine) {
+async fn mgmt_task(id: String, generation: u64, stream: TcpStream, mut rx: mpsc::UnboundedReceiver<String>, mut m: Machine, token: String) {
     let (r, mut w) = stream.into_split();
     let mut lines = BufReader::new(r).lines();
     let mut rx_open = true;
@@ -522,6 +628,8 @@ async fn mgmt_task(id: String, generation: u64, stream: TcpStream, mut rx: mpsc:
         }
     }
     registry::log(&id, "OpenVPN management connection closed");
+    // The daemon exited (or was stopped): nothing to re-attach to after a restart.
+    forget_session(&id, &token);
     if registry::generation(&id) == Some(generation) && !m.has_failed() && registry::status(&id).state != registry::ERROR {
         registry::set_error(&id, generation, m.exit_message());
     }
@@ -683,5 +791,81 @@ mod tests {
         assert!(line.contains("--config '/data dir/network/x.ovpn'"), "{line}");
         let script = elevate::osascript_script(&line, "p");
         assert!(script.starts_with("do shell script \"/opt/homebrew/sbin/openvpn --config '/data dir/network/x.ovpn'"));
+    }
+
+    /// The incident this guards against, end to end with a real OpenVPN (no root: `--dev null`,
+    /// static key, two local peers): DevCat goes away without stopping the daemon, the daemon
+    /// restarts (ping-restart / SIGUSR1) and waits for "hold release" with no routes; a new
+    /// DevCat must re-attach and release it. Needs an openvpn binary:
+    /// DEVCAT_TEST_OPENVPN=src-tauri/vpn-bin/openvpn cargo test openvpn::tests::adopt_after_crash -- --ignored
+    #[tokio::test]
+    #[ignore]
+    async fn adopt_after_crash() {
+        let bin = std::env::var("DEVCAT_TEST_OPENVPN").expect("DEVCAT_TEST_OPENVPN");
+        let dir = std::env::temp_dir().join(format!("devcat-adopt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = dir.join("s.key");
+        assert!(std::process::Command::new(&bin).args(["--genkey", "secret"]).arg(&key).status().unwrap().success());
+        let (pa, pb) = (free_port().unwrap(), free_port().unwrap());
+        let common = |lport: u16, rport: u16| -> Vec<String> {
+            ["--dev", "null", "--secret", &key.to_string_lossy(), "--allow-deprecated-insecure-static-crypto",
+             "--cipher", "AES-256-CBC", "--proto", "udp", "--remote", "127.0.0.1", "--verb", "3", "--ping", "1",
+             "--lport", &lport.to_string(), "--rport", &rport.to_string()].iter().map(|s| s.to_string()).collect()
+        };
+        let mport = free_port().unwrap();
+        let token = "t0ken";
+        let pw = dir.join("m.pw");
+        std::fs::write(&pw, format!("{token}\n")).unwrap();
+        let pidf = dir.join("a.pid");
+        let mut a = std::process::Command::new(&bin)
+            .args(common(pa, pb))
+            .args(["--management", "127.0.0.1", &mport.to_string(), &pw.to_string_lossy(), "--management-hold", "--writepid", &pidf.to_string_lossy()])
+            .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap();
+        let mut b = std::process::Command::new(&bin).args(common(pb, pa)).stdout(std::process::Stdio::null()).spawn().unwrap();
+        tokio::time::sleep(Duration::from_millis(800)).await;
+
+        let profile = |id: &str| NetProfile {
+            id: id.into(), name: "t".into(), kind: NetKind::Openvpn, project_id: None, color: None, auto_connect: false,
+            ssh: None, forwards: vec![], vpn_user: None, vpn_password: None, summary: None, options: Default::default(),
+        };
+        let wait = |id: String, want: &'static str| async move {
+            for _ in 0..100 {
+                if registry::status(&id).state == want { return true; }
+                tokio::time::sleep(Duration::from_millis(150)).await;
+            }
+            false
+        };
+        // First DevCat attaches (the daemon waits in hold until it does).
+        let s = Session { port: mport, token: token.into(), pid_file: pidf.clone(), via_helper: false };
+        save_session("adopt-1", &s);
+        assert!(adopt("adopt-1".into(), profile("adopt-1")).await);
+        assert!(wait("adopt-1".into(), registry::CONNECTED).await, "first attach: {:?}", registry::logs("adopt-1"));
+
+        // "Crash": the management connection drops without SIGTERM; the session stays saved.
+        let gen1 = registry::generation("adopt-1").unwrap();
+        if let Some(Run::Openvpn(run)) = registry::take_run_if("adopt-1", gen1) {
+            run.reader.abort();
+            std::mem::forget(run); // its Drop would queue a SIGTERM
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        // The daemon restarts and now waits for "hold release" (the state the incident ended in).
+        let pid = std::fs::read_to_string(&pidf).unwrap().trim().to_string();
+        assert!(std::process::Command::new("/bin/kill").args(["-USR1", &pid]).status().unwrap().success());
+        tokio::time::sleep(Duration::from_millis(800)).await;
+
+        // A new DevCat finds the session, re-attaches and the tunnel comes back up.
+        save_session("adopt-2", &s);
+        assert!(adopt("adopt-2".into(), profile("adopt-2")).await);
+        assert!(wait("adopt-2".into(), registry::CONNECTED).await, "re-attach: {:?}", registry::logs("adopt-2"));
+        assert!(registry::logs("adopt-2").iter().any(|l| l.contains("Re-attached")));
+        if std::env::var("DEVCAT_TEST_VERBOSE").is_ok() {
+            for l in registry::logs("adopt-2") { println!("{l}"); }
+        }
+
+        let _ = a.kill();
+        let _ = b.kill();
+        let _ = a.wait();
+        let _ = b.wait();
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

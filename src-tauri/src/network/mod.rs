@@ -158,6 +158,15 @@ pub fn start(app: tauri::AppHandle) {
     traffic::spawn_sampler();
     tauri::async_runtime::spawn(async {
         let Ok(profiles) = store().and_then(|s| s.load_all()) else { return };
+        // OpenVPN daemons a previous DevCat process left running (crash, update restart):
+        // take them over so they keep working (and get "hold release" after a reconnect).
+        for p in profiles.iter().filter(|p| p.kind == NetKind::Openvpn && openvpn::has_session(&p.id)) {
+            if let Ok(full) = store().and_then(|s| s.get(&p.id)) {
+                if openvpn::adopt(p.id.clone(), full.profile).await {
+                    registry::log(&p.id, "Taken over from the previous DevCat session");
+                }
+            }
+        }
         for p in profiles.into_iter().filter(|p| p.auto_connect) {
             if let Err(e) = start_connect(&p.id, false).await {
                 registry::log(&p.id, &format!("Auto-connect failed: {e}"));
