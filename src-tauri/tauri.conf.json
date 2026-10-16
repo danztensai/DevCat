@@ -48,7 +48,18 @@
         "installMode": "currentUser"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      {
+        "ext": [
+          "ovpn"
+        ],
+        "name": "OpenVPN profile",
+        "description": "OpenVPN profile",
+        "role": "Viewer",
+        "mimeType": "application/x-openvpn-profile"
+      }
+    ]
   },
   "plugins": {
     "updater": {

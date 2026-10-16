@@ -1,0 +1,3 @@
+# Filled by scripts/build-openvpn-macos.sh (macOS builds); bundled as Contents/Resources/vpn/.
+*
+!.gitignore

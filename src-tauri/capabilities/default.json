@@ -16,6 +16,8 @@
     "core:window:allow-set-title",
     "fs:allow-read-text-file",
     "core:window:allow-set-badge-count",
-    "core:window:allow-request-user-attention"
+    "core:window:allow-request-user-attention",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize"
   ]
 }

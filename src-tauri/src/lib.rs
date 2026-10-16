@@ -13,6 +13,7 @@ mod keep_awake;
 mod models;
 mod network;
 mod notes;
+mod opened;
 mod projects;
 mod secrets;
 mod state;
@@ -40,6 +41,10 @@ pub fn run() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     tauri::Builder::default()
+        // First: a second launch (e.g. double-clicking a .ovpn) hands its arguments to this one.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            opened::accept(app, opened::from_args(&argv, Some(std::path::Path::new(&cwd))));
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -52,6 +57,8 @@ pub fn run() {
             app.manage(state::AppState::new(dir));
             #[cfg(target_os = "macos")]
             windows::install_menu(app.handle())?;
+            // Windows / Linux: files DevCat was launched with.
+            opened::accept(app.handle(), opened::from_args(&std::env::args().collect::<Vec<_>>(), None));
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -69,6 +76,7 @@ pub fn run() {
             updater::update_install,
             // windows
             windows::open_window,
+            opened::take_opened_files,
             // connections
             commands::connections::list_connections,
             commands::connections::get_connection,
@@ -240,7 +248,13 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
+        .run(|app, event| {
+            // macOS: files opened with DevCat (Finder, Dock icon).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                opened::accept(app, urls.iter().filter_map(|u| u.to_file_path().ok()));
+            }
+            let _ = app;
             // Tear down VPNs / tunnels so no elevated openvpn or wg interface outlives the app.
             if let tauri::RunEvent::Exit = event {
                 network::shutdown();

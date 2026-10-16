@@ -52,14 +52,26 @@ fn newest_bundled(dir: &Path) -> Option<PathBuf> {
     found.pop().map(|(_, p)| p)
 }
 
+/// The OpenVPN that ships inside DevCat.app (Contents/Resources/vpn/openvpn; macOS builds).
+pub fn bundled_openvpn() -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let exe = std::env::current_exe().ok()?;
+    let p = exe.parent()?.parent()?.join("Resources").join("vpn").join("openvpn");
+    is_executable(&p).then_some(p)
+}
+
 pub fn find_openvpn() -> Option<PathBuf> {
     if cfg!(windows) {
         let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
         let p = PathBuf::from(pf).join(r"OpenVPN\bin\openvpn.exe");
         return if p.is_file() { Some(p) } else { which("openvpn") };
     }
+    // macOS: DevCat's own build first (known version, LZO/LZ4 included), then the system's.
     // MacPorts' openvpn2 port installs the binary as `openvpn2`.
-    which("openvpn").or_else(|| which("openvpn2")).or_else(|| newest_bundled(Path::new("/Applications/Tunnelblick.app/Contents/Resources/openvpn")))
+    bundled_openvpn()
+        .or_else(|| which("openvpn")).or_else(|| which("openvpn2")).or_else(|| newest_bundled(Path::new("/Applications/Tunnelblick.app/Contents/Resources/openvpn")))
 }
 
 /// `wg-quick` on macOS/Linux, `wireguard.exe` on Windows.

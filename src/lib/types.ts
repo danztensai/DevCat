@@ -267,9 +267,11 @@ export interface NetHelperStatus {
   supported: boolean;
   /** helper is root-owned and the sudoers rule exists */
   installed: boolean;
-  /** `sudo -n` works without a prompt and the helper is this exact DevCat build */
+  /** `sudo -n` works without a prompt and the helper speaks this DevCat's protocol */
   upToDate: boolean;
   helperVersion?: string | null;
+  /** this DevCat ships an OpenVPN the helper doesn't have yet (or an older copy): Update helper installs it */
+  openvpnUpdate?: boolean;
   appVersion: string;
   helperPath: string;
   sudoersPath: string;

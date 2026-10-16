@@ -56,11 +56,13 @@ export function PasswordlessVpnRow({ kinds }: { kinds: ("openvpn" | "wireguard")
       <div className="flex items-start gap-1.5">
         <ShieldCheck className="mt-px size-3 shrink-0 text-ok" />
         <div className="min-w-0 flex-1">
-          {helper.upToDate
-            ? <span className="text-ok">Passwordless VPN is on</span>
-            : <span className="text-warn">Passwordless VPN is paused: DevCat was updated, so its helper needs updating too.</span>}
+          {!helper.upToDate
+            ? <span className="text-warn">Passwordless VPN is paused: this DevCat needs a newer helper.</span>
+            : helper.openvpnUpdate
+              ? <span className="text-ok">Passwordless VPN is on. <span className="text-warn">Update the helper to use the OpenVPN that comes with DevCat.</span></span>
+              : <span className="text-ok">Passwordless VPN is on</span>}
           {" "}
-          {!helper.upToDate && (
+          {(!helper.upToDate || helper.openvpnUpdate) && (
             <><button className="font-semibold text-accent hover:underline disabled:opacity-50" disabled={busy} onClick={() => setOpen(true)}
               title="Asks for your password once">Update helper</button>{" · "}</>
           )}

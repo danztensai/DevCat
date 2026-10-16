@@ -58,6 +58,11 @@ export async function importProfileFile() {
     return;
   }
   if (typeof path !== "string") return;
+  openImportTab(path);
+}
+
+/** Import form for a VPN config file (also used when a .ovpn is opened with DevCat). */
+export function openImportTab(path: string) {
   useTabs.getState().open({ type: "network", profileId: "", importPath: path }, basename(path), `net-import:${path}`);
 }
 

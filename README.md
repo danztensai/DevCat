@@ -63,11 +63,17 @@ Grab the latest installer for macOS, Windows or Linux from the
     connect, DevCat offers to install the missing one with a single UAC prompt. OpenVPN goes in without its
     tray app, WireGuard without opening its window. Windows on ARM downloads the ARM installer from the
     publisher instead, checked against the same pins.
+  - **macOS**: DevCat includes its own OpenVPN 2.7.8 (built from the official source with OpenSSL, LZO and LZ4
+    linked in; `scripts/build-openvpn-macos.sh`), so nothing has to be installed for OpenVPN. A Homebrew / MacPorts
+    OpenVPN is still used if DevCat's isn't there (development builds).
+  - **Open .ovpn files with DevCat**: double-click one in Finder / Explorer (or use *Open With*) to import it.
   - **Passwordless VPN** (macOS / Linux, opt-in): *Set up passwordless VPN…* in the VPN list installs a
     root-owned copy of DevCat as a helper (`/Library/PrivilegedHelperTools/dev.devcat.vpn-helper` on macOS,
     `/usr/local/libexec/devcat-vpn-helper` on Linux) plus a sudoers rule for your account only
     (`/etc/sudoers.d/dev-devcat-vpn`), with one password prompt. After that, connects use `sudo -n` without a
-    password. The helper refuses configs that run scripts or load plugins (OpenVPN `up`/`down`/`plugin`…,
+    password. Setup also installs DevCat's OpenVPN next to the helper, so OpenVPN connects without a password with
+    no extra tools. The helper keeps working when DevCat is updated; it only asks to be updated when its interface
+    changes. The helper refuses configs that run scripts or load plugins (OpenVPN `up`/`down`/`plugin`…,
     WireGuard `PostUp`/`PreDown`…) and files that aren't yours, and it only runs OpenVPN / wg-quick from
     root-owned, non-writable locations (a Homebrew install under `/opt/homebrew` doesn't qualify;
     MacPorts' `sudo port install openvpn2 wireguard-tools` under `/opt/local` does). Those cases
@@ -154,6 +160,9 @@ notarization ([macOS](https://tauri.app/distribute/sign/macos/), [Windows](https
 
 ## Third-party software
 
+The macOS build includes OpenVPN built from the official source ([OpenVPN](https://github.com/OpenVPN/openvpn), GPLv2;
+with [OpenSSL](https://www.openssl.org) (Apache 2.0), [LZO](https://www.oberhumer.com/opensource/lzo/) (GPLv2) and
+[LZ4](https://github.com/lz4/lz4) (BSD); the exact sources and build steps are in `scripts/build-openvpn-macos.sh`).
 The Windows build ships the unmodified official installers of
 [OpenVPN Community](https://openvpn.net/community-downloads/) (GPLv2, source:
 [github.com/OpenVPN/openvpn](https://github.com/OpenVPN/openvpn)) and

@@ -1,0 +1,10 @@
+{
+  "build": {
+    "beforeBuildCommand": "scripts/build-openvpn-macos.sh \"${TAURI_ENV_ARCH:-$(uname -m)}\" && pnpm build"
+  },
+  "bundle": {
+    "resources": {
+      "vpn-bin/": "vpn/"
+    }
+  }
+}

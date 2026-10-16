@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# bundled OpenVPN build (scripts/build-openvpn-macos.sh)
+/target-openvpn

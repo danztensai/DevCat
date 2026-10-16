@@ -59,6 +59,15 @@ jobs:
           key: ${{ matrix.label }}
       - run: pnpm install --frozen-lockfile
 
+      # The OpenVPN DevCat ships on macOS (scripts/build-openvpn-macos.sh, run by the macOS
+      # beforeBuildCommand). Rebuilt only when the script (versions / pins) changes.
+      - name: Cache the bundled OpenVPN (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/vpn-bin
+          key: openvpn-${{ matrix.label }}-${{ hashFiles('scripts/build-openvpn-macos.sh') }}
+
       # macOS release signing with DevCat's self-signed certificate (.github/devcat-codesign.crt;
       # the .p12 is a repository secret). Unlike ad-hoc signing, the signature's identity stays the
       # same across versions, so the Keychain keeps "Always Allow" for saved passwords after an
@@ -125,6 +134,30 @@ jobs:
           echo "$req"
           # self-signed: the certificate is its own root; check it's ours by fingerprint
           echo "$req" | grep -qi 'certificate root = H"ae681e9b28c61cdcce19d63e05a6aac8a67f637d"' || { echo "::error::DevCat.app is not signed with the release certificate"; exit 1; }
+
+      # The bundled OpenVPN: inside the app, right architecture, only system libraries linked
+      # (the passwordless helper runs it as root), and on Apple Silicon a loopback connection
+      # between two instances with LZO compression.
+      - name: Check the bundled OpenVPN (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          arch=${{ matrix.label == 'macos-arm64' && 'arm64' || 'x86_64' }}
+          app=$(find src-tauri/target -maxdepth 6 -path '*/release/bundle/macos/DevCat.app' | head -1)
+          bin="$app/Contents/Resources/vpn/openvpn"
+          test -x "$bin" || { echo "::error::$bin is missing"; exit 1; }
+          lipo -archs "$bin" | grep -qx "$arch"
+          if otool -L "$bin" | tail -n +2 | grep -vE '^\s+(/usr/lib/|/System/Library/)'; then echo "::error::non-system library linked"; exit 1; fi
+          if [ "$arch" = arm64 ]; then
+            "$bin" --version | head -1
+            cd "$RUNNER_TEMP" && "$bin" --genkey secret s.key
+            common="--dev null --secret s.key --allow-deprecated-insecure-static-crypto --cipher AES-256-CBC --auth SHA256 --comp-lzo --proto udp --verb 3 --ping 1"
+            "$bin" $common --lport 51194 --rport 51195 --remote 127.0.0.1 > a.log 2>&1 & a=$!
+            "$bin" $common --lport 51195 --rport 51194 --remote 127.0.0.1 > b.log 2>&1 & b=$!
+            sleep 8; kill $a $b || true
+            cat a.log
+            grep -q "Initialization Sequence Completed" a.log && grep -q "Initialization Sequence Completed" b.log
+            grep -q "compression: 'lzo'" a.log
+          fi
 
       # The OpenVPN / WireGuard installers DevCat ships for Windows: present in the app's
       # resources, and they install with the same options DevCat uses (no OpenVPN tray app).
