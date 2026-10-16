@@ -33,6 +33,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +58,25 @@ jobs:
           workspaces: src-tauri -> target
           key: ${{ matrix.label }}
       - run: pnpm install --frozen-lockfile
+
+      # macOS release signing with DevCat's self-signed certificate (.github/devcat-codesign.crt;
+      # the .p12 is a repository secret). Unlike ad-hoc signing, the signature's identity stays the
+      # same across versions, so the Keychain keeps "Always Allow" for saved passwords after an
+      # update. Not notarized: Gatekeeper still asks once on first install. Without the secret the
+      # build stays ad-hoc signed.
+      - name: Set up code signing (macOS)
+        if: runner.os == 'macOS' && env.HAS_SIGNING_CERT == 'true'
+        env:
+          CERT_P12: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # codesign only uses identities the system trusts; trust the cert on this throwaway runner.
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain .github/devcat-codesign.crt
+          {
+            echo "APPLE_CERTIFICATE=$CERT_P12"
+            echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=DevCat Self-Signed"
+          } >> "$GITHUB_ENV"
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -85,6 +106,15 @@ jobs:
           updaterJsonPreferNsis: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Check the macOS signature
+        if: runner.os == 'macOS' && env.HAS_SIGNING_CERT == 'true'
+        run: |
+          app=$(find src-tauri/target -maxdepth 6 -path '*/release/bundle/macos/DevCat.app' | head -1)
+          codesign --verify --deep --strict "$app"
+          req=$(codesign -d -r- "$app" 2>&1)
+          echo "$req"
+          echo "$req" | grep -q 'certificate leaf' || { echo "::error::DevCat.app is not signed with the release certificate"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:

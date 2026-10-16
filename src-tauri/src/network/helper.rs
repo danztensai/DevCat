@@ -38,17 +38,23 @@ const VISUDO: &str = "/usr/sbin/visudo";
 pub const EXIT_REJECTED: i32 = 10;
 pub const EXIT_FAILED: i32 = 11;
 
-/// Where the helper looks for the tools (fixed; never PATH).
+/// Where the helper looks for the tools (fixed; never PATH). The first one that passes
+/// `trusted_path` wins, so a root-owned MacPorts install (/opt/local) is used even when a
+/// user-owned Homebrew one is listed earlier. MacPorts' `openvpn2` port names its binary openvpn2.
 const OPENVPN_BINS: &[&str] = &[
     "/opt/homebrew/sbin/openvpn",
     "/usr/local/sbin/openvpn",
+    "/opt/local/sbin/openvpn",
+    "/opt/local/sbin/openvpn2",
     "/usr/sbin/openvpn",
     "/usr/local/opt/openvpn/sbin/openvpn",
 ];
-const WG_QUICK_BINS: &[&str] = &["/opt/homebrew/bin/wg-quick", "/usr/local/bin/wg-quick", "/usr/bin/wg-quick", "/usr/sbin/wg-quick"];
-const BASH_BINS: &[&str] = &["/opt/homebrew/bin/bash", "/usr/local/bin/bash", "/usr/bin/bash", "/bin/bash"];
+const WG_QUICK_BINS: &[&str] = &["/opt/homebrew/bin/wg-quick", "/usr/local/bin/wg-quick", "/opt/local/bin/wg-quick", "/usr/bin/wg-quick", "/usr/sbin/wg-quick"];
+const BASH_BINS: &[&str] = &["/opt/homebrew/bin/bash", "/usr/local/bin/bash", "/opt/local/bin/bash", "/usr/bin/bash", "/bin/bash"];
 /// PATH for wg-quick (only the root-owned, non-writable ones are used).
-const TOOL_PATH_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin", "/usr/local/sbin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+const TOOL_PATH_DIRS: &[&str] = &[
+    "/opt/homebrew/bin", "/usr/local/bin", "/usr/local/sbin", "/opt/local/bin", "/opt/local/sbin", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+];
 
 const MAX_CONFIG: u64 = 1024 * 1024;
 const MAX_REF_FILE: u64 = 1024 * 1024;
@@ -1465,6 +1471,13 @@ mod tests {
             assert!(find_trusted(&[bin.to_str().unwrap()], me).unwrap_err().contains("writable by group"));
         }
         assert!(find_trusted(&["/definitely/not/here"], 0).unwrap_err().contains("not found"));
+        // An untrusted install listed first (Homebrew) is skipped for a trusted later one (MacPorts).
+        if cfg!(target_os = "macos") {
+            let good = d.write("good", "#!/bin/sh\n");
+            std::fs::set_permissions(&good, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let found = find_trusted(&[bin.to_str().unwrap(), good.to_str().unwrap()], me).unwrap();
+            assert_eq!(found, std::fs::canonicalize(&good).unwrap());
+        }
     }
 
     #[test]

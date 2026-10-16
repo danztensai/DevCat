@@ -1,8 +1,10 @@
 //! Locating the VPN command line tools.
 use std::path::{Path, PathBuf};
 
-/// Directories GUI apps often lack in PATH (Homebrew, sbin).
-const EXTRA_DIRS: &[&str] = &["/opt/homebrew/sbin", "/opt/homebrew/bin", "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/sbin"];
+/// Directories GUI apps often lack in PATH (Homebrew, MacPorts, sbin).
+const EXTRA_DIRS: &[&str] = &[
+    "/opt/homebrew/sbin", "/opt/homebrew/bin", "/usr/local/sbin", "/usr/local/bin", "/opt/local/sbin", "/opt/local/bin", "/usr/sbin", "/sbin",
+];
 
 fn exe(name: &str) -> String {
     if cfg!(windows) && !name.ends_with(".exe") { format!("{name}.exe") } else { name.to_string() }
@@ -56,7 +58,8 @@ pub fn find_openvpn() -> Option<PathBuf> {
         let p = PathBuf::from(pf).join(r"OpenVPN\bin\openvpn.exe");
         return if p.is_file() { Some(p) } else { which("openvpn") };
     }
-    which("openvpn").or_else(|| newest_bundled(Path::new("/Applications/Tunnelblick.app/Contents/Resources/openvpn")))
+    // MacPorts' openvpn2 port installs the binary as `openvpn2`.
+    which("openvpn").or_else(|| which("openvpn2")).or_else(|| newest_bundled(Path::new("/Applications/Tunnelblick.app/Contents/Resources/openvpn")))
 }
 
 /// `wg-quick` on macOS/Linux, `wireguard.exe` on Windows.

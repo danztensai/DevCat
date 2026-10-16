@@ -62,6 +62,7 @@ export function PasswordlessVpnRow({ kinds }: { kinds: ("openvpn" | "wireguard")
           )}
           <button className="text-muted hover:text-fg hover:underline disabled:opacity-50" disabled={busy} onClick={() => void remove()}>Remove</button>
           {issues.map((i) => <div key={i} className="mt-0.5 text-warn" title={i}>Still asks for a password: {i}</div>)}
+          {issues.length > 0 && <RootOwnedHint />}
         </div>
       </div>
     );
@@ -138,9 +139,21 @@ function SetupDialog({ open, onClose, helper, update }: { open: boolean; onClose
         {issues.length > 0 && (
           <div className="rounded border border-warn/30 bg-warn/10 px-2.5 py-1.5 text-[12px] text-warn">
             {issues.map((i) => <div key={i}>{i}. That tool will keep asking for your password.</div>)}
+            <RootOwnedHint />
           </div>
         )}
       </div>
     </Dialog>
+  );
+}
+
+/** Homebrew installs are owned by the user, so the root helper won't run them. */
+function RootOwnedHint() {
+  if (!navigator.userAgent.includes("Mac")) return null;
+  return (
+    <div className="mt-1 text-muted">
+      Fix: install the tools with MacPorts, which keeps them root-owned in /opt/local:{" "}
+      <code className="selectable font-mono text-fg/90">sudo port install openvpn2 wireguard-tools</code>, then reopen DevCat.
+    </div>
   );
 }

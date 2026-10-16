@@ -64,7 +64,8 @@ Grab the latest installer for macOS, Windows or Linux from the
     (`/etc/sudoers.d/dev-devcat-vpn`), with one password prompt. After that, connects use `sudo -n` without a
     password. The helper refuses configs that run scripts or load plugins (OpenVPN `up`/`down`/`plugin`…,
     WireGuard `PostUp`/`PreDown`…) and files that aren't yours, and it only runs OpenVPN / wg-quick from
-    root-owned, non-writable locations (a Homebrew install under `/opt/homebrew` doesn't qualify). Those cases
+    root-owned, non-writable locations (a Homebrew install under `/opt/homebrew` doesn't qualify;
+    MacPorts' `sudo port install openvpn2 wireguard-tools` under `/opt/local` does). Those cases
     fall back to the password prompt. *Remove* deletes both files. Windows keeps using UAC.
 - **AI Workspace**: runs your installed coding-agent CLI in a real terminal (like iTerm2), with
   **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2**, a git-aware file tree and file previews (code, Markdown, PDF, images,
@@ -139,7 +140,9 @@ Each OS's installers must be built on that OS. CI does all of them: push a tag (
 or run the **build** workflow manually. `.github/workflows/build.yml` builds macOS (Apple Silicon and Intel),
 Windows (`.exe`/`.msi`) and Linux (`.AppImage`/`.deb`/`.rpm`) installers and publishes them on the GitHub release.
 
-macOS builds are ad-hoc signed but not notarized, so allow DevCat once via *System Settings → Privacy & Security →
+macOS release builds are signed with DevCat's self-signed certificate (`.github/devcat-codesign.crt`, so the Keychain
+remembers "Always Allow" across updates; CI needs the `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` secrets, else it falls
+back to ad-hoc signing) but not notarized, so allow DevCat once via *System Settings → Privacy & Security →
 Open Anyway* (or run `xattr -dr com.apple.quarantine /Applications/DevCat.app`). If macOS says the app "is damaged"
 (builds before v0.2.1), run `codesign --force --deep --sign - /Applications/DevCat.app` and the `xattr` command above. For distribution, configure code signing and
 notarization ([macOS](https://tauri.app/distribute/sign/macos/), [Windows](https://tauri.app/distribute/sign/windows/)).
