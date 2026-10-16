@@ -91,8 +91,14 @@ pub fn on_destroyed(label: &str) {
 /// macOS: add "New Window ⇧⌘N" to the File menu of the default app menu (Edit stays intact).
 #[cfg(target_os = "macos")]
 pub fn install_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     let menu = Menu::default(app)?;
+    // The app menu ("DevCat", the first submenu): Check for Updates… right after About.
+    if let Some(app_menu) = menu.items()?.into_iter().find_map(|i| i.as_submenu().cloned()) {
+        let item = MenuItem::with_id(app, CHECK_UPDATES_MENU_ID, "Check for Updates…", true, None::<&str>)?;
+        app_menu.insert(&item, 1)?;
+        app_menu.insert(&PredefinedMenuItem::separator(app)?, 2)?;
+    }
     let file = menu.items()?.into_iter().filter_map(|i| i.as_submenu().cloned()).find(|s| s.text().is_ok_and(|t| t == "File"));
     if let Some(file) = file {
         let item = MenuItem::with_id(app, NEW_WINDOW_MENU_ID, "New Window", true, Some("CmdOrCtrl+Shift+N"))?;
@@ -104,6 +110,19 @@ pub fn install_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             if let Err(err) = create(app, None, None, None) {
                 eprintln!("{err}");
             }
+        } else if e.id() == CHECK_UPDATES_MENU_ID {
+            // Only one window shows the update dialog: the focused one (else the main window).
+            use tauri::{Emitter, EventTarget, Manager};
+            let windows = app.webview_windows();
+            let label = windows
+                .iter()
+                .find(|(_, w)| w.is_focused().unwrap_or(false))
+                .map(|(l, _)| l.clone())
+                .or_else(|| windows.contains_key("main").then(|| "main".to_string()))
+                .or_else(|| windows.keys().next().cloned());
+            if let Some(label) = label {
+                let _ = app.emit_to(EventTarget::webview_window(label), "menu-check-updates", ());
+            }
         }
     });
     Ok(())
@@ -111,6 +130,8 @@ pub fn install_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 #[cfg(target_os = "macos")]
 const NEW_WINDOW_MENU_ID: &str = "devcat-new-window";
+#[cfg(target_os = "macos")]
+const CHECK_UPDATES_MENU_ID: &str = "devcat-check-updates";
 
 #[cfg(test)]
 mod tests {

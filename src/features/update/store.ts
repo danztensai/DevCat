@@ -1,5 +1,6 @@
 // App update state: background checks (main window only), the popup, download progress.
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { api, errMsg } from "../../lib/api";
@@ -86,3 +87,6 @@ export function startUpdateChecks() {
   setTimeout(() => void useUpdate.getState().check(), FIRST_CHECK_MS);
   setInterval(() => void useUpdate.getState().check(), EVERY_MS);
 }
+
+// macOS app menu → "Check for Updates…": sent to one window only (the focused one).
+void getCurrentWebviewWindow().listen("menu-check-updates", () => void useUpdate.getState().check(true)).catch(() => {});
