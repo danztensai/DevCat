@@ -52,3 +52,19 @@ export function equalsSql(d: Dialect, column: string, v: CellValue): string {
   if (typeof v === "number") return `${id} = ${v}`;
   return `${id} = ${sqlLiteral(d, v)}`;
 }
+
+/**
+ * Case-insensitive "column contains text" for the grid's column filters. The value is cast to text
+ * so numbers, dates and UUIDs match too; `%` / `_` in the text are literal.
+ */
+export function containsSql(d: Dialect, column: string, text: string): string {
+  const id = quoteIdent(d, column);
+  const special = d === "mssql" ? /[!%_[]/g : /[!%_]/g;
+  const pattern = sqlLiteral(d, `%${text.replace(special, "!$&")}%`);
+  switch (d) {
+    case "postgres": return `CAST(${id} AS TEXT) ILIKE ${pattern} ESCAPE '!'`;
+    case "mysql": return `CAST(${id} AS CHAR) LIKE ${pattern} ESCAPE '!'`;
+    case "mssql": return `CAST(${id} AS NVARCHAR(MAX)) LIKE ${pattern} ESCAPE '!'`;
+    default: return `${id} LIKE ${pattern} ESCAPE '!'`;
+  }
+}

@@ -11,11 +11,13 @@
 //   rowNumberOffset     first row number - 1 (paging).
 //   dialect/tableName   used by "Copy as INSERT".
 //   onFilterByValue     adds "Filter by this value" to the cell menu.
+//   columnFilters       per-column "contains" text shown in a filter row under the header;
+//   onColumnFilter      called with (column, text) on Enter ("" clears). The row shows only with both.
 //   onActiveRowChange   data index of the focused row (e.g. for a form view).
 //   footer              extra content at the right of the status bar.
 import clsx from "clsx";
 import {
-  ArrowDown, ArrowUp, ClipboardCopy, Copy, CopyPlus, Eraser, Filter, KeyRound, Maximize2, Plus, Trash2, Undo2,
+  ArrowDown, ArrowUp, ClipboardCopy, Copy, CopyPlus, Eraser, Filter, KeyRound, Maximize2, Plus, Search, Trash2, Undo2, X,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -40,6 +42,8 @@ export interface DataGridProps {
   dialect?: Dialect;
   tableName?: string;
   onFilterByValue?: (column: string, value: CellValue) => void;
+  columnFilters?: Record<string, string>;
+  onColumnFilter?: (column: string, text: string) => void;
   onActiveRowChange?: (dataIndex: number | null) => void;
   footer?: ReactNode;
   hideStatus?: boolean;
@@ -48,6 +52,7 @@ export interface DataGridProps {
 
 const ROW_H = 22;
 const HEAD_H = 34;
+const FILTER_H = 24;
 const CHAR_W = 7.2;
 
 export default function DataGrid(props: DataGridProps) {
@@ -57,6 +62,8 @@ export default function DataGrid(props: DataGridProps) {
   });
   const ctl = props.controller ?? internal;
   const { columns } = ctl;
+  const filterRow = !!props.onColumnFilter && !!props.columnFilters;
+  const headH = HEAD_H + (filterRow ? FILTER_H : 0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [widths, setWidths] = useState<number[]>(() => autoWidths(props.columns, props.rows));
@@ -70,7 +77,7 @@ export default function DataGrid(props: DataGridProps) {
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_H,
     overscan: 12,
-    scrollPaddingStart: HEAD_H,
+    scrollPaddingStart: headH,
   });
   const colVirt = useVirtualizer({
     horizontal: true,
@@ -350,16 +357,19 @@ export default function DataGrid(props: DataGridProps) {
         onKeyDown={onKeyDown}
         className="relative min-h-0 flex-1 overflow-auto font-mono text-xs outline-none"
       >
-        <div style={{ width: totalW, height: totalH + HEAD_H, position: "relative" }}>
+        <div style={{ width: totalW, height: totalH + headH, position: "relative" }}>
           {/* header */}
-          <div className="sticky top-0 z-20 flex border-b border-line bg-raised" style={{ height: HEAD_H, width: totalW }}>
+          <div className="sticky top-0 z-20 flex border-b border-line bg-raised" style={{ height: headH, width: totalW }}>
             <div
-              className="sticky left-0 z-30 flex shrink-0 cursor-default items-end justify-end border-r border-line bg-raised px-1.5 pb-1 text-[10px] text-faint"
+              className="sticky left-0 z-30 flex shrink-0 cursor-default flex-col border-r border-line bg-raised text-[10px] text-faint"
               style={{ width: rowNumW }}
-              onMouseDown={() => { ctl.selectAll(); }}
-              title="Select all"
             >
-              #
+              <div className="flex flex-1 items-end justify-end px-1.5 pb-1" style={{ height: HEAD_H }} onMouseDown={() => { ctl.selectAll(); }} title="Select all">#</div>
+              {filterRow && (
+                <div className="flex shrink-0 items-center justify-center border-t border-line" style={{ height: FILTER_H }} title="Filter: type in a column and press Enter">
+                  <Search className="size-3" />
+                </div>
+              )}
             </div>
             {vCols.map((vc) => {
               const col = columns[vc.index];
@@ -367,8 +377,8 @@ export default function DataGrid(props: DataGridProps) {
               return (
                 <div
                   key={vc.key}
-                  className="group absolute top-0 flex h-full cursor-pointer flex-col justify-center border-r border-line px-2 font-sans hover:bg-hover"
-                  style={{ left: vc.start, width: vc.size }}
+                  className="group absolute top-0 flex cursor-pointer flex-col justify-center border-r border-line px-2 font-sans hover:bg-hover"
+                  style={{ left: vc.start, width: vc.size, height: HEAD_H }}
                   onClick={() => toggleSort(col.name)}
                   title={`${col.name} : ${col.typeName}\nClick to sort`}
                 >
@@ -387,6 +397,18 @@ export default function DataGrid(props: DataGridProps) {
                 </div>
               );
             })}
+            {filterRow && vCols.map((vc) => {
+              const name = columns[vc.index].name;
+              return (
+                <ColumnFilterInput
+                  key={`f:${vc.key}`}
+                  column={name}
+                  value={props.columnFilters![name] ?? ""}
+                  onApply={(t) => props.onColumnFilter!(name, t)}
+                  style={{ left: vc.start, width: vc.size, top: HEAD_H, height: FILTER_H }}
+                />
+              );
+            })}
           </div>
 
           {/* rows */}
@@ -403,7 +425,7 @@ export default function DataGrid(props: DataGridProps) {
                   "absolute left-0 flex",
                   inserted ? "bg-ok/10" : deleted ? "bg-danger/10" : r % 2 ? "bg-white/[0.015]" : "",
                 )}
-                style={{ top: HEAD_H + vr.start, height: ROW_H, width: totalW }}
+                style={{ top: headH + vr.start, height: ROW_H, width: totalW }}
               >
                 <div
                   className={clsx(
@@ -468,7 +490,7 @@ export default function DataGrid(props: DataGridProps) {
           })}
         </div>
         {ctl.rowCount === 0 && (
-          <div className="pointer-events-none absolute inset-x-0 flex justify-center font-sans text-xs text-faint" style={{ top: HEAD_H + 24 }}>
+          <div className="pointer-events-none absolute inset-x-0 flex justify-center font-sans text-xs text-faint" style={{ top: headH + 24 }}>
             {columns.length ? "No rows" : "No columns"}
           </div>
         )}
@@ -497,6 +519,44 @@ export default function DataGrid(props: DataGridProps) {
         />
       )}
       {menu.element}
+    </div>
+  );
+}
+
+/** One column's "contains" filter: edits a draft, applies on Enter, Escape reverts. */
+function ColumnFilterInput({ column, value, onApply, style }: {
+  column: string; value: string; onApply: (text: string) => void; style: React.CSSProperties;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => { setDraft(value); }, [value]);
+  const pending = draft !== value;
+  return (
+    <div className="absolute flex items-center border-t border-r border-line bg-panel px-0.5" style={style}>
+      <input
+        spellCheck={false}
+        className={clsx(
+          "h-[18px] min-w-0 flex-1 rounded-sm border bg-app px-1 font-mono text-[11px] text-fg placeholder:text-faint focus:outline-none",
+          value ? "border-accent/70" : pending ? "border-warn/60" : "border-transparent focus:border-line",
+        )}
+        placeholder="contains…"
+        title={`Rows where ${column} contains this text (Enter to filter, Esc to revert)`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") { e.preventDefault(); onApply(draft); }
+          else if (e.key === "Escape") { e.preventDefault(); setDraft(value); }
+        }}
+      />
+      {value && (
+        <button
+          className="ml-0.5 shrink-0 rounded-sm p-px text-muted hover:bg-hover hover:text-fg"
+          title="Clear this filter"
+          onClick={() => onApply("")}
+        >
+          <X className="size-3" />
+        </button>
+      )}
     </div>
   );
 }

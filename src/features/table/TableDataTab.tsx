@@ -5,7 +5,7 @@ import {
   ArrowLeftRight, Check, ChevronDown, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CopyPlus, Download,
   Filter, FilterX, Lock, PanelRight, PencilRuler, Plus, RefreshCw, Trash2, Undo2,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { toast } from "sonner";
 import { Badge, Button, ErrorBox, IconButton, Spinner } from "../../components/ui";
@@ -21,7 +21,7 @@ import DataGrid from "../grid/DataGrid";
 import { useGridController } from "../grid/useGridController";
 import { ensureOpen } from "../query/useConnectionMeta";
 import FilterBuilder from "./data/FilterBuilder";
-import { equalsSql } from "./data/filterSql";
+import { containsSql, equalsSql } from "./data/filterSql";
 import FormView from "./data/FormView";
 import { qualifiedName } from "./sqlDialect";
 
@@ -45,6 +45,8 @@ export default function TableDataTab({ tab }: { tab: TableDataT }) {
   const [sort, setSort] = useState<SortSpec[]>([]);
   const [filter, setFilter] = useState("");
   const [filterDraft, setFilterDraft] = useState("");
+  /** Per-column "contains" filters from the grid header, ANDed with the WHERE bar. */
+  const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const [builderOpen, setBuilderOpen] = useState(false);
   const [formView, setFormView] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -55,6 +57,14 @@ export default function TableDataTab({ tab }: { tab: TableDataT }) {
   const rows = page?.result.rows ?? NO_ROWS;
   const primaryKey = page?.primaryKey ?? NO_PK;
   const readOnlyConn = !!conn?.readOnly;
+
+  const where = useMemo(() => {
+    const parts = Object.entries(colFilters).map(([col, text]) => containsSql(dialect, col, text));
+    const bar = filter.trim();
+    if (bar) parts.unshift(parts.length ? `(${bar})` : bar);
+    return parts.join(" AND ");
+  }, [colFilters, filter, dialect]);
+  const filtered = !!filter || Object.keys(colFilters).length > 0;
 
   const ctl = useGridController({ columns, rows, primaryKey, editable: !readOnlyConn, sort, onSortChange: (s) => guard(() => { setSort(s); setOffset(0); }) });
 
@@ -69,14 +79,14 @@ export default function TableDataTab({ tab }: { tab: TableDataT }) {
     setError(null);
     try {
       await ensureOpen(tab.connId);
-      const res = await api.tableData(tab.connId, { table, offset, limit, filter: filter.trim() || null, sort });
+      const res = await api.tableData(tab.connId, { table, offset, limit, filter: where || null, sort });
       if (seq === reqSeq.current) setPage(res);
     } catch (e) {
       if (seq === reqSeq.current) setError(errMsg(e));
     } finally {
       if (seq === reqSeq.current) setLoading(false);
     }
-  }, [tab.connId, table, offset, limit, filter, sort]);
+  }, [tab.connId, table, offset, limit, where, sort]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -108,6 +118,17 @@ export default function TableDataTab({ tab }: { tab: TableDataT }) {
   };
 
   const applyFilter = (f: string) => guard(() => { setFilterDraft(f); setFilter(f); setOffset(0); });
+  const applyColumnFilter = (column: string, text: string) => {
+    if ((colFilters[column] ?? "") === (text.trim() ? text : "")) return;
+    guard(() => {
+      setColFilters((cur) => {
+        const { [column]: _old, ...rest } = cur;
+        return text.trim() ? { ...rest, [column]: text } : rest;
+      });
+      setOffset(0);
+    });
+  };
+  const clearFilters = () => guard(() => { setFilterDraft(""); setFilter(""); setColFilters({}); setOffset(0); });
   const addCondition = (cond: string) => {
     const cur = filter.trim();
     applyFilter(cur ? `(${cur}) AND ${cond}` : cond);
@@ -116,7 +137,6 @@ export default function TableDataTab({ tab }: { tab: TableDataT }) {
   const quickExport = async (format: "csv" | "json" | "sql" | "xlsx") => {
     const path = await save({ defaultPath: `${table.name}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (!path) return;
-    const where = filter.trim();
     const t = toast.loading(`Exporting ${table.name}…`);
     try {
       const n = await api.exportData({
@@ -206,8 +226,13 @@ export default function TableDataTab({ tab }: { tab: TableDataT }) {
           }}
         />
         {filterDraft !== filter && <span className="text-[10px] text-faint">↵ apply</span>}
-        {filter && (
-          <IconButton title="Clear filter" onClick={() => applyFilter("")}><FilterX className="size-3.5" /></IconButton>
+        {Object.keys(colFilters).length > 0 && (
+          <span className="text-[10px] text-accent" title={Object.entries(colFilters).map(([c, t]) => `${c} contains "${t}"`).join("\n")}>
+            + {Object.keys(colFilters).length} column filter{Object.keys(colFilters).length === 1 ? "" : "s"}
+          </span>
+        )}
+        {filtered && (
+          <IconButton title="Clear all filters" onClick={clearFilters}><FilterX className="size-3.5" /></IconButton>
         )}
         <Button size="sm" variant="ghost" onClick={() => setBuilderOpen((v) => !v)} disabled={!columns.length}>
           <Filter className="size-3.5" /> Builder
@@ -238,6 +263,8 @@ export default function TableDataTab({ tab }: { tab: TableDataT }) {
                 tableName={qualifiedName(dialect, table)}
                 onCommit={(c) => commit(c)}
                 onFilterByValue={(col, v) => addCondition(equalsSql(dialect, col, v))}
+                columnFilters={colFilters}
+                onColumnFilter={applyColumnFilter}
                 footer={
                   <Pager
                     offset={offset} limit={limit} total={total} count={rows.length} hasNext={hasNext} lastOffset={lastOffset}
