@@ -23,10 +23,12 @@ Grab the latest installer for macOS, Windows or Linux from the
 ## Features
 
 - **Projects**: group connections into projects and focus on one project at a time.
+- **Hide the sidebar**: click the active icon in the left bar, the toggle at its bottom, or press ⌘B (Ctrl+B).
 - **Notes**: Markdown notes with Edit / Preview, saved as you type. Each note belongs to a project (shown only
   while that project is focused) or to General (shown everywhere); pin, search and move them between projects.
 - **Automatic updates**: DevCat checks GitHub releases and offers new versions in a popup (Update and restart / Later /
-  Skip this version), or use *Check for updates…* in the project menu or click the version in the status bar. Updates are
+  Skip this version), or use *DevCat → Check for Updates…* (macOS menu bar), *Check for updates…* in the project menu
+  or click the version in the status bar. Updates are
   signed and verified before installing. Linux .deb/.rpm installs get a download link instead (the AppImage self-updates).
 - **Keep awake**: the coffee cup at the top right keeps the screen and computer from sleeping (like Caffeine /
   Amphetamine). Click to toggle; right-click to keep awake for 15 minutes to 8 hours.
@@ -79,7 +81,7 @@ Grab the latest installer for macOS, Windows or Linux from the
     MacPorts' `sudo port install openvpn2 wireguard-tools` under `/opt/local` does). Those cases
     fall back to the password prompt. *Remove* deletes both files. Windows keeps using UAC.
 - **AI Workspace**: runs your installed coding-agent CLI in a real terminal (like iTerm2), with
-  **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2**, a git-aware file tree and file previews (code, Markdown, PDF, images,
+  **Chat ⌥⇧⌘1 · Diff ⌥⇧⌘2**, extra terminals in the same folder (**+** or ⌥⇧⌘T, each its own tab next to Chat), a git-aware file tree and file previews (code, Markdown, PDF, images,
   Excel/CSV, Word). The agent is an *AI connection* picked in the sidebar header: [Claude Code](https://docs.claude.com/en/docs/claude-code)
   by default, or OpenAI Codex, Gemini CLI, GitHub Copilot CLI, Aider, opencode or any custom command
   (args + env vars). Each uses its own login, or an optional API key kept in the OS keychain and passed as

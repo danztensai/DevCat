@@ -1,7 +1,8 @@
 import { openTab, useTabs } from "../../store/tabs";
 import { CLAUDE_PROVIDER_ID, findProvider, useProviders } from "./providers";
 
-export type ClaudeView = "chat" | "diff" | "review";
+/** "terminal" shows the tab's active extra terminal. */
+export type ClaudeView = "chat" | "diff" | "review" | "terminal";
 
 export function basename(p: string): string {
   const parts = p.replace(/[\\/]+$/, "").split(/[\\/]/);

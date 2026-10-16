@@ -8,7 +8,7 @@ import { useUi } from "../../store/ui";
 import { openImportTab } from "./actions";
 
 async function drain() {
-  const paths = await invoke<string[]>("take_opened_files").catch(() => [] as string[]);
+  const paths = (await invoke<string[] | null>("take_opened_files").catch(() => null)) ?? [];
   if (!paths.length) return;
   const ui = useUi.getState();
   ui.setSidebar("network");
