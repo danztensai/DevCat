@@ -43,7 +43,7 @@ export interface K8sObject {
   status?: any;
 }
 
-export type TabRoot = "agents" | "data" | "network" | "cluster" | "more";
+export type TabRoot = "agents" | "fileshome" | "data" | "network" | "cluster" | "more";
 
 export type Route =
   | { s: "loading" }
@@ -69,6 +69,5 @@ export type Route =
   | { s: "help" }
   | { s: "activity" }
   | { s: "machine" }
-  | { s: "fileshome" }
   | { s: "files"; dir: string }
   | { s: "file"; path: string };

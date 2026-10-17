@@ -54,7 +54,7 @@ export function FilesHome() {
   const active = useMemo(() => [...new Set(terms.map((t) => agents[t.id]?.cwd || t.cwd))], [terms, agents]);
   const [path, setPath] = useState("");
   return (
-    <Screen title="Files" sub="On the computer">
+    <Screen title="Files" sub="On the computer" tab="fileshome">
       <div className="flex gap-2">
         <Input className="flex-1 font-mono text-[13px]" placeholder="~/Projects/app" value={path} onChange={(e) => setPath(e.target.value)} />
         <Btn disabled={!path.trim()} onClick={() => nav.push({ s: "files", dir: path.trim() })}>Open</Btn>

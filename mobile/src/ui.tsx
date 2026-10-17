@@ -1,13 +1,14 @@
 // Phone UI primitives in DevCat's dark theme: screen with header + bottom tabs, list items,
 // cards, buttons, toggles, segmented controls, sheets and confirm dialogs.
 import clsx from "clsx";
-import { ChevronLeft, ChevronRight, Database, Loader2, MoreHorizontal, Network, Server, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Database, FolderOpen, Loader2, MoreHorizontal, Network, Server, Sparkles } from "lucide-react";
 import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { nav, useApp, waitingCount } from "./lib/store";
 import type { TabRoot } from "./lib/types";
 
 const TABS: { id: TabRoot; label: string; icon: ReactNode }[] = [
   { id: "agents", label: "Agents", icon: <Sparkles className="size-5" /> },
+  { id: "fileshome", label: "Files", icon: <FolderOpen className="size-5" /> },
   { id: "data", label: "Data", icon: <Database className="size-5" /> },
   { id: "network", label: "Network", icon: <Network className="size-5" /> },
   { id: "cluster", label: "Cluster", icon: <Server className="size-5" /> },
@@ -19,10 +20,10 @@ export function TabBar({ active }: { active: TabRoot }) {
   return (
     <nav className="flex shrink-0 justify-around border-t border-line bg-panel pt-1.5" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
       {TABS.map((t) => (
-        <button key={t.id} onClick={() => nav.tab(t.id)} className={clsx("relative flex w-16 flex-col items-center gap-0.5 text-[10.5px]", active === t.id ? "text-accent" : "text-faint")}>
+        <button key={t.id} onClick={() => nav.tab(t.id)} className={clsx("relative flex min-w-0 flex-1 flex-col items-center gap-0.5 text-[10.5px]", active === t.id ? "text-accent" : "text-faint")}>
           {t.icon}
           {t.label}
-          {t.id === "agents" && waiting > 0 && <span className="absolute -top-0.5 right-3 min-w-4 rounded-full bg-warn px-1 text-[10px] leading-4 font-bold text-accent-fg">{waiting}</span>}
+          {t.id === "agents" && waiting > 0 && <span className="absolute -top-0.5 right-[calc(50%-20px)] min-w-4 rounded-full bg-warn px-1 text-[10px] leading-4 font-bold text-accent-fg">{waiting}</span>}
         </button>
       ))}
     </nav>

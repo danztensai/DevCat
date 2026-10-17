@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { onEvent } from "../lib/rpc";
 import { host, nav, refreshAgents, toastErr, useApp } from "../lib/store";
 import type { AgentStatus, AiProvider, ClaudeProject, PtyInfo, SessionMeta } from "../lib/types";
-import { Btn, Card, Confirm, Empty, ErrorBox, Field, IconBtn, Input, Item, Loading, Screen, Section, Seg, Sheet, Spinner, TextArea, ago, duration, folderName, useLoad } from "../ui";
+import { Btn, Card, Confirm, Empty, ErrorBox, Field, Input, Item, Loading, Screen, Section, Seg, Sheet, Spinner, TextArea, ago, duration, folderName, useLoad } from "../ui";
 
 const THEME = {
   background: "#0a0b0d", foreground: "#e6e8ec", cursor: "#f5a524", cursorAccent: "#0a0b0d", selectionBackground: "#f5a52440",
@@ -69,7 +69,6 @@ export function Agents() {
       title="Agents"
       sub={<>{machine?.name ?? "Computer"} · {conn?.state === "online" ? <span className="text-ok">● online</span> : conn?.state === "connecting" ? "connecting…" : <span>○ offline</span>}</>}
       right={<>
-        <IconBtn label="Files" onClick={() => nav.push({ s: "fileshome" })}><FolderOpen className="size-5" /></IconBtn>
         <Btn size="sm" variant="primary" onClick={() => nav.push({ s: "newchat" })}><Plus className="size-4" />New</Btn>
       </>}
       tab="agents"
