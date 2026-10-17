@@ -120,7 +120,8 @@ export function parseOvpn(text: string): ParseResult<OvpnForm> {
         else { f.dev = "tun"; if (arg !== "tun") notes.push(`"dev ${arg}" simplified to "dev tun".`); }
         break;
       case "data-ciphers": case "ncp-ciphers": f.cipher = arg; break;
-      case "cipher": if (!f.cipher) f.cipher = arg; else extra.push(line); break;
+      // Kept as written: unlike data-ciphers it is also the fallback for servers that can't negotiate.
+      case "cipher": extra.push(line); break;
       case "auth": f.auth = arg; break;
       case "compress":
         if (!arg) f.compress = "none";

@@ -260,6 +260,32 @@ pub fn build_args(p: &Paths, mgmt_port: u16, extra: &str, windows: bool) -> Vec<
     a
 }
 
+/// Directives that make OpenVPN run a script (they need `--script-security 2`).
+const SCRIPT_DIRECTIVES: &[&str] = &[
+    "up", "down", "route-up", "route-pre-down", "ipchange", "client-connect", "client-disconnect", "learn-address",
+    "tls-verify", "auth-user-pass-verify", "script-security", "dns-updown",
+];
+
+/// Arguments placed before `--config` (so the config can still override them) that let the
+/// bundled OpenVPN apply pushed DNS servers when started with the password prompt. Its built-in
+/// DNS script path is the root-owned copy from the passwordless helper; without that copy the
+/// script next to the binary is used, which needs `--script-security 2`. Skipped for configs that
+/// run scripts of their own or choose their DNS script, so they behave as before.
+pub fn dns_prefix(bin: &Path, bundled: Option<&Path>, bundled_script: Option<&Path>, root_copy_installed: bool, config: &str) -> Vec<String> {
+    let (Some(bundled), Some(script)) = (bundled, bundled_script) else { return vec![] };
+    if bin != bundled || root_copy_installed {
+        return vec![];
+    }
+    let runs_scripts = config.lines().any(|l| {
+        let d = l.trim_start().split_whitespace().next().unwrap_or("").trim_start_matches("--").to_ascii_lowercase();
+        SCRIPT_DIRECTIVES.contains(&d.as_str())
+    });
+    if runs_scripts {
+        return vec![];
+    }
+    vec!["--script-security".into(), "2".into(), "--dns-updown".into(), script.to_string_lossy().into_owned()]
+}
+
 /// Running OpenVPN daemon. Dropping it asks the daemon to exit (best effort).
 pub struct OvpnRun {
     tx: mpsc::UnboundedSender<String>,
@@ -567,7 +593,10 @@ async fn launch_with_prompt(id: &str, generation: u64, paths: &Paths, port: u16,
     // Created by us so the log stays readable after root writes to it.
     write_private(&paths.log, b"")?;
     let _ = std::fs::remove_file(&paths.pid);
-    let args = build_args(paths, port, extra, cfg!(windows));
+    let config = std::fs::read_to_string(&paths.config).unwrap_or_default();
+    let root_copy = helper::HELPER_DNS_UPDOWN.is_some_and(|p| Path::new(p).is_file());
+    let mut args = dns_prefix(&bin, tools::bundled_openvpn().as_deref(), tools::bundled_dns_updown().as_deref(), root_copy, &config);
+    args.extend(build_args(paths, port, extra, cfg!(windows)));
     registry::log(id, &format!("Starting {} (administrator rights required)", bin.display()));
     registry::set_connecting(id, generation, Some("waiting for authorization".into()));
     let (program, args) = match leftover {
@@ -791,6 +820,22 @@ mod tests {
         assert!(line.contains("--config '/data dir/network/x.ovpn'"), "{line}");
         let script = elevate::osascript_script(&line, "p");
         assert!(script.starts_with("do shell script \"/opt/homebrew/sbin/openvpn --config '/data dir/network/x.ovpn'"));
+    }
+
+    #[test]
+    fn dns_script_args() {
+        let (b, sc) = (Path::new("/A/vpn/openvpn"), Path::new("/A/vpn/dns-updown"));
+        let plain = "client\ndev tun\nremote x 1194\n";
+        assert_eq!(dns_prefix(b, Some(b), Some(sc), false, plain), vec!["--script-security", "2", "--dns-updown", "/A/vpn/dns-updown"]);
+        // The root-owned copy is the binary's built-in default: nothing to add.
+        assert!(dns_prefix(b, Some(b), Some(sc), true, plain).is_empty());
+        // Another OpenVPN uses its own default script.
+        assert!(dns_prefix(Path::new("/opt/local/sbin/openvpn2"), Some(b), Some(sc), false, plain).is_empty());
+        assert!(dns_prefix(b, Some(b), None, false, plain).is_empty());
+        for c in ["up /x.sh", "  --down /x.sh", "Dns-Updown disable", "script-security 3"] {
+            assert!(dns_prefix(b, Some(b), Some(sc), false, &format!("{plain}{c}\n")).is_empty(), "{c}");
+        }
+        assert!(!dns_prefix(b, Some(b), Some(sc), false, "# up /x.sh\nupdown-ish\n").is_empty());
     }
 
     /// The incident this guards against, end to end with a real OpenVPN (no root: `--dev null`,

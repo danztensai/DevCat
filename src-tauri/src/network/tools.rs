@@ -62,6 +62,12 @@ pub fn bundled_openvpn() -> Option<PathBuf> {
     is_executable(&p).then_some(p)
 }
 
+/// OpenVPN's macOS DNS script shipped next to [`bundled_openvpn`] (Contents/Resources/vpn/dns-updown).
+pub fn bundled_dns_updown() -> Option<PathBuf> {
+    let p = bundled_openvpn()?.with_file_name("dns-updown");
+    is_executable(&p).then_some(p)
+}
+
 pub fn find_openvpn() -> Option<PathBuf> {
     if cfg!(windows) {
         let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());

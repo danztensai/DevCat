@@ -66,7 +66,8 @@ Grab the latest installer for macOS, Windows or Linux from the
     tray app, WireGuard without opening its window. Windows on ARM downloads the ARM installer from the
     publisher instead, checked against the same pins.
   - **macOS**: DevCat includes its own OpenVPN 2.7.8 (built from the official source with OpenSSL, LZO and LZ4
-    linked in; `scripts/build-openvpn-macos.sh`), so nothing has to be installed for OpenVPN. A Homebrew / MacPorts
+    linked in; `scripts/build-openvpn-macos.sh`), so nothing has to be installed for OpenVPN. DNS servers pushed by
+    the VPN are applied with OpenVPN's own macOS DNS script, which ships with it. A Homebrew / MacPorts
     OpenVPN is still used if DevCat's isn't there (development builds).
   - **Kubernetes port-forward** (in the Tunnels list): forwards a service or pod to a local port through one of
     your Kubernetes connections (its kubeconfig / context), switched on and off like a VPN; a database connection can use
@@ -78,7 +79,8 @@ Grab the latest installer for macOS, Windows or Linux from the
     root-owned copy of DevCat as a helper (`/Library/PrivilegedHelperTools/dev.devcat.vpn-helper` on macOS,
     `/usr/local/libexec/devcat-vpn-helper` on Linux) plus a sudoers rule for your account only
     (`/etc/sudoers.d/dev-devcat-vpn`), with one password prompt. After that, connects use `sudo -n` without a
-    password. Setup also installs DevCat's OpenVPN next to the helper, so OpenVPN connects without a password with
+    password. Setup also installs DevCat's OpenVPN and its DNS script next to the helper
+    (`dev.devcat.vpn-openvpn`, `dev.devcat.vpn-scripts/dns-updown`), so OpenVPN connects without a password with
     no extra tools. The helper keeps working when DevCat is updated; it only asks to be updated when its interface
     changes. The helper refuses configs that run scripts or load plugins (OpenVPN `up`/`down`/`plugin`…,
     WireGuard `PostUp`/`PreDown`…) and files that aren't yours, and it only runs OpenVPN / wg-quick from

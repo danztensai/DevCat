@@ -3,6 +3,9 @@
 # OpenSSL, LZO and LZ4 are linked statically, so the binary only depends on macOS system
 # libraries: the passwordless helper can copy it into a root-owned folder and run it safely.
 # Sources are pinned by SHA-256 (OpenVPN's is also PGP-signed by security@openvpn.net).
+# OpenVPN's macOS DNS script ships next to it as vpn/dns-updown; the binary's built-in default
+# points at the root-owned copy the passwordless helper installs (DNS_DIR), because a
+# --dns-updown given on the command line would need --script-security 2.
 #
 # Usage: scripts/build-openvpn-macos.sh <arm64|aarch64|x86_64> [out-dir]   (default out: src-tauri/vpn-bin)
 # Runs as the macOS beforeBuildCommand (tauri.macos.conf.json) with Tauri's target arch.
@@ -14,6 +17,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${2:-$ROOT/src-tauri/vpn-bin}"
 WORK="${OPENVPN_BUILD_DIR:-$ROOT/target-openvpn}/$ARCH"
 MIN_MACOS=11.0
+# Keep in sync with HELPER_DNS_UPDOWN (src-tauri/src/network/helper.rs).
+DNS_DIR=/Library/PrivilegedHelperTools/dev.devcat.vpn-scripts
+# Bump when the build changes without a version change (invalidates local builds).
+BUILD_REV=2
 
 OPENSSL_V=3.5.9;  OPENSSL_SHA=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
 LZO_V=2.10;       LZO_SHA=c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
@@ -26,7 +33,7 @@ case "$ARCH" in
   *) echo "unknown arch $ARCH" >&2; exit 1 ;;
 esac
 
-if [ -x "$OUT/openvpn" ] && [ "$(cat "$OUT/openvpn.version" 2>/dev/null)" = "$OPENVPN_V-$ARCH" ]; then
+if [ -x "$OUT/openvpn" ] && [ -x "$OUT/dns-updown" ] && [ "$(cat "$OUT/openvpn.version" 2>/dev/null)" = "$OPENVPN_V-$ARCH-$BUILD_REV" ]; then
   echo "openvpn $OPENVPN_V ($ARCH) already built in $OUT"; exit 0
 fi
 
@@ -69,8 +76,10 @@ JOBS=$(sysctl -n hw.ncpu)
     OPENSSL_CFLAGS="-I$P/include" OPENSSL_LIBS="$P/lib/libssl.a $P/lib/libcrypto.a" \
     LZO_CFLAGS="-I$P/include" LZO_LIBS="-L$P/lib -llzo2" \
     LZ4_CFLAGS="-I$P/include" LZ4_LIBS="-L$P/lib -llz4" >/dev/null
-  make -j"$JOBS" >/dev/null
-  cp src/openvpn/openvpn "$OUT/openvpn" )
+  make -j"$JOBS" scriptdir="$DNS_DIR" >/dev/null
+  grep -aq "$DNS_DIR/dns-updown" src/openvpn/openvpn
+  cp src/openvpn/openvpn "$OUT/openvpn"
+  install -m 0755 distro/dns-scripts/macos-dns-updown.sh "$OUT/dns-updown" )
 
 strip -x "$OUT/openvpn"
 # Only macOS system libraries may be linked (nothing a user could swap).
@@ -79,5 +88,5 @@ if otool -L "$OUT/openvpn" | tail -n +2 | grep -vE '^\s+(/usr/lib/|/System/Libra
 fi
 lipo -archs "$OUT/openvpn" | grep -qx "$ARCH"
 codesign --force --sign - "$OUT/openvpn"
-echo "$OPENVPN_V-$ARCH" > "$OUT/openvpn.version"
+echo "$OPENVPN_V-$ARCH-$BUILD_REV" > "$OUT/openvpn.version"
 "$OUT/openvpn" --version | head -1 || true

@@ -145,6 +145,8 @@ jobs:
           app=$(find src-tauri/target -maxdepth 6 -path '*/release/bundle/macos/DevCat.app' | head -1)
           bin="$PWD/$app/Contents/Resources/vpn/openvpn"   # absolute: the loopback test runs in $RUNNER_TEMP
           test -x "$bin" || { echo "::error::$bin is missing"; exit 1; }
+          test -x "$(dirname "$bin")/dns-updown" || { echo "::error::the DNS script is missing"; exit 1; }
+          grep -aq /Library/PrivilegedHelperTools/dev.devcat.vpn-scripts/dns-updown "$bin" || { echo "::error::wrong default DNS script path"; exit 1; }
           lipo -archs "$bin" | grep -qx "$arch"
           if otool -L "$bin" | tail -n +2 | grep -vE '^\s+(/usr/lib/|/System/Library/)'; then echo "::error::non-system library linked"; exit 1; fi
           if [ "$arch" = arm64 ]; then

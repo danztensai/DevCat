@@ -36,6 +36,12 @@ pub const FLAG: &str = "--vpn-helper";
 pub const HELPER_OPENVPN: Option<&str> = Some("/Library/PrivilegedHelperTools/dev.devcat.vpn-openvpn");
 #[cfg(not(target_os = "macos"))]
 pub const HELPER_OPENVPN: Option<&str> = None;
+/// Root-owned copy of the DNS script that ships with DevCat's OpenVPN; that OpenVPN is built
+/// with this as its default `--dns-updown` (scripts/build-openvpn-macos.sh, DNS_DIR).
+#[cfg(target_os = "macos")]
+pub const HELPER_DNS_UPDOWN: Option<&str> = Some("/Library/PrivilegedHelperTools/dev.devcat.vpn-scripts/dns-updown");
+#[cfg(not(target_os = "macos"))]
+pub const HELPER_DNS_UPDOWN: Option<&str> = None;
 /// The app ↔ helper interface. Bump it whenever the helper's commands, arguments or checks
 /// change: helpers with another number are reported as needing an update. A helper from an
 /// older DevCat with the same number keeps working, so updating DevCat doesn't pause it.
@@ -945,8 +951,8 @@ pub fn sudoers_line(user: &str, helper: &str) -> String {
 
 /// Shell script run once with administrator rights: validate the sudoers rule first,
 /// then install the helper (atomic rename) and the rule.
-/// `openvpn` = (DevCat's bundled OpenVPN, where to install it), copied the same way.
-pub fn install_script(exe: &Path, openvpn: Option<(&Path, &str)>, user: &str, helper: &str, group: &str) -> Result<String, String> {
+/// `copies` = (file shipped with DevCat, where to install it), e.g. its OpenVPN, copied the same way.
+pub fn install_script(exe: &Path, copies: &[(&Path, &str)], user: &str, helper: &str, group: &str) -> Result<String, String> {
     use super::elevate::sh_quote as q;
     if !valid_username(user) {
         return Err(format!("Your account name \"{user}\" can't be used in a sudoers rule"));
@@ -960,15 +966,19 @@ pub fn install_script(exe: &Path, openvpn: Option<(&Path, &str)>, user: &str, he
     let stmp = format!("{sudoers_dir}/.dev-devcat-vpn.tmp");
     let line = sudoers_line(user, helper);
     let mut ovpn_steps: Vec<String> = Vec::new();
-    if let Some((src, dest)) = openvpn {
+    for (src, dest) in copies {
         let otmp = format!("{dest}.tmp");
-        ovpn_steps = vec![
+        let parent = Path::new(dest).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into());
+        if parent != dir {
+            ovpn_steps.push(format!("mkdir -p {}", q(&parent)));
+        }
+        ovpn_steps.extend([
             format!("rm -f {}", q(&otmp)),
             format!("cp {} {}", q(&src.to_string_lossy()), q(&otmp)),
             format!("chown root:{group} {}", q(&otmp)),
             format!("chmod 0755 {}", q(&otmp)),
             format!("mv -f {} {}", q(&otmp), q(dest)),
-        ];
+        ]);
     }
     let steps: Vec<String> = [
         "set -e".to_string(),
@@ -998,8 +1008,11 @@ pub fn install_script(exe: &Path, openvpn: Option<(&Path, &str)>, user: &str, he
 pub fn uninstall_script(helper: &str) -> String {
     use super::elevate::sh_quote as q;
     let mut s = format!("rm -f {} {}", q(SUDOERS_PATH), q(helper));
-    if let Some(o) = HELPER_OPENVPN {
+    for o in HELPER_OPENVPN.into_iter().chain(HELPER_DNS_UPDOWN) {
         s.push_str(&format!(" {}", q(o)));
+    }
+    if let Some(dir) = HELPER_DNS_UPDOWN.and_then(|p| Path::new(p).parent()) {
+        s.push_str(&format!(" && {{ rmdir {} 2>/dev/null || true; }}", q(&dir.to_string_lossy())));
     }
     s
 }
@@ -1103,9 +1116,9 @@ pub fn status() -> HelperStatus {
         s.helper_version = v;
         s.up_to_date = protocol == Some(PROTOCOL);
     }
-    let bundled = super::tools::bundled_openvpn();
+    let stale = |bundled: Option<PathBuf>, copy: Option<&str>| matches!((bundled, copy), (Some(b), Some(h)) if !same_file_contents(&b, Path::new(h)));
     s.openvpn_update = s.installed
-        && matches!((&bundled, HELPER_OPENVPN), (Some(b), Some(h)) if !same_file_contents(b, Path::new(h)));
+        && (stale(super::tools::bundled_openvpn(), HELPER_OPENVPN) || stale(super::tools::bundled_dns_updown(), HELPER_DNS_UPDOWN));
     s.openvpn_issue = find_openvpn(0).err();
     if s.openvpn_issue.is_some() && s.openvpn_update {
         s.openvpn_issue = Some("Click \"Update helper\" to use the OpenVPN that comes with DevCat".into());
@@ -1205,9 +1218,9 @@ pub async fn install() -> crate::error::AppResult<HelperStatus> {
     }
     let exe = std::env::current_exe().map_err(|e| AppError::msg(format!("Cannot locate the DevCat binary: {e}")))?;
     let user = current_username().ok_or_else(|| AppError::msg("Cannot determine your account name"))?;
-    let bundled = super::tools::bundled_openvpn();
-    let openvpn = bundled.as_deref().zip(HELPER_OPENVPN);
-    let script = install_script(&exe, openvpn, &user, HELPER_PATH, root_group()).map_err(AppError::msg)?;
+    let (openvpn, dns) = (super::tools::bundled_openvpn(), super::tools::bundled_dns_updown());
+    let copies: Vec<(&Path, &str)> = [openvpn.as_deref().zip(HELPER_OPENVPN), dns.as_deref().zip(HELPER_DNS_UPDOWN)].into_iter().flatten().collect();
+    let script = install_script(&exe, &copies, &user, HELPER_PATH, root_group()).map_err(AppError::msg)?;
     let out = super::elevate::run("/bin/sh", &["-c".into(), script], true, None).await?;
     reset();
     if !out.success {
@@ -1584,7 +1597,7 @@ mod tests {
         let exe = Path::new("/Applications/DevCat.app/Contents/MacOS/devcat");
         let src = Path::new("/Applications/DevCat.app/Contents/Resources/vpn/openvpn");
         let dest = "/Library/PrivilegedHelperTools/dev.devcat.vpn-openvpn";
-        let s = install_script(exe, Some((src, dest)), "arif", "/Library/PrivilegedHelperTools/dev.devcat.vpn-helper", "wheel").unwrap();
+        let s = install_script(exe, &[(src, dest)], "arif", "/Library/PrivilegedHelperTools/dev.devcat.vpn-helper", "wheel").unwrap();
         for l in [
             format!("cp /Applications/DevCat.app/Contents/Resources/vpn/openvpn {dest}.tmp"),
             format!("chown root:wheel {dest}.tmp"),
@@ -1597,13 +1610,25 @@ mod tests {
         let pos = |needle: &str| s.find(needle).unwrap();
         assert!(pos("visudo") < pos("cp "));
         assert!(pos(&format!("mv -f {dest}.tmp")) < pos("mv -f /etc/sudoers.d/.dev-devcat-vpn.tmp"));
-        assert!(!install_script(exe, None, "arif", "/h/x", "wheel").unwrap().contains("vpn-openvpn"));
+        assert!(!install_script(exe, &[], "arif", "/h/x", "wheel").unwrap().contains("vpn-openvpn"));
+    }
+
+    #[test]
+    fn install_script_copies_dns_script_into_its_folder() {
+        let exe = Path::new("/Applications/DevCat.app/Contents/MacOS/devcat");
+        let src = Path::new("/Applications/DevCat.app/Contents/Resources/vpn/dns-updown");
+        let dest = "/Library/PrivilegedHelperTools/dev.devcat.vpn-scripts/dns-updown";
+        let s = install_script(exe, &[(src, dest)], "arif", "/Library/PrivilegedHelperTools/dev.devcat.vpn-helper", "wheel").unwrap();
+        let pos = |needle: &str| s.find(needle).unwrap_or_else(|| panic!("missing: {needle}\n{s}"));
+        assert!(pos("mkdir -p /Library/PrivilegedHelperTools/dev.devcat.vpn-scripts\n") < pos(&format!("cp {} {dest}.tmp", src.display())));
+        assert!(pos(&format!("chmod 0755 {dest}.tmp")) < pos(&format!("mv -f {dest}.tmp {dest}")));
+        assert!(pos(&format!("mv -f {dest}.tmp {dest}")) < pos("mv -f /etc/sudoers.d/.dev-devcat-vpn.tmp"));
     }
 
     #[test]
     fn install_script_text() {
         let exe = Path::new("/Applications/Dev Cat.app/Contents/MacOS/devcat");
-        let s = install_script(exe, None, "arif", "/Library/PrivilegedHelperTools/dev.devcat.vpn-helper", "wheel").unwrap();
+        let s = install_script(exe, &[], "arif", "/Library/PrivilegedHelperTools/dev.devcat.vpn-helper", "wheel").unwrap();
         assert_eq!(
             s,
             "set -e\n\
@@ -1624,18 +1649,20 @@ mod tests {
         );
         // visudo runs before anything is installed.
         assert!(s.find("visudo").unwrap() < s.find("cp ").unwrap());
-        let linux = install_script(Path::new("/home/me/.local/bin/devcat"), None, "me", "/usr/local/libexec/devcat-vpn-helper", "root").unwrap();
+        let linux = install_script(Path::new("/home/me/.local/bin/devcat"), &[], "me", "/usr/local/libexec/devcat-vpn-helper", "root").unwrap();
         assert!(linux.contains("chown root:root /usr/local/libexec/.devcat-vpn-helper.tmp"));
         assert!(linux.contains("mkdir -p /usr/local/libexec\n"));
         // Hostile names never reach the script.
-        assert!(install_script(exe, None, "x ALL=(ALL) NOPASSWD: ALL\n#", "/h", "wheel").is_err());
-        assert!(install_script(exe, None, "$(id)", "/h", "wheel").is_err());
+        assert!(install_script(exe, &[], "x ALL=(ALL) NOPASSWD: ALL\n#", "/h", "wheel").is_err());
+        assert!(install_script(exe, &[], "$(id)", "/h", "wheel").is_err());
         // Exe paths with quotes stay one shell word.
-        let q = install_script(Path::new("/tmp/it's/devcat"), None, "me", "/h/x", "root").unwrap();
+        let q = install_script(Path::new("/tmp/it's/devcat"), &[], "me", "/h/x", "root").unwrap();
         assert!(q.contains(r"cp '/tmp/it'\''s/devcat' /h/.x.tmp"));
         assert!(uninstall_script("/usr/local/libexec/devcat-vpn-helper").starts_with("rm -f /etc/sudoers.d/dev-devcat-vpn /usr/local/libexec/devcat-vpn-helper"));
-        if let Some(o) = HELPER_OPENVPN {
-            assert!(uninstall_script(HELPER_PATH).ends_with(o), "uninstall removes DevCat's OpenVPN copy");
+        if let (Some(o), Some(d)) = (HELPER_OPENVPN, HELPER_DNS_UPDOWN) {
+            let u = uninstall_script(HELPER_PATH);
+            assert!(u.contains(&format!(" {o} {d} && ")), "uninstall removes DevCat's OpenVPN and DNS script copies: {u}");
+            assert!(u.ends_with("rmdir /Library/PrivilegedHelperTools/dev.devcat.vpn-scripts 2>/dev/null || true; }"), "{u}");
         }
     }
 
