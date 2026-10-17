@@ -6,6 +6,8 @@ An all-in-one, cross-platform developer workbench: AI coding agents in a real te
 Kubernetes, RabbitMQ and VPN / SSH tunnels in one app. Built with [Tauri 2](https://tauri.app) (Rust)
 and React + TypeScript; runs on macOS, Windows and Linux.
 
+<p align="center"><img src="assets/readme/demo.gif" width="960" alt="DevCat tour: AI workspace, diff review, databases, SQL editor, Git, Kubernetes, VPN and notes"></p>
+
 | Area | Supported |
 | --- | --- |
 | AI | AI Workspace (terminal, diff, code review) running your installed coding agent: Claude Code (default), OpenAI Codex, Gemini CLI, GitHub Copilot, Aider, opencode or a custom CLI |
@@ -19,6 +21,29 @@ and React + TypeScript; runs on macOS, Windows and Linux.
 
 Grab the latest installer for macOS, Windows or Linux from the
 [Releases page](https://github.com/devileya/DevCat/releases/latest).
+
+## Tour
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/ai.png" alt="AI workspace"><br><b>AI workspace</b>: your coding agent (Claude Code, Codex, Gemini…) in a real terminal, with the project's files and sessions alongside.</td>
+<td width="50%"><img src="assets/readme/diff.png" alt="Diff review"><br><b>Review the changes</b>: see what the agent changed, stage and commit, or ask for a code review.</td>
+</tr>
+<tr>
+<td><img src="assets/readme/table.png" alt="Data grid"><br><b>Databases</b>: browse and edit tables; filter any column by typing in its header.</td>
+<td><img src="assets/readme/query.png" alt="SQL editor"><br><b>SQL editor</b>: schema-aware autocomplete, multiple result sets, explain and export.</td>
+</tr>
+<tr>
+<td><img src="assets/readme/git.png" alt="Git history"><br><b>Git</b>: commit graph across branches, commit details with diffs, branches, stashes and blame.</td>
+<td><img src="assets/readme/k8s.png" alt="Kubernetes"><br><b>Kubernetes</b>: cluster overview, workloads, logs, shell and port-forwards.</td>
+</tr>
+<tr>
+<td><img src="assets/readme/network.png" alt="VPN and tunnels"><br><b>VPN & tunnels</b>: OpenVPN, WireGuard, SSH and Kubernetes port-forwards with live traffic.</td>
+<td><img src="assets/readme/notes.png" alt="Notes"><br><b>Notes</b>: Markdown notes per project, saved as you type.</td>
+</tr>
+</table>
+
+The screenshots use made-up demo data (see [Screenshots and demo video](#screenshots-and-demo-video)).
 
 ## Features
 
@@ -122,6 +147,22 @@ cd src-tauri && cargo run --example devbridge   # http://127.0.0.1:1430
 pnpm dev:bridge                                 # http://localhost:1425
 ```
 
+### Screenshots and demo video
+
+`pnpm dev:demo` runs the UI in the browser with made-up databases, VPNs, a cluster and an agent session
+(`src/dev/demo.ts`); git and file screens use a sample repository. `promo/` captures the screens and turns them
+into the README video with [Remotion](https://www.remotion.dev):
+
+```bash
+cd src-tauri && cargo run --example devbridge   # git / files for the sample repo
+pnpm dev:demo                                   # http://localhost:1426
+cd promo && pnpm install
+pnpm demo-repo            # sample repository in /tmp/devcat-demo
+pnpm capture              # public/shots/*.png (headless Chrome)
+pnpm stills               # → assets/readme/*.png (macOS sips)
+pnpm render && pnpm gif   # out/demo.mp4 → assets/readme/demo.gif
+```
+
 Local test services for every supported backend:
 
 ```bash
@@ -198,4 +239,5 @@ src-tauri/src/
   ai/                     AI connections (agent CLI profiles, detection, keychain API keys)
   commands/               Tauri command handlers
   store.rs                saved connections (JSON) + OS keychain secrets
+promo/                    README screenshots + demo video (demo mode capture, Remotion)
 ```

@@ -1,12 +1,20 @@
 // Dev-only browser shims for @tauri-apps/* (vite --mode bridge): commands go to the Rust
 // devbridge (`cargo run --example devbridge`); everything else is a harmless stub.
+// `vite --mode demo` answers database / VPN / cluster / terminal commands with demo data first.
+import { demoInvoke } from "./demo";
+
 const URL_ = "http://127.0.0.1:1430/invoke";
+const DEMO = import.meta.env.MODE === "demo";
 
 function fallback(cmd: string): unknown {
   return /list|ids|sessions|projects|contexts|logs|traffic|history|queries/.test(cmd) ? [] : null;
 }
 
 export async function invoke<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (DEMO) {
+    const r = demoInvoke(cmd, args, emitLocal);
+    if (r !== undefined) return r as T;
+  }
   const res = await fetch(URL_, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cmd, args }) });
   const body = await res.json();
   if ("ok" in body) return body.ok as T;
@@ -16,10 +24,20 @@ export async function invoke<T>(cmd: string, args: Record<string, unknown> = {})
 export const convertFileSrc = (p: string) => p;
 export class Channel<T> { onmessage: (m: T) => void = () => {}; }
 
-// event
+// event: an in-page bus (the demo data emits pty / k8s events through it)
 export type UnlistenFn = () => void;
-export async function listen(): Promise<UnlistenFn> { return () => {}; }
-export async function emit(): Promise<void> {}
+type Handler = (e: { event: string; payload: unknown }) => void;
+const handlers = new Map<string, Set<Handler>>();
+function emitLocal(event: string, payload: unknown) {
+  handlers.get(event)?.forEach((h) => h({ event, payload }));
+}
+export async function listen(event: string, h: Handler): Promise<UnlistenFn> {
+  const set = handlers.get(event) ?? new Set<Handler>();
+  set.add(h);
+  handlers.set(event, set);
+  return () => { set.delete(h); };
+}
+export async function emit(event: string, payload?: unknown): Promise<void> { emitLocal(event, payload); }
 
 // window
 export enum UserAttentionType { Critical = 1, Informational = 2 }
@@ -29,7 +47,7 @@ export function getCurrentWindow() {
 export const getCurrentWebviewWindow = getCurrentWindow;
 
 // app
-export async function getVersion() { return "0.0.0-bridge"; }
+export async function getVersion() { return DEMO ? "0.3.6" : "0.0.0-bridge"; }
 
 // path
 export async function homeDir() { return "/Users"; }

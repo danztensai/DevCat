@@ -7,6 +7,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 // `vite --mode bridge`: run the UI in a normal browser against the Rust devbridge (dev only).
+// `vite --mode demo`: the same, plus made-up databases / VPNs / clusters (src/dev/demo.ts).
 const bridgeAlias = Object.fromEntries(
   ["api/core", "api/app", "api/event", "api/window", "api/webviewWindow", "api/path", "plugin-dialog", "plugin-fs", "plugin-opener"]
     .map((m) => [`@tauri-apps/${m}`, new URL("./src/dev/bridge.ts", import.meta.url).pathname]),
@@ -14,7 +15,7 @@ const bridgeAlias = Object.fromEntries(
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
-  resolve: mode === "bridge" ? { alias: bridgeAlias } : undefined,
+  resolve: mode === "bridge" || mode === "demo" ? { alias: bridgeAlias } : undefined,
   clearScreen: false,
   server: {
     port: 1420,
