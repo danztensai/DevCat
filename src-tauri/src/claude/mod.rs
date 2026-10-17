@@ -161,6 +161,7 @@ pub mod open_external;
 pub mod git;
 pub(crate) mod locate;
 pub mod pty;
+pub mod remote;
 
 #[allow(dead_code)]
 fn _keep(_: AppResult<()>) {}

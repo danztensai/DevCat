@@ -228,7 +228,7 @@ pub(crate) struct ParsedStatus {
 }
 
 impl ParsedStatus {
-    fn branch(&self) -> Option<String> {
+    pub(super) fn branch(&self) -> Option<String> {
         match self.head.as_deref() {
             None => None,
             Some("(detached)") => {
@@ -389,6 +389,9 @@ pub(crate) fn invalidate_cache() {
 
 #[tauri::command]
 pub async fn git_status(cwd: String) -> AppResult<GitStatus> {
+    if let Some(t) = super::remote::Target::parse(&cwd) {
+        return super::remote::git_status(&t).await;
+    }
     let Some(root) = repo_root(Path::new(&cwd)).await? else {
         return Ok(GitStatus { is_repo: false, root: None, branch: None, ahead: 0, behind: 0, files: vec![] });
     };

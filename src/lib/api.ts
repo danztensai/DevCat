@@ -116,6 +116,8 @@ export const api = {
   claudeSessions: (cwd: string) => invoke<SessionMeta[]>("claude_sessions", { cwd }),
   claudeTranscript: (cwd: string, sessionId: string) => invoke<unknown[]>("claude_transcript", { cwd, sessionId }),
   fsList: (dir: string, showIgnored = false) => invoke<FileEntry[]>("fs_list", { dir, showIgnored }),
+  /** An ssh:// folder as the host sees it (~ and symlinks resolved); fails if it isn't reachable. */
+  remoteResolveDir: (uri: string) => invoke<string>("remote_resolve_dir", { uri }),
   fsPreview: (path: string) => invoke<FilePreview>("fs_preview", { path }),
   /** Atomic save; returns the new version. Rejects with "CONFLICT: …" when the file changed on disk
    *  since `expectedVersion` (pass null to overwrite). lineEnding normalizes line breaks. */

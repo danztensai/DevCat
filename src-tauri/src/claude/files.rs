@@ -134,6 +134,9 @@ fn list_dir(dir: &Path, show_ignored: bool) -> AppResult<(Vec<RawEntry>, Option<
 #[tauri::command]
 pub async fn fs_list(dir: String, show_ignored: Option<bool>) -> AppResult<Vec<FileEntry>> {
     let show_ignored = show_ignored.unwrap_or(false);
+    if let Some(t) = super::remote::Target::parse(&dir) {
+        return super::remote::fs_list(&t, show_ignored).await;
+    }
     let dir_path = PathBuf::from(&dir);
     let (raw, repo) = tauri::async_runtime::spawn_blocking(move || list_dir(&dir_path, show_ignored))
         .await
@@ -504,7 +507,7 @@ fn read_docx(path: &Path) -> AppResult<String> {
     Ok(docx_xml_to_text(&xml))
 }
 
-fn preview_sync(path: &str) -> AppResult<FilePreview> {
+pub(super) fn preview_sync(path: &str) -> AppResult<FilePreview> {
     let meta = fs::metadata(path).map_err(|e| AppError::msg(format!("Cannot open {path}: {e}")))?;
     if meta.is_dir() {
         return Err(AppError::msg(format!("{path} is a directory")));
@@ -580,6 +583,9 @@ fn preview_kind(path: &str, size: u64) -> AppResult<FilePreview> {
 
 #[tauri::command]
 pub async fn fs_preview(path: String) -> AppResult<FilePreview> {
+    if let Some(t) = super::remote::Target::parse(&path) {
+        return super::remote::fs_preview(&t).await;
+    }
     tauri::async_runtime::spawn_blocking(move || preview_sync(&path)).await.map_err(|e| AppError::msg(e.to_string()))?
 }
 
@@ -588,7 +594,7 @@ pub async fn fs_preview(path: String) -> AppResult<FilePreview> {
 /// Error prefix the frontend matches to offer Overwrite / Reload.
 const CONFLICT: &str = "CONFLICT:";
 
-fn normalize_eol(content: &str, eol: Option<&str>) -> String {
+pub(super) fn normalize_eol(content: &str, eol: Option<&str>) -> String {
     match eol {
         Some("crlf") => content.replace("\r\n", "\n").replace('\n', "\r\n"),
         Some("lf") => content.replace("\r\n", "\n"),
@@ -659,6 +665,9 @@ fn write_text_sync(path: &str, content: &str, expected_version: Option<&str>, eo
 /// new version token.
 #[tauri::command]
 pub async fn fs_write_text(path: String, content: String, expected_version: Option<String>, line_ending: Option<String>) -> AppResult<String> {
+    if let Some(t) = super::remote::Target::parse(&path) {
+        return super::remote::fs_write_text(&t, &content, expected_version.as_deref(), line_ending.as_deref()).await;
+    }
     tauri::async_runtime::spawn_blocking(move || write_text_sync(&path, &content, expected_version.as_deref(), line_ending.as_deref()))
         .await
         .map_err(|e| AppError::msg(e.to_string()))?

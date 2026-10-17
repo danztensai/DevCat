@@ -34,8 +34,19 @@ body {
 }
 input, textarea, [contenteditable], .selectable { user-select: text; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #2f3540; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background-color: #3d4452; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar, #2f3540); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover, #3d4452); }
+
+/* Window glass (features/appearance): the window shows the desktop blurred behind it; the layout's
+   surfaces turn see-through (sidebar and work area separately). Dialogs and menus, rendered
+   outside these containers, stay solid. */
+html.glass, html.glass body { background: transparent; }
+html.glass .glass-work { --color-app: var(--glass-work-app); --color-panel: var(--glass-work-panel); --color-raised: var(--glass-work-raised); }
+html.glass .glass-side { --color-app: var(--glass-side-app); --color-panel: var(--glass-side-panel); --color-raised: var(--glass-side-raised); }
+/* Floating things (dialogs, menus, popovers: the ones with a big shadow) and .solid stay opaque. */
+html.glass .solid, html.glass [class*="shadow-lg"], html.glass [class*="shadow-xl"], html.glass [class*="shadow-2xl"] {
+  --color-app: var(--solid-app); --color-panel: var(--solid-panel); --color-raised: var(--solid-raised);
+}
 ::-webkit-scrollbar-corner { background: transparent; }
 *:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }
 

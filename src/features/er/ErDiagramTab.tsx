@@ -14,6 +14,7 @@ import { Button, Empty, ErrorBox, IconButton, Input, Spinner, Toolbar } from "..
 import { api, errMsg } from "../../lib/api";
 import type { SchemaSnapshot, TableStructure } from "../../lib/types";
 import type { Tab } from "../../tabs/types";
+import { palette } from "../appearance/store";
 import { openTableDesign } from "../connections/openers";
 import { dataUrlToBytes, saveContent } from "../transfer/files";
 import { TableChecklist, lsGet, lsSet, safeFileName } from "../transfer/shared";
@@ -195,7 +196,7 @@ function ErDiagram({ tab }: { tab: ErTab }) {
         labelBgBorderRadius: 4,
         zIndex: hovered || active ? 10 : 0,
         style: {
-          stroke: active || hovered ? "var(--color-accent)" : "#4b5263",
+          stroke: active || hovered ? "var(--color-accent)" : "var(--color-faint)",
           strokeWidth: active || hovered ? 1.8 : 1.2,
           opacity: dim ? 0.12 : 1,
         },
@@ -248,7 +249,7 @@ function ErDiagram({ tab }: { tab: ErTab }) {
       const height = Math.min(8000, Math.ceil(bounds.height + pad * 2));
       const vp = getViewportForBounds(bounds, width, height, 0.05, 2, 0.02);
       const opts = {
-        backgroundColor: "#14161a",
+        backgroundColor: palette().panel,
         width, height,
         style: { width: `${width}px`, height: `${height}px`, transform: `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})` },
         filter: (el: HTMLElement) => !el.classList?.contains("react-flow__minimap"),
@@ -358,13 +359,13 @@ function ErDiagram({ tab }: { tab: ErTab }) {
               proOptions={{ hideAttribution: true }}
               style={{ background: "var(--color-app)" }}
             >
-              <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#2a2f39" />
+              <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--color-line)" />
               <MiniMap
                 pannable
                 zoomable
                 style={{ background: "var(--color-panel)", border: "1px solid var(--color-line)" }}
-                maskColor="rgba(15,17,20,0.7)"
-                nodeColor={(n) => ((n.data as TableNodeData).state === "dim" ? "#2a2f39" : (n.data as TableNodeData).state === "normal" ? "#3d4452" : "#f5a524")}
+                maskColor="color-mix(in srgb, var(--color-app) 70%, transparent)"
+                nodeColor={(n) => ((n.data as TableNodeData).state === "dim" ? "var(--color-line)" : (n.data as TableNodeData).state === "normal" ? "var(--color-faint)" : "var(--color-accent)")}
                 nodeStrokeWidth={0}
               />
               <Controls showInteractive={false} />

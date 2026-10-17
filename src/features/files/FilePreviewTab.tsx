@@ -16,6 +16,7 @@ import { copyText, fmtSize, openExternally, relPath, revealPath } from "./format
 import { CsvViewer, SheetViewer } from "./viewers/SheetViewer";
 import { BinaryCard, DocxViewer, ImageViewer, MarkdownViewer } from "./viewers/simple";
 import { TextEditor } from "./viewers/TextEditor";
+import { isRemote } from "../../lib/remotePath";
 
 const PdfViewer = lazy(() => import("./viewers/PdfViewer"));
 
@@ -63,7 +64,7 @@ export default function FilePreviewTab({ tab }: { tab: Extract<Tab, { type: "fil
 
   const shown = relPath(tab.path, tab.root);
   const kind = preview?.kind;
-  const canBlame = !!repo && (kind === "text" || kind === "markdown");
+  const canBlame = !!repo && !isRemote(tab.path) && (kind === "text" || kind === "markdown");
   const blame = !!tab.blame && repo !== null && (!preview || canBlame);
   const setBlame = (v: boolean) => useTabs.getState().update(tab.id, { blame: v } as never);
 
@@ -89,8 +90,12 @@ export default function FilePreviewTab({ tab }: { tab: Extract<Tab, { type: "fil
         )}
         <IconButton title="Refresh" onClick={() => { void load(); setReload((n) => n + 1); }}><RefreshCw className={loading ? "size-3.5 animate-spin" : "size-3.5"} /></IconButton>
         <IconButton title="Copy path" onClick={() => void copyText(tab.path)}><Copy className="size-3.5" /></IconButton>
-        <IconButton title="Open with default app" onClick={() => void openExternally(tab.path)}><ExternalLink className="size-3.5" /></IconButton>
-        <IconButton title="Reveal in Finder" onClick={() => void revealPath(tab.path)}><FolderSearch className="size-3.5" /></IconButton>
+        {!isRemote(tab.path) && (
+          <>
+            <IconButton title="Open with default app" onClick={() => void openExternally(tab.path)}><ExternalLink className="size-3.5" /></IconButton>
+            <IconButton title="Reveal in Finder" onClick={() => void revealPath(tab.path)}><FolderSearch className="size-3.5" /></IconButton>
+          </>
+        )}
       </Toolbar>
       {/* a failed refresh keeps the last content (and any unsaved edits) on screen */}
       {error && preview && <div className="selectable shrink-0 truncate border-b border-danger/25 bg-danger/10 px-3 py-1 text-[12px] text-danger" title={error}>{error}</div>}

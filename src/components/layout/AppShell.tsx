@@ -23,6 +23,8 @@ import { useTabActivity } from "../../features/claude/activity";
 import { KeepAwakeButton } from "../../features/keepawake/KeepAwakeButton";
 import { UpdateDialog } from "../../features/update/UpdateDialog";
 import { MobileButton, MobileDialog } from "../../features/mobile/MobileDialog";
+import { AppearanceButton, AppearanceDialog } from "../../features/appearance/AppearanceDialog";
+import { useIsDark } from "../../features/appearance/store";
 import { PairPrompt } from "../../features/mobile/PairPrompt";
 import { startMobileStatus } from "../../features/mobile/store";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
@@ -63,6 +65,7 @@ export default function AppShell() {
   }, []);
 
   useEffect(() => startMobileStatus(), []);
+  const toastTheme = useIsDark() ? "dark" : "light";
 
   // Sidebar hide / show: the store is the source of truth; the panel follows it.
   const sidebarPanel = usePanelRef();
@@ -98,6 +101,7 @@ export default function AppShell() {
         <ActivityBar />
         <Group orientation="horizontal" className="min-w-0 flex-1">
           <Panel
+            className="glass-side"
             panelRef={sidebarPanel}
             defaultSize="22%"
             minSize="14%"
@@ -113,7 +117,7 @@ export default function AppShell() {
             <Sidebar />
           </Panel>
           <Separator className="w-px bg-line hover:bg-accent data-[separator=active]:bg-accent" />
-          <Panel minSize="40%">
+          <Panel minSize="40%" className="glass-work">
             <Workspace />
           </Panel>
         </Group>
@@ -123,8 +127,9 @@ export default function AppShell() {
       <AiConnectionsDialog />
       <UpdateDialog />
       <MobileDialog />
+      <AppearanceDialog />
       <PairPrompt />
-      <Toaster theme="dark" position="bottom-right" richColors closeButton />
+      <Toaster theme={toastTheme} position="bottom-right" richColors closeButton />
     </div>
   );
 }
@@ -151,7 +156,7 @@ function ActivityBar() {
     </button>
   );
   return (
-    <div className="flex w-11 shrink-0 flex-col items-center border-r border-line bg-app pt-1">
+    <div className="glass-side flex w-11 shrink-0 flex-col items-center border-r border-line bg-app pt-1">
       {item("claude", <AiTerminalIcon className="size-5" />, "AI Workspace")}
       {item("connections", <Cable className="size-5" />, "Connections")}
       {item("history", <History className="size-5" />, "History & saved queries")}
@@ -241,7 +246,7 @@ function ProjectBar() {
 
   return (
     <div
-      className={clsx("flex h-8 shrink-0 items-center gap-2 border-b px-2 text-[12px]", focus ? "border-b-2" : "border-line bg-app")}
+      className={clsx("glass-side flex h-8 shrink-0 items-center gap-2 border-b px-2 text-[12px]", focus ? "border-b-2" : "border-line bg-app")}
       style={focus ? { borderBottomColor: focus.color ?? "var(--color-accent)", background: `color-mix(in srgb, ${focus.color ?? "var(--color-accent)"} 12%, var(--color-app))` } : undefined}
     >
       <button
@@ -265,6 +270,7 @@ function ProjectBar() {
         </>
       )}
       <div className={clsx("flex items-center gap-0.5", !focus && "ml-auto")}>
+        <AppearanceButton />
         <MobileButton />
         <KeepAwakeButton />
         <IconButton title={`New window (${NEW_WINDOW_SHORTCUT})`} onClick={() => void openNewWindow(focus?.id)}>
@@ -399,7 +405,7 @@ function StatusBar() {
     if (IS_MAIN_WINDOW) startUpdateChecks();
   }, []);
   return (
-    <div className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-line bg-app px-3 text-[11px] text-muted">
+    <div className="glass-side flex h-6 shrink-0 items-center justify-between gap-3 border-t border-line bg-app px-3 text-[11px] text-muted">
       <span className="min-w-0 flex-1 truncate">{status}</span>
       {update && (
         <button className="flex items-center gap-1 rounded px-1.5 text-accent hover:bg-hover" onClick={() => useUpdate.getState().show()} title="Show the update">

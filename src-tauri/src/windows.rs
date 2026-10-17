@@ -62,6 +62,8 @@ pub fn create<R: Runtime>(
         .title("DevCat")
         .inner_size(1440.0, 900.0)
         .min_inner_size(960.0, 600.0)
+        // See-through when Appearance → Window glass is on (the page paints a solid background otherwise).
+        .transparent(true)
         .disable_drag_drop_handler();
     // Cascade from the calling window (or the focused one, e.g. for the app menu).
     let origin = from.cloned().or_else(|| {

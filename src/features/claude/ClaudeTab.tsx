@@ -32,6 +32,7 @@ import {
 import { setTabVisible, useTabActivity } from "./activity";
 import { TerminalPane } from "./TerminalPane";
 import { basename, modelOptions, PERMISSION_MODES } from "./util";
+import { isRemote } from "../../lib/remotePath";
 
 type ClaudeTabT = Extract<Tab, { type: "claude" }>;
 
@@ -278,10 +279,12 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
     setTabVisible(tabId, active);
     return () => setTabVisible(tabId, false);
   }, [tabId, active]);
-  const views = useMemo(() => (isClaude ? VIEWS : VIEWS.filter((v) => v.id !== "review")), [isClaude]);
+  // Diff and Code Review use git on this computer: not for folders on SSH hosts (yet).
+  const remote = isRemote(tab.cwd);
+  const views = useMemo(() => VIEWS.filter((v) => !(remote && (v.id === "diff" || v.id === "review")) && (isClaude || v.id !== "review")), [isClaude, remote]);
   const hasTerminals = useClaude((s) => (s.tabs[tabId]?.terminals.length ?? 0) > 0);
   const wanted: ClaudeView = tab.view ?? "chat";
-  const view: ClaudeView = (wanted === "review" && !isClaude) || (wanted === "terminal" && !hasTerminals) ? "chat" : wanted;
+  const view: ClaudeView = !views.some((v) => v.id === wanted) || (wanted === "terminal" && !hasTerminals) ? "chat" : wanted;
   const info = useClaude((s) => s.info);
   const infoLoaded = useClaude((s) => s.infoLoaded);
   const infoError = useClaude((s) => s.infoError);

@@ -2,7 +2,7 @@
 // The AI connection new chats use is picked in the sidebar header (ProviderPicker).
 import clsx from "clsx";
 import {
-  ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X,
+  ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X, Server,
 } from "lucide-react";
 import { AiTerminalIcon } from "../../components/ui/AppIcons";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
@@ -19,6 +19,8 @@ import { useSelectedProvider } from "./providers";
 import FileTree, { type FileTreeHandle } from "./sidebar/FileTree";
 import { SessionsList } from "./sidebar/SessionsList";
 import { pickFolder, useWorkspace } from "./sidebar/workspace";
+import { RemoteFolderDialog, openRemoteFolderDialog } from "./sidebar/RemoteFolderDialog";
+import { displayPath, isRemote, remoteParts } from "../../lib/remotePath";
 
 const REFRESH_MS = 15_000;
 const INSTALL_CMD = "curl -fsSL https://claude.ai/install.sh | bash";
@@ -35,10 +37,8 @@ function useVisibleInterval(fn: () => void, ms: number) {
   }, [ms]);
 }
 
-/** Shorten a path for display: /Users/me/x → ~/x */
-function tildify(p: string): string {
-  return p.replace(/^\/(Users|home)\/[^/]+/, "~");
-}
+/** Shorten a path for display: /Users/me/x → ~/x, ssh://devbox/home/me/x → devbox: ~/x */
+const tildify = displayPath;
 
 export default function ClaudePanel() {
   const cwd = useWorkspace((s) => s.cwd);
@@ -85,6 +85,7 @@ function NoFolder() {
         Pick a project folder to chat with {provider.name} about it{provider.kind === "claude" ? ", browse its files and resume past sessions" : " and browse its files"}.
       </div>
       <Button variant="primary" onClick={() => void pickFolder()}><FolderOpen className="size-3.5" /> Open folder…</Button>
+      <Button variant="ghost" onClick={openRemoteFolderDialog}><Server className="size-3.5" /> Folder on SSH host…</Button>
     </div>
   );
 }
@@ -120,6 +121,7 @@ function WorkspaceHeader() {
     }
     const items: MenuItem[] = [
       { label: "Open folder…", icon: <FolderOpen className="size-3.5" />, onClick: () => void pickFolder() },
+      { label: "Open folder on SSH host…", icon: <Server className="size-3.5" />, onClick: openRemoteFolderDialog },
       ...(isClaude
         ? [{ label: "Projects with Claude history", icon: <Sparkles className="size-3.5" />, submenu: projects.length ? projects : [{ label: "None found", disabled: true, onClick: () => {} }] } as MenuItem]
         : []),
@@ -127,15 +129,15 @@ function WorkspaceHeader() {
     const others = recent.filter((r) => r !== cwd);
     if (others.length) {
       items.push("separator");
-      for (const r of others) items.push({ label: tildify(r), icon: <FolderOpen className="size-3.5" />, onClick: () => setCwd(r) });
+      for (const r of others) items.push({ label: tildify(r), icon: isRemote(r) ? <Server className="size-3.5" /> : <FolderOpen className="size-3.5" />, onClick: () => setCwd(r) });
       items.push({ label: "Clear recent folders", icon: <X className="size-3.5" />, onClick: () => others.forEach(forgetRecent) });
     }
     if (cwd) {
       items.push(
         "separator",
-        ...(branch && gitRoot ? [{ label: "Open Git repository", icon: <FolderGit2 className="size-3.5" />, onClick: () => openGitRepo(gitRoot) }] : []),
-        { label: "Copy folder path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(cwd) },
-        { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(cwd) },
+        ...(branch && gitRoot && !isRemote(gitRoot) ? [{ label: "Open Git repository", icon: <FolderGit2 className="size-3.5" />, onClick: () => openGitRepo(gitRoot) }] : []),
+        { label: "Copy folder path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(remoteParts(cwd)?.path ?? cwd) },
+        ...(isRemote(cwd) ? [] : [{ label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(cwd) } as MenuItem]),
         { label: "Close folder", icon: <X className="size-3.5" />, onClick: () => setCwd(null) },
       );
     }
@@ -149,7 +151,7 @@ function WorkspaceHeader() {
         title={cwd ?? "Open a folder"}
         onClick={(e) => void showMenu(e)}
       >
-        <FolderOpen className={clsx("size-4 shrink-0", cwd ? "text-accent" : "text-faint")} />
+        {isRemote(cwd) ? <Server className="size-4 shrink-0 text-accent" /> : <FolderOpen className={clsx("size-4 shrink-0", cwd ? "text-accent" : "text-faint")} />}
         <div className="min-w-0 flex-1">
           <div className={clsx("truncate text-[13px] font-medium", !cwd && "text-muted")}>{cwd ? basename(cwd) : "Open folder…"}</div>
           {cwd && <div className="truncate text-[11px] text-faint">{tildify(cwd)}</div>}
@@ -167,6 +169,7 @@ function WorkspaceHeader() {
         </Button>
       )}
       {menu.element}
+      <RemoteFolderDialog />
     </div>
   );
 }

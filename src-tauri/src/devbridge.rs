@@ -63,6 +63,7 @@ async fn call(cmd: &str, args: &Value) -> Result<Value, Value> {
         "git_discard_all" => out(c!(git::git_discard_all, "cwd", "includeUntracked")),
         "git_commit" => out(c!(git::git_commit, "cwd", "message", "paths")),
         "fs_list" => out(c!(files::fs_list, "dir", "showIgnored")),
+        "remote_resolve_dir" => out(c!(crate::claude::remote::remote_resolve_dir, "uri")),
         "fs_preview" => out(c!(files::fs_preview, "path")),
         "ai_providers_list" => out(c!(crate::ai::ai_providers_list)),
         "ai_provider_save" => out(c!(crate::ai::ai_provider_save, "provider")),

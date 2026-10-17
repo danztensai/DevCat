@@ -158,6 +158,12 @@ logs and deployments.
   the provider's env var (e.g. `OPENAI_API_KEY`). With Claude Code you also get **Code Review ⌥⇧⌘3**,
   launch options and your Claude session list (resume any session); other agents get a Review button that
   asks them in the terminal.
+  **Folders on SSH hosts** too (*Open folder on SSH host…*): the agent and terminals run on that machine, and the
+  file tree, previews, edits and git status work over your system `ssh` (hosts from `~/.ssh/config`, keys,
+  ssh-agent, ProxyJump; one shared connection per host). Diff and Code Review are local-only for now.
+- **Appearance** (🎨 in the title bar): dark, light or system mode, 8 dark and 3 light themes (editors and terminals
+  follow), and **window glass** on macOS and Windows: the desktop shows through the sidebar and work area, blurred,
+  with separate opacity for each.
 
 - **Git**: scan a folder for every repository inside it (nested repos, submodules and worktrees; `node_modules`
   and build folders are skipped) and see branch, ahead/behind and changes at a glance. Each repo opens a Git tab

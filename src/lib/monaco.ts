@@ -3,6 +3,8 @@ import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/language/json/json.worker?worker";
+import { onPaletteChange, palette } from "../features/appearance/store";
+import { monacoTheme } from "../features/appearance/themes";
 
 self.MonacoEnvironment = {
   getWorker(_id: string, label: string) {
@@ -11,21 +13,11 @@ self.MonacoEnvironment = {
   },
 };
 
-monaco.editor.defineTheme("devcat", {
-  base: "vs-dark",
-  inherit: true,
-  rules: [
-    { token: "keyword", foreground: "F5A524", fontStyle: "bold" },
-    { token: "string", foreground: "8BD49C" },
-    { token: "number", foreground: "7CC4FA" },
-    { token: "comment", foreground: "6B7280", fontStyle: "italic" },
-  ],
-  colors: {
-    "editor.background": "#14161a",
-    "editor.lineHighlightBackground": "#1c1f25",
-    "editorLineNumber.foreground": "#4b5160",
-    "editorGutter.background": "#14161a",
-  },
+// "devcat" follows the Appearance theme; every editor uses it.
+monaco.editor.defineTheme("devcat", monacoTheme(palette()));
+onPaletteChange((p) => {
+  monaco.editor.defineTheme("devcat", monacoTheme(p));
+  monaco.editor.setTheme("devcat");
 });
 
 loader.config({ monaco });

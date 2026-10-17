@@ -17,6 +17,7 @@ import { copyText, dirname, openFilePreview, relPath, revealPath } from "../../f
 import { openBlame, openGitRepo } from "../../git/open";
 import { repoRootOf } from "../../git/repoOf";
 import { useWorkspace } from "./workspace";
+import { isRemote } from "../../../lib/remotePath";
 
 const ROW_H = 22;
 const INDENT = 12;
@@ -215,8 +216,8 @@ const FileTree = forwardRef<FileTreeHandle, { cwd: string; git: GitStatus | null
         ? { label: expanded.has(e.path) ? "Collapse" : "Expand", icon: <ChevronRight className="size-3.5" />, onClick: () => toggle(e.path) }
         : { label: "Open preview", icon: <SquareArrowOutUpRight className="size-3.5" />, onClick: () => openFilePreview(e.path, cwd) },
       ...(e.isDir
-        ? e.isRepo ? [{ label: "Open Git repository", icon: <FolderGit2 className="size-3.5" />, onClick: () => openGitRepo(e.path) }] : []
-        : [
+        ? e.isRepo && !isRemote(e.path) ? [{ label: "Open Git repository", icon: <FolderGit2 className="size-3.5" />, onClick: () => openGitRepo(e.path) }] : []
+        : isRemote(e.path) ? [] : [
           { label: "Blame", icon: <UserSearch className="size-3.5" />, onClick: () => openBlame(e.path, cwd) },
           { label: "File history", icon: <History className="size-3.5" />, onClick: () => void showFileHistory(e.path) },
         ]),
@@ -224,8 +225,7 @@ const FileTree = forwardRef<FileTreeHandle, { cwd: string; git: GitStatus | null
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(e.path) },
       { label: "Copy relative path", icon: <ClipboardCopy className="size-3.5" />, onClick: () => void copyText(rel) },
       { label: "Mention in chat", icon: <AtSign className="size-3.5" />, onClick: () => void copyText(`@${rel}${e.isDir ? "/" : ""}`, `Copied @${rel} — paste it in the chat`) },
-      "separator",
-      { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(e.path) },
+      ...(isRemote(e.path) ? [] : ["separator", { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(e.path) }] as MenuItem[]),
     ];
     menu.show(ev, items);
   }, [cwd, expanded, toggle, menu]);

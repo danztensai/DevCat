@@ -132,16 +132,32 @@ pub(crate) async fn open(
     rows: u16,
     origin: &str,
 ) -> AppResult<String> {
-    if !Path::new(cwd).is_dir() {
+    // A folder on an SSH host (ssh://…): the program runs there, through the system ssh.
+    let remote = super::remote::Target::parse(cwd);
+    if remote.is_none() && !Path::new(cwd).is_dir() {
         return Err(AppError::msg(format!("Not a directory: {cwd}")));
     }
-    let id = uuid::Uuid::new_v4().to_string();
+    let uid = uuid::Uuid::new_v4();
+    let id = uid.to_string();
     let agent = is_claude(program.as_deref());
+    // Remote agents report through a reverse forward: host 127.0.0.1:<this> → DevCat's hook server.
+    let mut forward = None;
     if agent {
         // Claude Code hooks report "finished" / "needs input" back to DevCat (notifications).
         if let Some(h) = crate::notify::hooks::launch(&id) {
             args.splice(0..0, h.args);
-            env.extend(h.env);
+            if remote.is_some() {
+                let rp = 20000 + (uid.as_u128() % 40000) as u16;
+                for (k, v) in h.env {
+                    let local = v.split("127.0.0.1:").nth(1).and_then(|r| r.split('/').next()).and_then(|p| p.parse::<u16>().ok());
+                    if let Some(lp) = local {
+                        forward = Some((rp, lp));
+                        env.push((k, v.replacen(&format!("127.0.0.1:{lp}"), &format!("127.0.0.1:{rp}"), 1)));
+                    }
+                }
+            } else {
+                env.extend(h.env);
+            }
         }
     }
     let info = PtyInfo {
@@ -154,7 +170,23 @@ pub(crate) async fn open(
         cols,
         rows,
     };
-    let cmd = build_command(cwd, program, args, env).await?;
+    let cmd = match &remote {
+        Some(t) => {
+            // Only DevCat's own variables go to the host (an AI connection's keys stay here).
+            let env: Vec<(String, String)> = env.into_iter().filter(|(k, _)| k.starts_with("DEVCAT_")).collect();
+            let prog = program.as_deref().map(|p| if is_claude(Some(p)) { "claude" } else { p });
+            let mut c = CommandBuilder::new("ssh");
+            c.args(super::remote::terminal_args(t, prog, &args, &env, forward));
+            if let Some(h) = dirs::home_dir() {
+                c.cwd(h);
+            }
+            c.env("PATH", locate::child_path().await);
+            c.env("TERM", "xterm-256color");
+            c.env("COLORTERM", "truecolor");
+            c
+        }
+        None => build_command(cwd, program, args, env).await?,
+    };
     let pair = native_pty_system().openpty(size(cols, rows)).map_err(|e| AppError::msg(format!("openpty: {e}")))?;
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| AppError::msg(format!("Failed to start terminal program: {e}")))?;
     drop(pair.slave); // so the reader sees EOF once the child exits

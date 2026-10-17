@@ -12,33 +12,11 @@ import { ActivityDetector } from "./activity";
 import { api, errMsg } from "../../lib/api";
 import { ptyEventsReady, subscribePty } from "./pty";
 import { openFile } from "./util";
+import { onPaletteChange, palette } from "../appearance/store";
+import { terminalTheme } from "../appearance/themes";
 
 const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 
-const THEME = {
-  background: "#0f1114",
-  foreground: "#e6e8ec",
-  cursor: "#f5a524",
-  cursorAccent: "#0f1114",
-  selectionBackground: "#f5a52440",
-  selectionInactiveBackground: "#f5a52425",
-  black: "#1b1e24",
-  red: "#f87171",
-  green: "#4ade80",
-  yellow: "#fbbf24",
-  blue: "#60a5fa",
-  magenta: "#c084fc",
-  cyan: "#22d3ee",
-  white: "#c9cdd4",
-  brightBlack: "#5c6370",
-  brightRed: "#fca5a5",
-  brightGreen: "#86efac",
-  brightYellow: "#fde68a",
-  brightBlue: "#93c5fd",
-  brightMagenta: "#d8b4fe",
-  brightCyan: "#67e8f9",
-  brightWhite: "#f3f4f6",
-};
 
 const CODE_EXT = new Set(("ts tsx js jsx mjs cjs json md mdx css scss html rs go py rb java kt swift c h cpp hpp cs php sh zsh bash yml yaml toml " +
   "ini sql lua dart scala vue svelte txt lock xml gradle env conf proto graphql").split(" "));
@@ -82,6 +60,9 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
   const cb = useRef({ getArgs, onPty, beforeRestart, cwd });
   cb.current = { getArgs, onPty, beforeRestart, cwd };
 
+  // Colors follow the Appearance theme.
+  useEffect(() => onPaletteChange((p) => { if (termRef.current) termRef.current.term.options.theme = terminalTheme(p); }), []);
+
   // Terminal instance lives for the component's lifetime.
   useEffect(() => {
     const term = new Terminal({
@@ -96,7 +77,7 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
       macOptionClickForcesSelection: true,
       rightClickSelectsWord: IS_MAC,
       drawBoldTextInBrightColors: false,
-      theme: THEME,
+      theme: terminalTheme(palette()),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

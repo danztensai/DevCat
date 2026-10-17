@@ -9,12 +9,13 @@ import type { FilePreview } from "../../../lib/types";
 import { fmtSize, openExternally } from "../format";
 import { MarkdownDoc } from "./MarkdownDoc";
 import { TruncatedBanner } from "./SheetViewer";
+import { isRemote } from "../../../lib/remotePath";
 
 type ViewerProps = { preview: FilePreview; slot: HTMLElement | null; root: string | null };
 
 const CHECKER: CSSProperties = {
-  backgroundColor: "#2a2d33",
-  backgroundImage: "linear-gradient(45deg,#1f2227 25%,transparent 25%),linear-gradient(-45deg,#1f2227 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1f2227 75%),linear-gradient(-45deg,transparent 75%,#1f2227 75%)",
+  backgroundColor: "var(--color-hover)",
+  backgroundImage: "linear-gradient(45deg,var(--color-raised) 25%,transparent 25%),linear-gradient(-45deg,var(--color-raised) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,var(--color-raised) 75%),linear-gradient(-45deg,transparent 75%,var(--color-raised) 75%)",
   backgroundSize: "16px 16px",
   backgroundPosition: "0 0,0 8px,8px -8px,-8px 0",
 };
@@ -151,7 +152,7 @@ export function BinaryCard({ preview }: ViewerProps) {
         <div className="text-xs text-muted">
           {fmtSize(preview.size)}{preview.mime ? ` · ${preview.mime}` : ""}
         </div>
-        <Button className="mt-2" onClick={() => void openExternally(preview.path)}><ExternalLink className="size-3.5" /> Open externally</Button>
+        {!isRemote(preview.path) && <Button className="mt-2" onClick={() => void openExternally(preview.path)}><ExternalLink className="size-3.5" /> Open externally</Button>}
       </div>
     </div>
   );

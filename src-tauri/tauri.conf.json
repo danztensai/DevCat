@@ -18,9 +18,11 @@
         "minWidth": 960,
         "minHeight": 600,
         "center": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "transparent": true
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": null
     }
