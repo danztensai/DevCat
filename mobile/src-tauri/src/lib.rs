@@ -3,9 +3,10 @@
 //!
 //! Commands (all errors are user-facing strings):
 //!   m_info, m_set_name, m_machines, m_pair, m_call, m_connect, m_disconnect, m_forget,
-//!   m_set_addrs, m_network_changed
+//!   m_set_addrs, m_network_changed, m_download
 //! Events: `m-conn` ({ id, state: connecting|online|offline, error? }),
-//!         `m-event` ({ id, event, payload }), `m-pair` ({ stage, hostName }).
+//!         `m-event` ({ id, event, payload }), `m-pair` ({ stage, hostName }),
+//!         `m-transfer` ({ path, done, total }).
 pub mod client;
 pub mod store;
 
@@ -112,6 +113,66 @@ async fn m_network_changed(app: State<'_, App>) -> Result<(), String> {
     Ok(())
 }
 
+/// Where a downloaded file goes: iOS keeps it in DevCat's folder of the Files app (Documents,
+/// shared through Info.ios.plist); elsewhere the system save dialog asks. `None`: cancelled.
+async fn save_target(handle: &tauri::AppHandle, name: &str) -> Result<Option<(std::fs::File, String)>, String> {
+    if cfg!(target_os = "ios") {
+        let dir = handle.path().document_dir().map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let (stem, ext) = match name.rsplit_once('.') {
+            Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+            _ => (name.to_string(), String::new()),
+        };
+        let mut path = dir.join(name);
+        for n in 2.. {
+            if !path.exists() {
+                break;
+            }
+            path = dir.join(format!("{stem} ({n}){ext}"));
+        }
+        let file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+        let shown = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        return Ok(Some((file, format!("Files › On My iPhone › DevCat › {shown}"))));
+    }
+    use tauri_plugin_dialog::DialogExt;
+    use tauri_plugin_fs::{FilePath, FsExt, OpenOptions};
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    handle.dialog().file().set_file_name(name).save_file(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(dest) = rx.await.ok().flatten() else { return Ok(None) };
+    let shown = match &dest {
+        FilePath::Path(p) => p.display().to_string(),
+        FilePath::Url(_) => name.to_string(),
+    };
+    let mut opts = OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    let file = handle.fs().open(dest, opts).map_err(|e| e.to_string())?;
+    Ok(Some((file, shown)))
+}
+
+/// Copy a file from a computer to the phone, piece by piece. Returns where it went (`None`:
+/// the user cancelled the save dialog).
+#[tauri::command]
+async fn m_download(app: State<'_, App>, handle: tauri::AppHandle, id: String, path: String, name: String) -> Result<Option<String>, String> {
+    use base64::Engine;
+    use std::io::Write;
+    let Some((mut out, place)) = save_target(&handle, &name).await? else { return Ok(None) };
+    let mut offset = 0u64;
+    loop {
+        let r = app.client.call(&id, "fs_download", json!({ "path": path, "offset": offset, "len": 1024 * 1024 })).await.map_err(|e| e.as_str().map(str::to_string).unwrap_or_else(|| e.to_string()))?;
+        let data = base64::engine::general_purpose::STANDARD.decode(r["data"].as_str().unwrap_or_default()).map_err(|_| "The download got garbled; try again".to_string())?;
+        out.write_all(&data).map_err(|e| e.to_string())?;
+        offset += data.len() as u64;
+        let _ = handle.emit("m-transfer", json!({ "path": path, "done": offset, "total": r["size"].as_u64().unwrap_or(offset) }));
+        if data.is_empty() || r["eof"].as_bool().unwrap_or(true) {
+            break;
+        }
+    }
+    out.sync_all().map_err(|e| e.to_string())?;
+    Ok(Some(place))
+}
+
 /// The same commands without Tauri, for the browser bridge (examples/bridge.rs).
 pub async fn bridge_call(app: &App, version: &str, cmd: &str, args: Value) -> Result<Value, Value> {
     let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
@@ -175,6 +236,8 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         // devcat://pair?… links (from the web page's "Open in DevCat app") open the pairing screen.
         .plugin(tauri_plugin_deep_link::init());
     #[cfg(mobile)]
@@ -195,7 +258,7 @@ pub fn run() {
             app.manage(App { client, store });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![m_info, m_set_name, m_machines, m_pair, m_connect, m_call, m_disconnect, m_forget, m_set_addrs, m_network_changed])
+        .invoke_handler(tauri::generate_handler![m_info, m_set_name, m_machines, m_pair, m_connect, m_call, m_disconnect, m_forget, m_set_addrs, m_network_changed, m_download])
         .run(tauri::generate_context!())
         .expect("error while running DevCat Mobile");
 }

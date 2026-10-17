@@ -6,5 +6,9 @@
 	<string>DevCat uses the camera to scan the pairing code shown by DevCat on your computer.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>DevCat connects to DevCat on your computer over your local network.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

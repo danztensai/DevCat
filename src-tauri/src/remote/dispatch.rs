@@ -40,6 +40,8 @@ pub const WRITES: &[&str] = &[
     "notify_save",
     "notify_test",
     "fs_write_text",
+    "fs_upload",
+    "fs_upload_cancel",
 ];
 
 /// Images / PDFs bigger than this aren't sent to phones (base64 over a phone connection).
@@ -47,6 +49,16 @@ const PHONE_MEDIA_CAP: usize = 12 * 1024 * 1024;
 
 /// Calls too frequent or too private for the audit log (keystrokes, live views).
 pub const NOT_AUDITED: &[&str] = &["pty_write", "pty_resize", "pty_attach", "pty_detach", "net_traffic", "k8s_stream_stop", "agents", "home_dir"];
+
+/// A file transfer is many calls: log a download once (first piece) and an upload once (last piece).
+pub fn audit_skip(cmd: &str, args: &Value) -> bool {
+    let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0);
+    match cmd {
+        "fs_download" => offset > 0,
+        "fs_upload" => !args.get("done").and_then(Value::as_bool).unwrap_or(false),
+        _ => false,
+    }
+}
 
 /// A window to own streams started from a phone (they stop if that window closes).
 fn any_window(app: &AppHandle) -> Result<tauri::Window, Value> {
@@ -144,6 +156,23 @@ pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value
             let path = expand_home(&arg::<String>(args, "path")?);
             super::paths::check(&path).map_err(|e| json!(e))?;
             out(crate::claude::files::fs_write_text(path, a!("content"), arg(args, "expectedVersion").unwrap_or(None), arg(args, "lineEnding").unwrap_or(None)).await)
+        }
+        "fs_download" => {
+            let path = expand_home(&arg::<String>(args, "path")?);
+            super::paths::check(&path).map_err(|e| json!(e))?;
+            let len = arg::<Option<usize>>(args, "len").unwrap_or(None).unwrap_or(1024 * 1024);
+            super::transfer::read_chunk(path, arg(args, "offset").unwrap_or(0), len).await.map_err(|e| json!(e))
+        }
+        "fs_upload" | "fs_upload_cancel" => {
+            let dir = expand_home(&arg::<String>(args, "dir")?);
+            let target = super::transfer::upload_target(&dir, &arg::<String>(args, "name")?).map_err(|e| json!(e))?;
+            super::paths::check(&target.to_string_lossy()).map_err(|e| json!(e))?;
+            if cmd == "fs_upload_cancel" {
+                super::transfer::cancel(&target);
+                return Ok(Value::Null);
+            }
+            let done = arg(args, "done").unwrap_or(false);
+            super::transfer::write_chunk(target, arg(args, "offset").unwrap_or(0), a!("data"), done, arg(args, "overwrite").unwrap_or(false)).await.map_err(|e| json!(e))
         }
         "home_dir" => Ok(json!(dirs::home_dir().map(|h| h.to_string_lossy().into_owned()))),
         "claude_sessions" => out(crate::claude::sessions::claude_sessions(a!("cwd")).await),
@@ -283,7 +312,8 @@ pub fn audit_detail(cmd: &str, args: &Value) -> Option<String> {
         "db_delete_key" | "db_get_key" => s("key"),
         "pty_open" => s("cwd").map(|c| format!("{c} ({})", s("program").unwrap_or_else(|| "shell".into()))),
         "pty_close" => s("id"),
-        "fs_preview" | "fs_write_text" => s("path"),
+        "fs_preview" | "fs_write_text" | "fs_download" => s("path"),
+        "fs_upload" | "fs_upload_cancel" => Some(format!("{}/{}", s("dir").unwrap_or_default(), s("name").unwrap_or_default())),
         "net_connect" | "net_disconnect" | "net_logs" => s("id"),
         "k8s_delete" | "k8s_scale" | "k8s_restart" | "k8s_get_yaml" | "k8s_events_for" => {
             let mut v = format!("{} {}", s("kind").unwrap_or_default(), s("name").unwrap_or_default());

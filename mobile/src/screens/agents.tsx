@@ -227,7 +227,7 @@ export function Terminal({ id }: { id: string }) {
           <span className="w-6 text-center tabular-nums">{fontSize}</span>
           <Btn size="sm" onClick={() => { setFitWidth(false); setFontSize((s) => Math.min(18, s + 1)); }}>A+</Btn>
         </div>
-        <Item onClick={() => { setMenu(false); nav.push({ s: "files", dir: cwdOf(term ?? info ?? undefined, agent) }); }} icon={<FolderOpen className="size-4" />} title="Browse files" chevron />
+        <Item onClick={() => { setMenu(false); const dir = cwdOf(term ?? info ?? undefined, agent); nav.push({ s: "files", dir, root: dir }); }} icon={<FolderOpen className="size-4" />} title="Browse files" chevron />
         {agent?.sessionId && agent.cwd && (
           <Item onClick={() => { setMenu(false); nav.push({ s: "transcript", cwd: agent.cwd!, sessionId: agent.sessionId!, title: folderName(agent.cwd) }); }} title="Open session transcript" chevron />
         )}

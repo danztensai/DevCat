@@ -2,7 +2,7 @@
 
 A remote control for DevCat on your computer: watch AI agents (and get told when they finish or need you), start new chats, browse, preview and edit project files, browse and edit databases and Redis, switch VPNs and tunnels, and look after Kubernetes, from your phone.
 
-Files (the **Files** tab, or **Browse files** in an agent's menu) can't open folders with keys or credentials (`~/.ssh`, `~/.aws`, `~/.kube`, …) or DevCat's own data.
+Files (the **Files** tab, or **Browse files** in an agent's menu) uploads and downloads files, and copies a file's path relative to the project (⋯ menu) to paste into an agent's chat. It can't open folders with keys or credentials (`~/.ssh`, `~/.aws`, `~/.kube`, …) or DevCat's own data.
 
 There's no DevCat server and no account. The phone talks **directly** to DevCat on your computer (same Wi-Fi, or a computer with a public address), encrypted end to end with keys created when you pair. Connection profiles and passwords stay on the computer; the phone only keeps its own key and the list of computers it paired with.
 

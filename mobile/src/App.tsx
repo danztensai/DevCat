@@ -44,8 +44,8 @@ function screen(r: Route) {
     case "activity": return <Activity />;
     case "machine": return <MachineSettings />;
     case "fileshome": return <FilesHome />;
-    case "files": return <Files key={r.dir} dir={r.dir} />;
-    case "file": return <FileView key={r.path} path={r.path} />;
+    case "files": return <Files key={r.dir} dir={r.dir} root={r.root} />;
+    case "file": return <FileView key={r.path} path={r.path} root={r.root} />;
   }
 }
 

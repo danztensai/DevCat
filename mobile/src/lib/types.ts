@@ -69,5 +69,6 @@ export type Route =
   | { s: "help" }
   | { s: "activity" }
   | { s: "machine" }
-  | { s: "files"; dir: string }
-  | { s: "file"; path: string };
+  /** `root`: the project folder it was opened from (paths are copied relative to it). */
+  | { s: "files"; dir: string; root?: string }
+  | { s: "file"; path: string; root?: string };

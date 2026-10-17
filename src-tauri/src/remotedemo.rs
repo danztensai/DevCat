@@ -389,6 +389,17 @@ impl Backend for Arc<Demo> {
                     .await
                     .map_err(|e| json!(e.to_string()))?
             ),
+            "fs_download" => crate::remote::transfer::read_chunk(s("path"), args["offset"].as_u64().unwrap_or(0), args["len"].as_u64().unwrap_or(1 << 20) as usize).await.map_err(|e| json!(e))?,
+            "fs_upload" | "fs_upload_cancel" => {
+                let target = crate::remote::transfer::upload_target(&s("dir"), &s("name")).map_err(|e| json!(e))?;
+                if cmd == "fs_upload_cancel" {
+                    crate::remote::transfer::cancel(&target);
+                    Value::Null
+                } else {
+                    let (offset, done, overwrite) = (args["offset"].as_u64().unwrap_or(0), args["done"].as_bool().unwrap_or(false), args["overwrite"].as_bool().unwrap_or(false));
+                    crate::remote::transfer::write_chunk(target, offset, s("data"), done, overwrite).await.map_err(|e| json!(e))?
+                }
+            }
             "keep_awake_status" => json!({ "on": *self.awake.lock() }),
             "keep_awake_set" => {
                 *self.awake.lock() = args["on"].as_bool().unwrap_or(false);
