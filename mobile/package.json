@@ -1,0 +1,8 @@
+{
+  "name": "devcat-mobile",
+  "private": true,
+  "description": "Runs the Tauri CLI for DevCat Mobile from mobile/ (dependencies live in the repository root).",
+  "scripts": {
+    "tauri": "node ../node_modules/@tauri-apps/cli/tauri.js"
+  }
+}

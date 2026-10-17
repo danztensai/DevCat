@@ -49,7 +49,7 @@ jobs:
 
       - name: Generate the Android project
         working-directory: mobile
-        run: ../node_modules/.bin/tauri android init --ci
+        run: pnpm tauri android init --ci
 
       - name: Build (release, signed)
         if: env.HAS_KEYSTORE == 'true'
@@ -59,7 +59,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          ../node_modules/.bin/tauri android build --apk
+          pnpm tauri android build --apk
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
           APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*universal-release-unsigned.apk' | head -1)
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
@@ -72,7 +72,7 @@ jobs:
         if: env.HAS_KEYSTORE != 'true'
         working-directory: mobile
         run: |
-          ../node_modules/.bin/tauri android build --apk --debug
+          pnpm tauri android build --apk --debug
           cp "$(find src-tauri/gen/android/app/build/outputs/apk -name '*universal-debug.apk' | head -1)" "$GITHUB_WORKSPACE/DevCat-Mobile.apk"
 
       - uses: actions/upload-artifact@v4

@@ -50,9 +50,9 @@ Android Studio (SDK, NDK, Java 17), then:
 
 ```sh
 rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-../node_modules/.bin/tauri android init        # once; writes src-tauri/gen/android
-../node_modules/.bin/tauri android dev         # on a connected phone or emulator
-../node_modules/.bin/tauri android build --apk # release APK (sign it; see .github/workflows/mobile.yml)
+pnpm tauri android init        # once; writes src-tauri/gen/android
+pnpm tauri android dev         # on a connected phone or emulator
+pnpm tauri android build --apk # release APK (sign it; see .github/workflows/mobile.yml)
 ```
 
 CI (`.github/workflows/mobile.yml`) builds an APK for every release. To install it: download `DevCat-Mobile.apk` from the release on the phone, open it, and allow "install unknown apps" for your browser once.
@@ -63,8 +63,8 @@ A Mac with a working Xcode, and an Apple ID (a free one installs on your own iPh
 
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim
-../node_modules/.bin/tauri ios init            # once; writes src-tauri/gen/apple
-../node_modules/.bin/tauri ios dev --open      # opens Xcode: pick your team under Signing, run on the phone
+pnpm tauri ios init            # once; writes src-tauri/gen/apple
+pnpm tauri ios dev --open      # opens Xcode: pick your team under Signing, run on the phone
 ```
 
 `src-tauri/Info.ios.plist` adds the camera (QR code) and local network permission texts.
@@ -77,7 +77,7 @@ The app also runs as a desktop window, and in a normal browser for UI work:
 # a computer to talk to: real server and terminals, made-up databases / VPNs / clusters
 (cd ../src-tauri && cargo run --example remotedemo)      # prints PAIR devcat://pair?…
 # the phone side, as a desktop window
-../node_modules/.bin/tauri dev
+pnpm tauri dev
 # or the phone side in a browser: the real Rust client behind a local HTTP bridge
 (cd src-tauri && cargo run --example bridge)
 pnpm mobile:bridge                                         # http://localhost:1442
