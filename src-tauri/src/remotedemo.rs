@@ -359,11 +359,14 @@ impl Backend for Arc<Demo> {
                 crate::claude::pty::pty_close(s("id")).await.map_err(|e| json!(e.to_string()))?;
                 Value::Null
             }
-            "claude_projects" => json!([
-                { "cwd": "/Users/demo/acme/storefront", "sessionCount": 14, "lastActive": iso(20) },
-                { "cwd": "/Users/demo/acme/api-gateway", "sessionCount": 6, "lastActive": iso(300) },
-                { "cwd": "/Users/demo/acme/ui", "sessionCount": 9, "lastActive": iso(1500) },
-            ]),
+            "claude_projects" => {
+                let p = |n: &str| self.dir.join("projects/acme").join(n).to_string_lossy().into_owned();
+                json!([
+                    { "cwd": p("storefront"), "sessionCount": 14, "lastActive": iso(20) },
+                    { "cwd": p("api-gateway"), "sessionCount": 6, "lastActive": iso(300) },
+                    { "cwd": p("ui"), "sessionCount": 9, "lastActive": iso(1500) },
+                ])
+            }
             "claude_sessions" => json!([
                 { "id": "s1", "title": "Fix checkout total with coupons", "messageCount": 24, "gitBranch": "main", "costUsd": 0.42, "updatedAt": iso(120) },
                 { "id": "s2", "title": "Add CSV export to orders", "messageCount": 61, "gitBranch": "feat/export", "costUsd": 1.1, "updatedAt": iso(1500) },
@@ -378,6 +381,14 @@ impl Backend for Arc<Demo> {
                 { "type": "assistant", "message": { "role": "assistant", "content": [{ "type": "tool_use", "name": "Bash", "input": { "command": "git commit -am \"Apply coupons before tax\"" } }] } },
             ]),
             "ai_providers_list" => json!([]),
+            "home_dir" => json!(self.dir.join("projects").to_string_lossy()),
+            "fs_list" => json!(crate::claude::files::fs_list(s("dir"), args["showIgnored"].as_bool()).await.map_err(|e| json!(e.to_string()))?),
+            "fs_preview" => json!(crate::claude::files::fs_preview(s("path")).await.map_err(|e| json!(e.to_string()))?),
+            "fs_write_text" => json!(
+                crate::claude::files::fs_write_text(s("path"), s("content"), args["expectedVersion"].as_str().map(str::to_string), args["lineEnding"].as_str().map(str::to_string))
+                    .await
+                    .map_err(|e| json!(e.to_string()))?
+            ),
             "keep_awake_status" => json!({ "on": *self.awake.lock() }),
             "keep_awake_set" => {
                 *self.awake.lock() = args["on"].as_bool().unwrap_or(false);
@@ -497,6 +508,29 @@ impl Backend for Arc<Demo> {
     }
 }
 
+/// Made-up project folders for the Files screens.
+fn sample_projects(root: &std::path::Path) -> std::io::Result<()> {
+    let files: &[(&str, &str)] = &[
+        ("storefront/README.md", "# Storefront\n\nThe Acme web shop: product pages, cart and checkout.\n\n## Run\n\n```sh\npnpm install\npnpm dev\n```\n\n- Cart totals: `src/cart/total.ts`\n- Payments: `src/checkout/pay.ts`\n"),
+        ("storefront/package.json", "{\n  \"name\": \"storefront\",\n  \"private\": true,\n  \"scripts\": { \"dev\": \"vite\", \"test\": \"vitest\" }\n}\n"),
+        ("storefront/src/cart/total.ts", "import { applyCoupon, withTax } from \"./pricing\";\n\nexport function cartTotal(cart: Cart): number {\n  const subtotal = sumLines(cart.lines);\n  const discount = applyCoupon(subtotal, cart.coupon);\n  // tax is charged on the discounted amount\n  return withTax(subtotal - discount);\n}\n"),
+        ("storefront/src/cart/pricing.ts", "export const TAX_RATE = 0.11;\n\nexport function withTax(n: number) {\n  return Math.round(n * (1 + TAX_RATE) * 100) / 100;\n}\n"),
+        ("storefront/src/checkout/pay.ts", "export async function pay(orderId: string) {\n  return fetch(`/api/orders/${orderId}/pay`, { method: \"POST\" });\n}\n"),
+        ("storefront/data/orders.csv", "id,customer,total,status\n10480,Ava Santos,120.11,shipped\n10479,Liam Rossi,227.66,delivered\n10478,Omar Silva,289.32,paid\n"),
+        ("api-gateway/README.md", "# API gateway\n\nRoutes `/api/*` to the services.\n"),
+        ("api-gateway/main.go", "package main\n\nfunc main() {\n\tserve(\":8080\")\n}\n"),
+        ("ui/README.md", "# UI kit\n\nShared React components.\n"),
+    ];
+    for (rel, text) in files {
+        let p = root.join(rel);
+        if let Some(d) = p.parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        std::fs::write(p, text)?;
+    }
+    Ok(())
+}
+
 /// Run the demo host until the process is killed. Prints the pairing link (valid 5 minutes,
 /// a new one every 4 minutes).
 pub async fn run(port: u16, dir: std::path::PathBuf) -> Result<(), String> {
@@ -519,17 +553,20 @@ pub async fn run(port: u16, dir: std::path::PathBuf) -> Result<(), String> {
     *demo.host.lock() = Some(host.clone());
     host.start(port, true).await?;
 
-    // Three agents in different states and a shell, as real terminals.
-    let home = dirs::home_dir().unwrap_or_default().to_string_lossy().into_owned();
+    // Sample project folders (Files screens) and three agents working in them, as real terminals.
+    let projects = dir.join("projects/acme");
+    sample_projects(&projects).map_err(|e| e.to_string())?;
+    let proj = |n: &str| projects.join(n).to_string_lossy().into_owned();
+    let home = proj("storefront");
     let now = crate::remote::server::now_ms();
     let a = demo.open_pty(&home, &claude_screen(true), "desktop", 74, 34).await.map_err(|e| e.to_string())?;
-    crate::notify::hooks::apply(&a.id, &json!({ "hook_event_name": "UserPromptSubmit", "cwd": "/Users/demo/acme/storefront" }), now - 200_000);
-    crate::notify::hooks::apply(&a.id, &json!({ "hook_event_name": "Notification", "message": "Claude needs your permission to use Bash", "cwd": "/Users/demo/acme/storefront" }), now - 20_000);
+    crate::notify::hooks::apply(&a.id, &json!({ "hook_event_name": "UserPromptSubmit", "cwd": proj("storefront") }), now - 200_000);
+    crate::notify::hooks::apply(&a.id, &json!({ "hook_event_name": "Notification", "message": "Claude needs your permission to use Bash", "cwd": proj("storefront") }), now - 20_000);
     let b = demo.open_pty(&home, &claude_screen(false), "phone:Demo phone", 60, 30).await.map_err(|e| e.to_string())?;
-    crate::notify::hooks::apply(&b.id, &json!({ "hook_event_name": "UserPromptSubmit", "cwd": "/Users/demo/acme/api-gateway" }), now - 192_000);
+    crate::notify::hooks::apply(&b.id, &json!({ "hook_event_name": "UserPromptSubmit", "cwd": proj("api-gateway") }), now - 192_000);
     let c = demo.open_pty(&home, &claude_screen(false), "desktop", 74, 30).await.map_err(|e| e.to_string())?;
-    crate::notify::hooks::apply(&c.id, &json!({ "hook_event_name": "UserPromptSubmit", "cwd": "/Users/demo/acme/ui" }), now - 900_000);
-    crate::notify::hooks::apply(&c.id, &json!({ "hook_event_name": "Stop", "cwd": "/Users/demo/acme/ui" }), now - 420_000);
+    crate::notify::hooks::apply(&c.id, &json!({ "hook_event_name": "UserPromptSubmit", "cwd": proj("ui") }), now - 900_000);
+    crate::notify::hooks::apply(&c.id, &json!({ "hook_event_name": "Stop", "cwd": proj("ui") }), now - 420_000);
 
     // A fresh code whenever the last one was used or is about to expire.
     let id = host.endpoint_id().unwrap_or_default();

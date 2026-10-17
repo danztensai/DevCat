@@ -68,4 +68,7 @@ export type Route =
   | { s: "notify" }
   | { s: "help" }
   | { s: "activity" }
-  | { s: "machine" };
+  | { s: "machine" }
+  | { s: "fileshome" }
+  | { s: "files"; dir: string }
+  | { s: "file"; path: string };

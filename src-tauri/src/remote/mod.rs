@@ -5,6 +5,7 @@
 //! Desktop events: `remote-status` (RemoteStatus), `remote-pair-request` (PairRequest),
 //! `remote-pair-resolved` ({ requestId }), `remote-pty-opened` (PtyInfo, a phone started a terminal).
 pub mod dispatch;
+pub mod paths;
 pub mod readonly;
 pub mod server;
 pub mod store;
@@ -203,7 +204,7 @@ impl Backend for TauriBackend {
         let r = dispatch::call(&self.app, client, cmd, &args).await;
         if !dispatch::NOT_AUDITED.contains(&cmd) {
             if let Some(rm) = REMOTE.get() {
-                let reads = ["list_connections", "list_projects", "open_connection_ids", "host_info", "claude_projects", "claude_sessions", "ai_providers_list", "keep_awake_status", "net_list", "net_status", "db_children", "db_list_databases", "saved_queries_list", "history_list", "k8s_connect", "k8s_namespaces", "k8s_list", "k8s_cluster_overview", "k8s_metrics", "db_table_structure"];
+                let reads = ["fs_list", "list_connections", "list_projects", "open_connection_ids", "host_info", "claude_projects", "claude_sessions", "ai_providers_list", "keep_awake_status", "net_list", "net_status", "db_children", "db_list_databases", "saved_queries_list", "history_list", "k8s_connect", "k8s_namespaces", "k8s_list", "k8s_cluster_overview", "k8s_metrics", "db_table_structure"];
                 // Log changes and data reads, not the background refreshes.
                 if !reads.contains(&cmd) || r.is_err() {
                     rm.host.store.audit(&AuditEntry {
@@ -272,6 +273,7 @@ fn test_mode() -> Option<u16> {
 }
 
 pub fn init(app: AppHandle, data_dir: std::path::PathBuf) {
+    paths::init(&data_dir);
     let store = Arc::new(RemoteStore::new(&data_dir));
     let host = Host::new(store, Arc::new(TauriBackend { app: app.clone() }));
     let _ = REMOTE.set(Remote { app: app.clone(), host, error: Mutex::new(None), approvals: Mutex::new(HashMap::new()), pending: Mutex::new(Vec::new()) });

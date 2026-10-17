@@ -49,9 +49,10 @@ The screenshots use made-up demo data (see [Screenshots and demo video](#screens
 ## Mobile app
 
 Leave an agent working and walk away: **DevCat Mobile** tells you when it finishes or needs your permission,
-shows its live terminal so you can answer, starts new chats and resumes old sessions. It also reaches everything
-DevCat on your computer can: browse and edit tables, run queries, edit Redis keys, switch VPNs and tunnels,
-and check pods, logs and deployments.
+shows its live terminal so you can answer, starts new chats and resumes old sessions. Browse a project's files,
+preview them (code, Markdown, images, PDFs, spreadsheets) and edit text files. It also reaches everything DevCat on
+your computer can: browse and edit tables, run queries, edit Redis keys, switch VPNs and tunnels, and check pods,
+logs and deployments.
 
 <table>
 <tr>

@@ -7,6 +7,7 @@ import type { Route } from "./lib/types";
 import { Agents, NewChat, Sessions, Terminal, Transcript } from "./screens/agents";
 import { Browse, Data, Query, RedisKey, Row, Rows } from "./screens/data";
 import { Activity, Help, MachineSettings, More, Notify } from "./screens/more";
+import { FileView, Files, FilesHome } from "./screens/files";
 import { Cluster, NetLog, Network, Pod } from "./screens/ops";
 import { IS_WEB, isPairLink } from "./lib/env";
 import { Computers, Pairing, Paste, Scan, WebLanding, Welcome, prefersApp } from "./screens/setup";
@@ -42,6 +43,9 @@ function screen(r: Route) {
     case "help": return <Help />;
     case "activity": return <Activity />;
     case "machine": return <MachineSettings />;
+    case "fileshome": return <FilesHome />;
+    case "files": return <Files key={r.dir} dir={r.dir} />;
+    case "file": return <FileView key={r.path} path={r.path} />;
   }
 }
 

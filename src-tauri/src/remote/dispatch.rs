@@ -39,10 +39,14 @@ pub const WRITES: &[&str] = &[
     "close_connection",
     "notify_save",
     "notify_test",
+    "fs_write_text",
 ];
 
+/// Images / PDFs bigger than this aren't sent to phones (base64 over a phone connection).
+const PHONE_MEDIA_CAP: usize = 12 * 1024 * 1024;
+
 /// Calls too frequent or too private for the audit log (keystrokes, live views).
-pub const NOT_AUDITED: &[&str] = &["pty_write", "pty_resize", "pty_attach", "pty_detach", "net_traffic", "k8s_stream_stop", "agents"];
+pub const NOT_AUDITED: &[&str] = &["pty_write", "pty_resize", "pty_attach", "pty_detach", "net_traffic", "k8s_stream_stop", "agents", "home_dir"];
 
 /// A window to own streams started from a phone (they stop if that window closes).
 fn any_window(app: &AppHandle) -> Result<tauri::Window, Value> {
@@ -120,6 +124,28 @@ pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value
         }
         "pty_close" => out(crate::claude::pty::pty_close(a!("id")).await),
         "claude_projects" => out(crate::claude::sessions::claude_projects().await),
+        // files (project folders; private places are refused, see paths.rs)
+        "fs_list" => {
+            let dir = expand_home(&arg::<String>(args, "dir")?);
+            super::paths::check(&dir).map_err(|e| json!(e))?;
+            out(crate::claude::files::fs_list(dir, arg(args, "showIgnored").unwrap_or(None)).await)
+        }
+        "fs_preview" => {
+            let path = expand_home(&arg::<String>(args, "path")?);
+            super::paths::check(&path).map_err(|e| json!(e))?;
+            let mut p = crate::claude::files::fs_preview(path).await.map_err(|e| json!(e.to_string()))?;
+            if p.data_base64.as_ref().is_some_and(|d| d.len() > PHONE_MEDIA_CAP) {
+                p.data_base64 = None;
+                p.kind = "too_large".into();
+            }
+            Ok(json!(p))
+        }
+        "fs_write_text" => {
+            let path = expand_home(&arg::<String>(args, "path")?);
+            super::paths::check(&path).map_err(|e| json!(e))?;
+            out(crate::claude::files::fs_write_text(path, a!("content"), arg(args, "expectedVersion").unwrap_or(None), arg(args, "lineEnding").unwrap_or(None)).await)
+        }
+        "home_dir" => Ok(json!(dirs::home_dir().map(|h| h.to_string_lossy().into_owned()))),
         "claude_sessions" => out(crate::claude::sessions::claude_sessions(a!("cwd")).await),
         "claude_transcript" => out(crate::claude::sessions::claude_transcript(a!("cwd"), a!("sessionId")).await),
         "ai_providers_list" => out(crate::ai::ai_providers_list().await),
@@ -257,6 +283,7 @@ pub fn audit_detail(cmd: &str, args: &Value) -> Option<String> {
         "db_delete_key" | "db_get_key" => s("key"),
         "pty_open" => s("cwd").map(|c| format!("{c} ({})", s("program").unwrap_or_else(|| "shell".into()))),
         "pty_close" => s("id"),
+        "fs_preview" | "fs_write_text" => s("path"),
         "net_connect" | "net_disconnect" | "net_logs" => s("id"),
         "k8s_delete" | "k8s_scale" | "k8s_restart" | "k8s_get_yaml" | "k8s_events_for" => {
             let mut v = format!("{} {}", s("kind").unwrap_or_default(), s("name").unwrap_or_default());

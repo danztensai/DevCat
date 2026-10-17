@@ -4,12 +4,12 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import clsx from "clsx";
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Laptop, MoreVertical, Plus, Send, Smartphone, Square, TerminalSquare } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock, FolderOpen, Laptop, MoreVertical, Plus, Send, Smartphone, Square, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onEvent } from "../lib/rpc";
 import { host, nav, refreshAgents, toastErr, useApp } from "../lib/store";
 import type { AgentStatus, AiProvider, ClaudeProject, PtyInfo, SessionMeta } from "../lib/types";
-import { Btn, Card, Confirm, Empty, ErrorBox, Field, Input, Item, Loading, Screen, Section, Seg, Sheet, Spinner, TextArea, ago, duration, folderName, useLoad } from "../ui";
+import { Btn, Card, Confirm, Empty, ErrorBox, Field, IconBtn, Input, Item, Loading, Screen, Section, Seg, Sheet, Spinner, TextArea, ago, duration, folderName, useLoad } from "../ui";
 
 const THEME = {
   background: "#0a0b0d", foreground: "#e6e8ec", cursor: "#f5a524", cursorAccent: "#0a0b0d", selectionBackground: "#f5a52440",
@@ -68,7 +68,10 @@ export function Agents() {
     <Screen
       title="Agents"
       sub={<>{machine?.name ?? "Computer"} · {conn?.state === "online" ? <span className="text-ok">● online</span> : conn?.state === "connecting" ? "connecting…" : <span>○ offline</span>}</>}
-      right={<Btn size="sm" variant="primary" onClick={() => nav.push({ s: "newchat" })}><Plus className="size-4" />New</Btn>}
+      right={<>
+        <IconBtn label="Files" onClick={() => nav.push({ s: "fileshome" })}><FolderOpen className="size-5" /></IconBtn>
+        <Btn size="sm" variant="primary" onClick={() => nav.push({ s: "newchat" })}><Plus className="size-4" />New</Btn>
+      </>}
       tab="agents"
     >
       {offline && conn?.error && <ErrorBox error={conn.error} onRetry={() => void refreshAgents()} />}
@@ -225,6 +228,7 @@ export function Terminal({ id }: { id: string }) {
           <span className="w-6 text-center tabular-nums">{fontSize}</span>
           <Btn size="sm" onClick={() => { setFitWidth(false); setFontSize((s) => Math.min(18, s + 1)); }}>A+</Btn>
         </div>
+        <Item onClick={() => { setMenu(false); nav.push({ s: "files", dir: cwdOf(term ?? info ?? undefined, agent) }); }} icon={<FolderOpen className="size-4" />} title="Browse files" chevron />
         {agent?.sessionId && agent.cwd && (
           <Item onClick={() => { setMenu(false); nav.push({ s: "transcript", cwd: agent.cwd!, sessionId: agent.sessionId!, title: folderName(agent.cwd) }); }} title="Open session transcript" chevron />
         )}

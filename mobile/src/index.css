@@ -39,3 +39,19 @@ select { color: inherit; }
 button { -webkit-touch-callout: none; }
 ::-webkit-scrollbar { display: none; }
 .xterm .xterm-viewport { background: transparent !important; }
+
+/* Markdown previews (Files) */
+.md > * + * { margin-top: 0.7em; }
+.md h1 { font-size: 1.5em; font-weight: 700; }
+.md h2 { font-size: 1.25em; font-weight: 700; border-bottom: 1px solid var(--color-line); padding-bottom: 0.2em; }
+.md h3 { font-size: 1.08em; font-weight: 700; }
+.md ul { list-style: disc; padding-left: 1.3em; }
+.md ol { list-style: decimal; padding-left: 1.3em; }
+.md a { color: var(--color-accent); }
+.md code { font-family: var(--font-mono); font-size: 0.88em; background: var(--color-raised); border-radius: 4px; padding: 0.1em 0.35em; }
+.md pre { background: var(--color-panel); border: 1px solid var(--color-line); border-radius: 10px; padding: 0.8em; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 3px solid var(--color-line); padding-left: 0.8em; color: var(--color-muted); }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--color-line); padding: 0.3em 0.6em; }
+.md img { max-width: 100%; }
