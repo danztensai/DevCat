@@ -260,6 +260,32 @@ const SHELL_SESSION = [
   "",
 ].join("\r\n");
 
+// ---------------------------------------------------------------- mobile (remote access + notifications)
+
+const PHONE_ID = "8f3c1d9e" + "a".repeat(48) + "77e21a0b";
+const remoteStatus = {
+  settings: { enabled: true, hostName: null, port: 47100, publicAddr: null, web: true },
+  running: true, error: null, id: "4be1" + "c".repeat(56) + "93d0", hostName: "Acme MacBook Pro", addrs: ["192.168.1.24:47100"],
+  clients: [{ deviceId: PHONE_ID, name: "Ava's iPhone", platform: "ios", access: "full", since: NOW - 600_000, addr: "192.168.1.31:53120" }],
+  pairingExpires: null, pending: [], webRunning: true, webError: null, webAvailable: true,
+};
+const remoteDevices = [
+  { id: PHONE_ID, name: "Ava's iPhone", platform: "ios", access: "full", pairedAt: NOW - 86_400_000 * 2, lastSeen: NOW, kind: "app" },
+  { id: "web-3f9a1c2b7d4e8f60", name: "Android browser", platform: "android", access: "readonly", pairedAt: NOW - 86_400_000 * 12, lastSeen: NOW - 86_400_000 * 3, kind: "web" },
+];
+const notifySettings = { enabled: true, server: "https://ntfy.sh", topic: "devcat-k3v9q2x7mf4hx2ab", token: null, onDone: true, onInput: true, minSeconds: 30, onlyWhenAway: true };
+const audit = [
+  { at: NOW - 120_000, device: PHONE_ID, deviceName: "Ava's iPhone", action: "db_apply_changes", detail: "[c-pg] orders: 1 change(s)", ok: true },
+  { at: NOW - 540_000, device: PHONE_ID, deviceName: "Ava's iPhone", action: "db_execute", detail: "[c-pg] SELECT country, count(*) FROM orders GROUP BY 1", ok: true },
+  { at: NOW - 900_000, device: PHONE_ID, deviceName: "Ava's iPhone", action: "pty_open", detail: "/Users/ava/acme/api-gateway (claude)", ok: true },
+  { at: NOW - 1_800_000, device: PHONE_ID, deviceName: "Ava's iPhone", action: "k8s_restart", detail: "[c-k8s] deployments search-indexer", ok: true },
+  { at: NOW - 2_400_000, device: PHONE_ID, deviceName: "Ava's iPhone", action: "net_connect", detail: "n-wg — handshake timed out", ok: false },
+];
+/** The QR code comes from the Rust devbridge (remote_qr), so it's a real, scannable one. */
+const bridgeQr = (text: string) =>
+  fetch("http://127.0.0.1:1430/invoke", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cmd: "remote_qr", args: { text } }) })
+    .then((r) => r.json()).then((b) => b.ok ?? "");
+
 // ---------------------------------------------------------------- dispatcher
 
 let streamSeq = 0;
@@ -326,6 +352,17 @@ export function demoInvoke(cmd: string, args: Record<string, unknown>, emit: Emi
     }
     case "pty_write": case "pty_resize": case "pty_close": return null;
     case "update_check": return null;
+    case "remote_status": return remoteStatus;
+    case "remote_save": return { ...remoteStatus, settings: args.settings };
+    case "remote_devices": return remoteDevices;
+    case "remote_audit": return audit;
+    case "remote_qr": return bridgeQr(String(args.text));
+    case "remote_pair_start": {
+      const appLink = `devcat://pair?v=1&id=${remoteStatus.id}&code=K7Q2X9MPLA&name=Acme%20MacBook%20Pro&addr=192.168.1.24%3A47100`;
+      const link = `http://192.168.1.24:47100/#v=1&id=${remoteStatus.id}&code=K7Q2X9MPLA&s=demo-secret-not-real&name=Acme%20MacBook%20Pro`;
+      return bridgeQr(link).then((svg: string) => ({ link, appLink, webLink: link, code: "K7Q2X9MPLA", svg, expiresAt: Date.now() + 272_000 }));
+    }
+    case "notify_settings": case "notify_save": return args.settings ?? notifySettings;
     default: return undefined;
   }
 }

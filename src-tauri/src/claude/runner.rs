@@ -269,9 +269,9 @@ fn push_stderr(run: &Run, line: String) {
 }
 
 /// Where run events go: the Tauri app in production, a channel in tests.
-pub(super) type Sink = Arc<dyn Fn(&'static str, Value) + Send + Sync>;
+pub(crate) type Sink = Arc<dyn Fn(&'static str, Value) + Send + Sync>;
 
-pub(super) fn app_sink(app: tauri::AppHandle) -> Sink {
+pub(crate) fn app_sink(app: tauri::AppHandle) -> Sink {
     Arc::new(move |event, payload| {
         let _ = app.emit(event, payload);
     })

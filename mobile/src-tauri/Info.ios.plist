@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>DevCat uses the camera to scan the pairing code shown by DevCat on your computer.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>DevCat connects to DevCat on your computer over your local network.</string>
+</dict>
+</plist>

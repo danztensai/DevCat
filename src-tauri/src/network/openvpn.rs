@@ -256,9 +256,16 @@ pub fn build_args(p: &Paths, mgmt_port: u16, extra: &str, windows: bool) -> Vec<
     if !windows {
         a.push("--daemon".into());
     }
+    a.extend(KEEP_SERVER_ROUTE.iter().map(|s| s.to_string()));
     a.extend(extra.split_whitespace().map(str::to_string));
     a
 }
+
+/// Keeps the VPN server reachable outside the tunnel. Servers often push a route that covers
+/// their own address (e.g. `route 152.118.0.0 255.255.0.0` from 152.118.33.20); without this
+/// host route the encrypted packets would be sent into the tunnel itself ("Recursive routing
+/// detected") and nothing gets through. redirect-gateway adds the same route on its own.
+pub const KEEP_SERVER_ROUTE: [&str; 4] = ["--route", "remote_host", "255.255.255.255", "net_gateway"];
 
 /// Directives that make OpenVPN run a script (they need `--script-security 2`).
 const SCRIPT_DIRECTIVES: &[&str] = &[
@@ -811,7 +818,7 @@ mod tests {
             vec![
                 "--config", "/data dir/network/x.ovpn", "--management", "127.0.0.1", "40000", "/data dir/network/x.mgmt",
                 "--management-query-passwords", "--management-hold", "--writepid", "/data dir/network/x.pid", "--log",
-                "/data dir/network/x.log", "--daemon", "--verb", "4",
+                "/data dir/network/x.log", "--daemon", "--route", "remote_host", "255.255.255.255", "net_gateway", "--verb", "4",
             ]
         );
         assert!(!build_args(&p, 1, "", true).contains(&"--daemon".to_string()));

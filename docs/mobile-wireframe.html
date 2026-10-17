@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevCat Mobile: wireframes</title>
+<style>
+  :root {
+    --app: #0f1114; --panel: #14161a; --raised: #1b1e24; --hover: #232730; --line: #2a2f39;
+    --fg: #e6e8ec; --muted: #8b93a3; --faint: #5c6370; --accent: #f5a524; --accent-fg: #1a1205;
+    --ok: #4ade80; --warn: #fbbf24; --danger: #f87171; --info: #60a5fa;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 70px; }
+  body { margin: 0; background: #08090b; color: var(--fg); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  a { color: inherit; text-decoration: none; }
+
+  /* page chrome */
+  .top { position: sticky; top: 0; z-index: 10; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 12px 24px; background: rgba(8,9,11,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .top h1 { font-size: 15px; margin: 0 14px 0 0; }
+  .top h1 span { color: var(--accent); }
+  .top a { padding: 4px 10px; border-radius: 999px; background: var(--raised); color: var(--muted); font-size: 12px; }
+  .top a:hover { color: var(--fg); background: var(--hover); }
+  .intro { max-width: 980px; padding: 20px 24px 0; color: var(--muted); }
+  .intro b { color: var(--fg); }
+  .flow { padding: 18px 24px 8px; }
+  .flow > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin: 8px 0 14px; }
+  .row-of-phones { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  figure { margin: 0; width: 330px; }
+  figcaption { margin-top: 10px; color: var(--muted); font-size: 12px; }
+  figcaption b { display: block; color: var(--fg); font-size: 13px; margin-bottom: 2px; }
+  figure:target .phone { outline: 2px solid var(--accent); outline-offset: 6px; }
+
+  /* phone */
+  .phone { position: relative; width: 330px; height: 690px; border-radius: 44px; background: var(--app); border: 10px solid #1d2026; box-shadow: 0 0 0 1px #2c3038, 0 20px 50px rgba(0,0,0,.5); overflow: hidden; display: flex; flex-direction: column; }
+  .notch { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 92px; height: 24px; border-radius: 14px; background: #000; z-index: 3; }
+  .status { height: 40px; flex: none; display: flex; justify-content: space-between; align-items: center; padding: 6px 22px 0; font-size: 11px; font-weight: 600; }
+  .bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 14px 10px; border-bottom: 1px solid var(--line); }
+  .bar .title { font-weight: 650; font-size: 15px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .sub { color: var(--muted); font-size: 11px; font-weight: 400; display: block; }
+  .bar .ic { color: var(--muted); font-size: 16px; }
+  .body { flex: 1; overflow: hidden; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .tabs { flex: none; display: flex; justify-content: space-around; border-top: 1px solid var(--line); padding: 7px 4px 18px; background: var(--panel); }
+  .tabs a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; color: var(--faint); }
+  .tabs a i { font-style: normal; font-size: 17px; }
+  .tabs a.on { color: var(--accent); }
+
+  /* building blocks */
+  .muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: 11px; }
+  .mono { font-family: var(--mono); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .danger { color: var(--danger); } .info { color: var(--info); } .acc { color: var(--accent); }
+  .sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+  .sec::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+  .card { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: block; }
+  a.card:hover, a.item:hover { border-color: var(--accent); }
+  .card.alert { border-color: rgba(251,191,36,.5); background: rgba(251,191,36,.07); }
+  .item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--raised); border: 1px solid transparent; }
+  .item .grow { flex: 1; min-width: 0; }
+  .item .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .meta { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 14px; border-radius: 10px; background: var(--hover); border: 1px solid var(--line); font-weight: 600; font-size: 13px; }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .btn.danger { background: rgba(248,113,113,.12); color: var(--danger); border-color: rgba(248,113,113,.4); }
+  .btn.block { display: flex; width: 100%; }
+  .btn.sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+  .link { color: var(--accent); font-weight: 600; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--hover); font-size: 11px; color: var(--muted); }
+  .chip.on { background: rgba(245,165,36,.18); color: var(--accent); }
+  .badge { font-size: 10px; padding: 1px 7px; border-radius: 999px; font-weight: 600; }
+  .badge.ok { background: rgba(74,222,128,.14); } .badge.warn { background: rgba(251,191,36,.14); } .badge.danger { background: rgba(248,113,113,.14); } .badge.info { background: rgba(96,165,250,.14); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.ok { background: var(--ok); } .dot.off { background: var(--faint); } .dot.warn { background: var(--warn); } .dot.danger { background: var(--danger); }
+  .field { display: block; }
+  .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .input { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; color: var(--fg); min-height: 36px; }
+  .input.ph { color: var(--faint); }
+  .seg { display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 3px; }
+  .seg span { flex: 1; text-align: center; padding: 5px 0; border-radius: 7px; font-size: 12px; color: var(--muted); }
+  .seg span.on { background: var(--hover); color: var(--fg); font-weight: 600; }
+  .toggle { width: 40px; height: 24px; border-radius: 999px; background: var(--hover); border: 1px solid var(--line); position: relative; flex: none; }
+  .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); }
+  .toggle.on { background: var(--ok); border-color: var(--ok); }
+  .toggle.on::after { left: 18px; background: #fff; }
+  .kv { display: grid; grid-template-columns: 78px 1fr; gap: 3px 8px; font-size: 12px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  .term { flex: 1; background: #0a0b0d; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font: 10.5px/1.5 var(--mono); color: #cfd3da; overflow: hidden; white-space: pre; }
+  .keys { display: flex; gap: 5px; flex-wrap: wrap; }
+  .keys span { padding: 5px 8px; border-radius: 7px; background: var(--hover); border: 1px solid var(--line); font: 600 11px var(--mono); }
+  .composer { display: flex; gap: 8px; align-items: center; }
+  .composer .input { flex: 1; }
+  .send { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); display: flex; align-items: center; justify-content: center; font-weight: 800; flex: none; }
+  table.grid { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.grid th { text-align: left; color: var(--muted); font-weight: 600; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  table.grid td { padding: 6px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 11px; }
+  .sql { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; font: 11.5px/1.55 var(--mono); white-space: pre; }
+  .sql .k { color: #c792ea; } .sql .s { color: #c3e88d; }
+  .spacer { flex: 1; }
+  .center { text-align: center; }
+  .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); z-index: 2; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; background: var(--panel); border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; padding: 8px 16px 26px; display: flex; flex-direction: column; gap: 11px; }
+  .sheet .grab { width: 38px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 4px; }
+  .modal { position: absolute; left: 18px; right: 18px; top: 190px; z-index: 4; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .radio { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px; background: var(--raised); }
+  .radio::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--faint); flex: none; }
+  .radio.on::before { border-color: var(--accent); background: radial-gradient(var(--accent) 40%, transparent 45%); }
+  .qr { width: 132px; height: 132px; flex: none; border-radius: 10px; background: #fff; padding: 8px; display: grid; grid-template-columns: repeat(25, 1fr); }
+  .qr i { background: #111; }
+  .qr b { background: transparent; }
+  .camera { flex: 1; border-radius: 16px; background: radial-gradient(circle at 50% 40%, #2a2f39, #0a0b0d 70%); position: relative; display: flex; align-items: center; justify-content: center; }
+  .camera .frame { width: 190px; height: 190px; border: 3px solid var(--accent); border-radius: 18px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); }
+  .bubble { border-radius: 12px; padding: 8px 10px; font-size: 12px; }
+  .bubble.me { background: rgba(245,165,36,.14); align-self: flex-end; max-width: 85%; }
+  .bubble.ai { background: var(--raised); max-width: 92%; }
+  .tool { font: 11px var(--mono); color: var(--muted); padding: 5px 9px; border-left: 2px solid var(--line); }
+  .bars { display: flex; align-items: flex-end; gap: 2px; height: 34px; }
+  .bars i { flex: 1; background: var(--info); opacity: .6; border-radius: 1px; }
+
+  /* desktop mock */
+  .desk { width: 760px; border-radius: 12px; border: 1px solid #2c3038; background: var(--panel); box-shadow: 0 20px 50px rgba(0,0,0,.5); overflow: hidden; }
+  .desk .wbar { display: flex; gap: 6px; padding: 10px 12px; background: var(--app); border-bottom: 1px solid var(--line); align-items: center; }
+  .desk .wbar i { width: 11px; height: 11px; border-radius: 50%; background: #3a3f48; display: inline-block; }
+  .desk .wbar b { margin-left: 10px; font-size: 12px; color: var(--muted); font-weight: 500; }
+  .desk .content { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .desk .tabsrow { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+  .desk .tabsrow span { padding: 7px 12px; color: var(--muted); font-size: 12px; }
+  .desk .tabsrow span.on { color: var(--fg); box-shadow: inset 0 -2px var(--accent); }
+  .steps { margin: 0; padding-left: 18px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .steps b { color: var(--fg); }
+  .note { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; color: var(--muted); font-size: 11.5px; }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <h1>DevCat <span>Mobile</span> · wireframes</h1>
+  <a href="#f-setup">1 · Setup</a>
+  <a href="#f-agents">2 · Agents</a>
+  <a href="#f-data">3 · Data</a>
+  <a href="#f-redis">4 · Redis</a>
+  <a href="#f-ops">5 · Network &amp; Cluster</a>
+  <a href="#f-more">6 · More &amp; Help</a>
+  <a href="#f-desktop">7 · Desktop side</a>
+</nav>
+
+<p class="intro">
+  <b>Scope:</b> the phone talks <b>directly</b> to DevCat on the computer (same Wi-Fi, or the computer has a public address).
+  No server, no account, no database: profiles and passwords stay on the computer, and the phone only keeps the list of paired computers.
+  Everything you can tap with an orange outline on hover is a link: click it to jump to the next screen. All data shown is made up.
+</p>
+
+<!-- ============================================================ 1. SETUP -->
+<section class="flow" id="f-setup">
+  <h2>1 · First launch &amp; pairing</h2>
+  <div class="row-of-phones">
+
+    <figure id="s-welcome">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="body" style="padding-top:28px">
+          <div style="font-size:30px">🐱</div>
+          <div style="font-size:22px;font-weight:700">DevCat Mobile</div>
+          <div class="muted">Watch your AI agents and reach your databases, Redis, VPNs and clusters through DevCat on your computer.</div>
+          <div class="sec">Set up in 3 steps</div>
+          <div class="item"><b class="acc">1</b><div class="grow"><div class="name">Open DevCat on your computer</div><div class="meta">Title bar → 📱 Mobile → turn on</div></div></div>
+          <div class="item"><b class="acc">2</b><div class="grow"><div class="name">Same Wi-Fi as the computer</div><div class="meta">or it has a public address</div></div></div>
+          <div class="item"><b class="acc">3</b><div class="grow"><div class="name">Scan the QR code it shows</div><div class="meta">then approve this phone there</div></div></div>
+          <div class="spacer"></div>
+          <a class="btn primary block" href="#s-scan">▣ Scan QR code</a>
+          <a class="btn block" href="#s-paste">Paste pairing link</a>
+          <a class="center small link" href="#s-help">Can't connect? Help</a>
+        </div>
+      </div>
+      <figcaption><b>Welcome</b>First launch, and whenever no computer is paired. The guide is always visible here, not hidden in docs.</figcaption>
+    </figure>
+
+    <figure id="s-scan">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-welcome">‹</a><div class="title">Scan pairing code</div></div>
+        <div class="body">
+          <div class="camera"><div class="frame"></div></div>
+          <div class="muted center small">Point the camera at the QR code in<br><b style="color:var(--fg)">DevCat → 📱 Mobile</b> on your computer.</div>
+          <a class="btn block" href="#s-paste">Paste link instead</a>
+          <a class="center small link" href="#s-pairing">(simulate: code scanned →)</a>
+        </div>
+      </div>
+      <figcaption><b>Scan</b>Asks for camera permission the first time and explains why. If the permission is denied, it points to "Paste link".</figcaption>
+    </figure>
+
+    <figure id="s-paste">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-welcome">‹</a><div class="title">Paste pairing link</div></div>
+        <div class="body">
+          <div class="field"><label>Pairing link</label><div class="input mono small" style="min-height:80px;word-break:break-all;white-space:normal">devcat://pair?v=1&amp;id=8f3c…e21a&amp;code=K7Q2X9&amp;addr=192.168.18.24:47100&amp;name=MacBook%20Pro</div></div>
+          <div class="note">On the computer: DevCat → 📱 Mobile → <b>Copy link</b>, then send it to yourself (AirDrop, notes…). The link works once and expires after 5 minutes.</div>
+          <div class="field"><label>Or enter the address manually</label><div class="input">192.168.18.24 : 47100</div></div>
+          <div class="field"><label>Pairing code</label><div class="input mono">K7Q2X9</div></div>
+          <div class="spacer"></div>
+          <a class="btn primary block" href="#s-pairing">Connect</a>
+        </div>
+      </div>
+      <figcaption><b>Paste / manual</b>For when the camera isn't an option. Manual entry is also the way to reach a computer with a public address.</figcaption>
+    </figure>
+
+    <figure id="s-pairing">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-welcome">‹</a><div class="title">Pairing</div></div>
+        <div class="body" style="align-items:stretch">
+          <div class="center" style="font-size:44px;margin-top:20px">💻</div>
+          <div class="center" style="font-size:17px;font-weight:700">MacBook Pro</div>
+          <div class="center muted small mono">192.168.18.24 : 47100</div>
+          <div class="card alert center" style="margin-top:8px">⏳ <b>Approve this phone on your computer</b><div class="muted small" style="margin-top:4px">DevCat shows "Allow <i>Arif's iPhone</i> to control this computer?"</div></div>
+          <div class="field"><label>This phone's name (shown on the computer)</label><div class="input">Arif's iPhone</div></div>
+          <div class="spacer"></div>
+          <a class="center small link" href="#s-computers">(simulate: approved →)</a>
+          <a class="btn block" href="#s-welcome">Cancel</a>
+        </div>
+      </div>
+      <figcaption><b>Waiting for approval</b>The QR code alone isn't enough: someone at the computer must click Allow (see the desktop side).</figcaption>
+    </figure>
+
+    <figure id="s-computers">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><div class="title">Computers</div><a class="ic" href="#s-scan">＋</a></div>
+        <div class="body">
+          <a class="card" href="#s-agents">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">💻</span><div style="flex:1"><b>MacBook Pro</b><div class="muted small">192.168.18.24 · DevCat 0.4.0</div></div><span class="badge ok ok">● Online</span></div>
+            <div class="small" style="margin-top:8px"><span class="warn">⚠ 1 agent needs you</span> · <span class="muted">2 working · VPN on</span></div>
+          </a>
+          <div class="card" style="opacity:.75">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">🖥</span><div style="flex:1"><b>build-server</b><div class="muted small">203.0.113.40 · public address</div></div><span class="badge" style="background:var(--hover);color:var(--muted)">○ Offline</span></div>
+            <div class="small muted" style="margin-top:8px">Last seen 2h ago · <a class="link" href="#s-help">Why offline?</a></div>
+          </div>
+          <div class="spacer"></div>
+          <div class="note">A computer shows <b>Offline</b> when DevCat isn't running there, Mobile is turned off, or this phone isn't on the same network.</div>
+        </div>
+      </div>
+      <figcaption><b>Computers</b>The home screen once at least one computer is paired. Each card shows a live summary while it's reachable.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ============================================================ 2. AGENTS -->
+<section class="flow" id="f-agents">
+  <h2>2 · Agents (AI workspace)</h2>
+  <div class="row-of-phones">
+
+    <figure id="s-agents">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-computers">‹</a><div class="title">Agents <span class="sub">💻 MacBook Pro · ● online</span></div><a class="btn sm primary" href="#s-newchat">＋ New</a></div>
+        <div class="body">
+          <div class="sec">Needs you</div>
+          <a class="card alert" href="#s-terminal">
+            <div style="display:flex;gap:8px;align-items:center"><span class="warn">⚠</span><b style="flex:1">storefront</b><span class="muted small">claude · 💻</span></div>
+            <div class="small" style="margin-top:4px">Permission: <span class="mono">Bash(npm test)</span></div>
+          </a>
+          <div class="sec">Working</div>
+          <a class="item" href="#s-terminal"><span class="warn">◐</span><div class="grow"><div class="name">api-gateway</div><div class="meta">claude · started from 📱 · 3m 12s</div></div></a>
+          <div class="sec">Done</div>
+          <a class="item" href="#s-terminal"><span class="ok">✓</span><div class="grow"><div class="name">ui</div><div class="meta">claude · finished 10:42 after 8m</div></div></a>
+          <div class="sec">Terminals</div>
+          <a class="item" href="#s-terminal"><span class="muted">▸</span><div class="grow"><div class="name">zsh</div><div class="meta">~/Projects</div></div></a>
+          <div class="spacer"></div>
+          <a class="btn block" href="#s-sessions">🕘 Session history</a>
+        </div>
+        <div class="tabs"><a class="on" href="#s-agents"><i>✦</i>Agents</a><a href="#s-data"><i>⛁</i>Data</a><a href="#s-network"><i>⇄</i>Network</a><a href="#s-cluster"><i>☸</i>Cluster</a><a href="#s-more"><i>⋯</i>More</a></div>
+      </div>
+      <figcaption><b>Agents</b>Every terminal open on the computer, whether started there (💻) or from the phone (📱), sorted by what needs attention. The status comes from Claude Code hooks.</figcaption>
+    </figure>
+
+    <figure id="s-terminal">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-agents">‹</a><div class="title">storefront <span class="sub warn">⚠ waiting for permission</span></div><a class="ic" href="#s-termmenu">⋮</a></div>
+        <div class="body" style="gap:8px">
+<div class="term"><span class="acc">●</span> I'll run the test suite to check the
+  rounding fix.
+
+<span class="info">Bash</span>(npm test)
+  └ Run the unit tests
+
+ Do you want to proceed?
+ <span class="acc">❯ 1. Yes</span>
+   2. Yes, and don't ask again for
+      npm test in this project
+   3. No, and tell Claude what to do
+      differently (esc)
+</div>
+          <div class="keys"><span>1</span><span>2</span><span>3</span><span>Esc</span><span>Tab</span><span>⇧Tab</span><span>↑</span><span>↓</span><span>⏎</span><span>^C</span></div>
+          <div class="composer"><div class="input ph">Message Claude…</div><div class="send">➤</div></div>
+        </div>
+      </div>
+      <figcaption><b>Live terminal</b>The real terminal, streamed from the computer. The key row covers what a phone keyboard lacks. Text you type goes in when you press ➤.</figcaption>
+    </figure>
+
+    <figure id="s-termmenu">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-agents">‹</a><div class="title">storefront</div><span class="ic">⋮</span></div>
+        <div class="body"><div class="term" style="opacity:.5">…</div></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <b>storefront</b>
+          <div class="muted small">~/Projects/storefront · claude · started on 💻 at 10:12</div>
+          <a class="item" href="#s-terminal">⤢ <div class="grow">Fit text to screen width</div></a>
+          <a class="item" href="#s-terminal">A± <div class="grow">Text size</div></a>
+          <a class="item" href="#s-transcript">🕘 <div class="grow">Open session transcript</div></a>
+          <a class="item" href="#s-agents"><span class="danger">■</span><div class="grow danger">Stop agent</div></a>
+        </div>
+      </div>
+      <figcaption><b>Terminal menu</b>Stopping asks for confirmation if the agent was started on the computer.</figcaption>
+    </figure>
+
+    <figure id="s-newchat">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><div class="title">Agents</div></div>
+        <div class="body"></div>
+        <div class="scrim"></div>
+        <div class="sheet" style="top:70px">
+          <div class="grab"></div>
+          <div style="display:flex"><b style="flex:1;font-size:15px">New chat</b><a class="muted" href="#s-agents">✕</a></div>
+          <div class="field"><label>Project folder (on the computer)</label></div>
+          <div class="radio on">~/Projects/storefront</div>
+          <div class="radio">~/Projects/api-gateway</div>
+          <div class="radio">~/Projects/ui</div>
+          <div class="small link">Browse other folder…</div>
+          <div class="field"><label>Agent</label><div class="input">Claude Code ⌄</div></div>
+          <div class="field"><label>First message (optional)</label><div class="input" style="min-height:58px">Fix the failing checkout tests</div></div>
+          <a class="small link" href="#s-sessions">↺ Resume a previous session instead</a>
+          <a class="btn primary block" href="#s-terminal">Start</a>
+        </div>
+      </div>
+      <figcaption><b>New chat</b>Starts Claude Code in a terminal on the computer. Recent folders come from Claude Code's own history. The agent keeps running if the phone disconnects.</figcaption>
+    </figure>
+
+    <figure id="s-sessions">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-agents">‹</a><div class="title">Session history</div></div>
+        <div class="body">
+          <div class="seg"><span class="on">storefront</span><span>api-gateway</span><span>ui</span></div>
+          <div class="input ph">🔍 Search sessions</div>
+          <a class="item" href="#s-transcript"><div class="grow"><div class="name">Fix checkout rounding</div><div class="meta">24 messages · main · $0.42</div></div><span class="muted small">2h</span></a>
+          <a class="item" href="#s-transcript"><div class="grow"><div class="name">Add CSV export to orders</div><div class="meta">61 messages · feat/export · $1.10</div></div><span class="muted small">1d</span></a>
+          <a class="item" href="#s-transcript"><div class="grow"><div class="name">Upgrade to React 19</div><div class="meta">132 messages · chore/react19 · $3.25</div></div><span class="muted small">3d</span></a>
+          <a class="item" href="#s-transcript"><div class="grow"><div class="name">Explain the payment webhook</div><div class="meta">9 messages · main · $0.08</div></div><span class="muted small">5d</span></a>
+        </div>
+      </div>
+      <figcaption><b>Session history</b>Past Claude Code sessions per project folder.</figcaption>
+    </figure>
+
+    <figure id="s-transcript">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-sessions">‹</a><div class="title">Fix checkout rounding <span class="sub">main · 24 messages</span></div><a class="btn sm primary" href="#s-terminal">Resume</a></div>
+        <div class="body">
+          <div class="bubble me">The order total is off by one cent when a discount applies. Fix it.</div>
+          <div class="bubble ai">I'll look at how totals are computed in the cart.</div>
+          <div class="tool">▸ Read src/cart/total.ts</div>
+          <div class="tool">▸ Edit src/cart/total.ts <span class="ok">+4</span> <span class="danger">−2</span></div>
+          <div class="tool">▸ Bash npm test <span class="ok">✓ 128 passed</span></div>
+          <div class="bubble ai">Fixed: amounts are now rounded once, after the discount. All tests pass.</div>
+          <div class="bubble me">Great, commit it.</div>
+          <div class="tool">▸ Bash git commit -m "Round order total once" <span class="ok">✓</span></div>
+        </div>
+      </div>
+      <figcaption><b>Transcript</b>A read-only, readable view. <i>Resume</i> opens a live terminal running <span class="mono">claude --resume</span>.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ============================================================ 3. DATA -->
+<section class="flow" id="f-data">
+  <h2>3 · Data: SQL &amp; MongoDB</h2>
+  <div class="row-of-phones">
+
+    <figure id="s-data">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><div class="title">Data <span class="sub">💻 MacBook Pro</span></div><span class="ic">🔍</span></div>
+        <div class="body">
+          <div class="sec">Shop</div>
+          <a class="item" href="#s-browse">🐘<div class="grow"><div class="name">shop-db</div><div class="meta">PostgreSQL · db.shop.internal</div></div><span class="dot ok"></span></a>
+          <a class="item" href="#s-redis">🟥<div class="grow"><div class="name">cache</div><div class="meta">Redis · 10.0.4.12</div></div></a>
+          <div class="sec">Vendor</div>
+          <a class="item" href="#s-browse">🐬<div class="grow"><div class="name">vendor-db</div><div class="meta">MySQL · via VPN vendorexnusatek</div></div><span class="badge info info">VPN</span></a>
+          <a class="item" href="#s-browse">🍃<div class="grow"><div class="name">events</div><div class="meta">MongoDB · Atlas</div></div></a>
+          <div class="sec">Recent queries</div>
+          <a class="item" href="#s-query"><span class="muted">⟲</span><div class="grow"><div class="name mono small">SELECT country, count(*) FROM orders…</div><div class="meta">shop-db · 12 min ago</div></div></a>
+        </div>
+        <div class="tabs"><a href="#s-agents"><i>✦</i>Agents</a><a class="on" href="#s-data"><i>⛁</i>Data</a><a href="#s-network"><i>⇄</i>Network</a><a href="#s-cluster"><i>☸</i>Cluster</a><a href="#s-more"><i>⋯</i>More</a></div>
+      </div>
+      <figcaption><b>Connections</b>The computer's saved connections, grouped by project. Connections that need a VPN or SSH tunnel use the computer's, which DevCat starts there automatically.</figcaption>
+    </figure>
+
+    <figure id="s-browse">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-data">‹</a><div class="title">shop-db <span class="sub">PostgreSQL 16</span></div></div>
+        <div class="body">
+          <div class="input">shop › public ⌄</div>
+          <div class="seg"><span class="on">Tables</span><span>Views</span><a href="#s-query" style="flex:1;text-align:center;padding:5px 0;font-size:12px;color:var(--muted)">Query</a></div>
+          <div class="input ph">🔍 Filter tables</div>
+          <a class="item" href="#s-rows">▦<div class="grow"><div class="name">customers</div></div><span class="muted small">12.4k</span></a>
+          <a class="item" href="#s-rows">▦<div class="grow"><div class="name">orders</div></div><span class="muted small">98.1k</span></a>
+          <a class="item" href="#s-rows">▦<div class="grow"><div class="name">order_items</div></div><span class="muted small">231k</span></a>
+          <a class="item" href="#s-rows">▦<div class="grow"><div class="name">payments</div></div><span class="muted small">97.9k</span></a>
+          <a class="item" href="#s-rows">▦<div class="grow"><div class="name">products</div></div><span class="muted small">312</span></a>
+        </div>
+      </div>
+      <figcaption><b>Browse</b>Database and schema picker, then tables and views. MongoDB shows collections here instead.</figcaption>
+    </figure>
+
+    <figure id="s-rows">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-browse">‹</a><div class="title">orders <span class="sub">3,201 rows match</span></div><span class="ic">⚙</span></div>
+        <div class="body">
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip on">status = delivered ✕</span><span class="chip">＋ Filter</span><span class="chip">Sort: created_at ↓</span></div>
+          <a class="card" href="#s-rowedit"><div style="display:flex"><b style="flex:1">#10234</b><span class="muted">✎</span></div><div class="kv" style="margin-top:6px"><span>customer</span><span>Dewi S.</span><span>total</span><span class="mono">249.000</span><span>status</span><span><span class="badge ok ok">delivered</span></span><span>created</span><span class="mono">2026-10-17 09:12</span></div></a>
+          <a class="card" href="#s-rowedit"><div style="display:flex"><b style="flex:1">#10233</b><span class="muted">✎</span></div><div class="kv" style="margin-top:6px"><span>customer</span><span>Budi H.</span><span>total</span><span class="mono">89.500</span><span>status</span><span><span class="badge ok ok">delivered</span></span></div></a>
+          <a class="card" href="#s-rowedit"><div style="display:flex"><b style="flex:1">#10230</b><span class="muted">✎</span></div><div class="kv" style="margin-top:6px"><span>customer</span><span>Sari W.</span><span>total</span><span class="mono">1.204.000</span></div></a>
+          <div class="spacer"></div>
+          <div style="display:flex;align-items:center;gap:8px"><span class="muted small" style="flex:1">Rows 1–50 of 3,201</span><span class="btn sm">‹</span><span class="btn sm">›</span></div>
+        </div>
+      </div>
+      <figcaption><b>Rows as cards</b>Wide tables don't fit a phone, so each row becomes a card showing its first columns. Tap to see and edit every column.</figcaption>
+    </figure>
+
+    <figure id="s-rowedit">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-rows">‹</a><div class="title">orders · #10234</div></div>
+        <div class="body">
+          <div class="field"><label>id · integer · primary key</label><div class="input mono" style="opacity:.6">10234</div></div>
+          <div class="field"><label>customer_id · integer</label><div class="input mono">5531</div></div>
+          <div class="field"><label>total · numeric(12,2)</label><div class="input mono">249000.00</div></div>
+          <div class="field"><label>status · text</label><div class="input mono" style="border-color:var(--accent)">refunded</div></div>
+          <div class="field"><label>note · text · nullable</label><div class="input ph">NULL</div></div>
+          <div class="spacer"></div>
+          <div class="note">1 change: <span class="mono">status</span> delivered → refunded</div>
+          <div style="display:flex;gap:8px"><a class="btn danger" href="#s-confirm">Delete row</a><a class="btn primary" style="flex:1" href="#s-rows">Save change</a></div>
+        </div>
+      </div>
+      <figcaption><b>Edit row</b>Only tables with a primary key are editable. Changes are applied as one transaction on the computer.</figcaption>
+    </figure>
+
+    <figure id="s-query">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-browse">‹</a><div class="title">Query <span class="sub">shop-db · shop</span></div></div>
+        <div class="body">
+<div class="sql"><span class="k">SELECT</span> country,
+       <span class="k">count</span>(*) <span class="k">AS</span> orders,
+       <span class="k">sum</span>(total) <span class="k">AS</span> revenue
+<span class="k">FROM</span> orders
+<span class="k">WHERE</span> paid
+<span class="k">GROUP BY</span> country
+<span class="k">ORDER BY</span> revenue <span class="k">DESC</span>;</div>
+          <div style="display:flex;gap:6px"><span class="btn sm">History</span><span class="btn sm">Saved</span><span class="spacer"></span><a class="btn sm primary" href="#s-confirm">▶ Run</a></div>
+          <div style="display:flex;align-items:center"><span class="muted small" style="flex:1">4 rows · 38 ms</span><div class="seg" style="width:120px"><span class="on">Table</span><span>Cards</span></div></div>
+          <table class="grid"><tr><th>country</th><th>orders</th><th>revenue</th></tr>
+            <tr><td>ID</td><td>812</td><td>201.3M</td></tr><tr><td>SG</td><td>140</td><td>44.0M</td></tr><tr><td>MY</td><td>96</td><td>21.7M</td></tr><tr><td>TH</td><td>41</td><td>8.2M</td></tr></table>
+        </div>
+      </div>
+      <figcaption><b>Query</b>A plain editor with SQL keywords highlighted, plus history and saved queries from the computer. Results show as a table or as cards.</figcaption>
+    </figure>
+
+    <figure id="s-confirm">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><div class="title">Query</div></div>
+        <div class="body"><div class="sql" style="opacity:.5"><span class="k">DELETE FROM</span> orders;</div></div>
+        <div class="scrim"></div>
+        <div class="modal">
+          <b class="warn" style="font-size:15px">⚠ This changes data</b>
+          <div><span class="mono">DELETE</span> without <span class="mono">WHERE</span> on <b>orders</b> removes every row.</div>
+          <div class="field"><label>Type <b class="mono" style="color:var(--fg)">orders</b> to confirm</label><div class="input"></div></div>
+          <div style="display:flex;gap:8px"><a class="btn" style="flex:1" href="#s-query">Cancel</a><a class="btn danger" style="flex:1" href="#s-query">Run anyway</a></div>
+        </div>
+      </div>
+      <figcaption><b>Safety check</b>Asked for DELETE/UPDATE without WHERE, DROP and TRUNCATE. A phone paired as <i>read-only</i> can't run these at all.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ============================================================ 4. REDIS -->
+<section class="flow" id="f-redis">
+  <h2>4 · Redis</h2>
+  <div class="row-of-phones">
+
+    <figure id="s-redis">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-data">‹</a><div class="title">cache <span class="sub">Redis 7 · 18,204 keys</span></div><span class="ic">＋</span></div>
+        <div class="body">
+          <div style="display:flex;gap:6px"><div class="input" style="flex:1">db0 ⌄</div><div class="input mono" style="flex:2">user:*</div></div>
+          <a class="item" href="#s-rediskey"><span class="badge info info">hash</span><div class="grow"><div class="name mono">user:1001</div></div><span class="muted small">no TTL</span></a>
+          <a class="item" href="#s-rediskey"><span class="badge info info">hash</span><div class="grow"><div class="name mono">user:1002</div></div><span class="muted small">no TTL</span></a>
+          <a class="item" href="#s-rediskey"><span class="badge ok ok">string</span><div class="grow"><div class="name mono">user:1002:token</div></div><span class="muted small">2h</span></a>
+          <a class="item" href="#s-rediskey"><span class="badge warn warn">list</span><div class="grow"><div class="name mono">user:queue:mail</div></div><span class="muted small">no TTL</span></a>
+          <a class="item" href="#s-rediskey"><span class="badge danger danger">zset</span><div class="grow"><div class="name mono">user:leaderboard</div></div><span class="muted small">7d</span></a>
+          <div class="btn block">Load more</div>
+        </div>
+      </div>
+      <figcaption><b>Keys</b>Scans by pattern (never <span class="mono">KEYS *</span>), loading more as you scroll.</figcaption>
+    </figure>
+
+    <figure id="s-rediskey">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-redis">‹</a><div class="title mono">user:1001 <span class="sub">hash · 4 fields</span></div></div>
+        <div class="body">
+          <div class="field"><label>TTL (seconds, empty = never expires)</label><div class="input ph">—</div></div>
+          <div class="sec">Fields</div>
+          <div class="item"><div class="grow"><div class="meta">name</div><div class="name">Dewi Saraswati</div></div><span class="muted">✎</span></div>
+          <div class="item"><div class="grow"><div class="meta">email</div><div class="name">dewi@example.com</div></div><span class="muted">✎</span></div>
+          <div class="item"><div class="grow"><div class="meta">plan</div><div class="name">pro</div></div><span class="muted">✎</span></div>
+          <div class="item"><div class="grow"><div class="meta">visits</div><div class="name mono">42</div></div><span class="muted">✎</span></div>
+          <div class="small link">＋ Add field</div>
+          <div class="spacer"></div>
+          <div style="display:flex;gap:8px"><span class="btn danger">Delete key</span><a class="btn primary" style="flex:1" href="#s-redis">Save</a></div>
+        </div>
+      </div>
+      <figcaption><b>Key</b>The editor matches the key's type: string, hash, list, set, sorted set or stream. JSON strings are pretty-printed.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ============================================================ 5. NETWORK & CLUSTER -->
+<section class="flow" id="f-ops">
+  <h2>5 · Network &amp; Cluster</h2>
+  <div class="row-of-phones">
+
+    <figure id="s-network">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><div class="title">VPN &amp; tunnels <span class="sub">on 💻 MacBook Pro</span></div></div>
+        <div class="body">
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><b>vendorexnusatek</b><div class="muted small">OpenVPN · connected 2h 14m</div></div><div class="toggle on"></div></div>
+            <div class="kv" style="margin-top:8px"><span>address</span><span class="mono">10.33.48.34</span><span>traffic</span><span>↓ 1.2 MB/s · ↑ 40 KB/s</span></div>
+            <div class="bars" style="margin-top:8px"><i style="height:30%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:80%"></i><i style="height:65%"></i><i style="height:90%"></i><i style="height:50%"></i><i style="height:35%"></i><i style="height:70%"></i><i style="height:60%"></i><i style="height:45%"></i><i style="height:85%"></i></div>
+            <div class="small link" style="margin-top:6px">View log ›</div>
+          </div>
+          <div class="card"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><b>shop-db tunnel</b><div class="muted small">SSH · disconnected</div></div><div class="toggle"></div></div></div>
+          <div class="card"><div style="display:flex;align-items:center;gap:8px"><div style="flex:1"><b>office</b><div class="muted small">WireGuard · <span class="danger">failed: handshake timed out</span></div></div><div class="toggle"></div></div><div class="small link" style="margin-top:6px">View log ›</div></div>
+          <div class="note">These run on the computer, not on this phone. Turning one on here connects the computer.</div>
+        </div>
+        <div class="tabs"><a href="#s-agents"><i>✦</i>Agents</a><a href="#s-data"><i>⛁</i>Data</a><a class="on" href="#s-network"><i>⇄</i>Network</a><a href="#s-cluster"><i>☸</i>Cluster</a><a href="#s-more"><i>⋯</i>More</a></div>
+      </div>
+      <figcaption><b>Network</b>Live status and traffic. VPNs that need an admin password on the computer say so here, instead of failing silently.</figcaption>
+    </figure>
+
+    <figure id="s-cluster">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><div class="title">prod-cluster ⌄ <span class="sub">namespace: shop ⌄</span></div></div>
+        <div class="body">
+          <div class="seg"><span class="on">Pods</span><span>Deployments</span><span>Nodes</span></div>
+          <a class="item" href="#s-pod"><span class="dot ok"></span><div class="grow"><div class="name mono">api-7d9f8c-x2k4p</div><div class="meta">Running · 0 restarts · 2d</div></div></a>
+          <a class="item" href="#s-pod" style="border-color:rgba(248,113,113,.4)"><span class="dot danger"></span><div class="grow"><div class="name mono">worker-5c66d-qp9zt</div><div class="meta danger">CrashLoopBackOff · 12 restarts</div></div></a>
+          <a class="item" href="#s-pod"><span class="dot ok"></span><div class="grow"><div class="name mono">web-66b8f-l7m2c</div><div class="meta">Running · 0 restarts · 5h</div></div></a>
+          <a class="item" href="#s-pod"><span class="dot warn"></span><div class="grow"><div class="name mono">migrate-29871-8sd2d</div><div class="meta warn">Pending · 1m</div></div></a>
+          <div class="sec">Deployment · worker</div>
+          <div class="item"><div class="grow"><div class="name">worker</div><div class="meta">2 / 3 ready</div></div><span class="btn sm">−</span><b>3</b><span class="btn sm">＋</span><span class="btn sm">↻</span></div>
+        </div>
+        <div class="tabs"><a href="#s-agents"><i>✦</i>Agents</a><a href="#s-data"><i>⛁</i>Data</a><a href="#s-network"><i>⇄</i>Network</a><a class="on" href="#s-cluster"><i>☸</i>Cluster</a><a href="#s-more"><i>⋯</i>More</a></div>
+      </div>
+      <figcaption><b>Cluster</b>Kubernetes connections from the computer. Lists update live. Scale and restart deployments in place.</figcaption>
+    </figure>
+
+    <figure id="s-pod">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-cluster">‹</a><div class="title mono">worker-5c66d-qp9zt <span class="sub danger">CrashLoopBackOff</span></div></div>
+        <div class="body">
+          <div class="seg"><span class="on">Logs</span><span>Events</span><span>YAML</span></div>
+          <div style="display:flex;gap:6px"><span class="chip on">● Follow</span><span class="chip">Previous</span><span class="chip">container: worker ⌄</span></div>
+<div class="term">2026-10-17T09:41:02Z starting worker v2.4.1
+2026-10-17T09:41:02Z connecting to redis
+  cache:6379
+2026-10-17T09:41:03Z <span class="danger">ERROR dial tcp 10.0.4.12:6379:
+  connect: connection refused</span>
+2026-10-17T09:41:03Z <span class="danger">fatal: cannot start
+  without cache</span>
+</div>
+          <div style="display:flex;gap:8px"><span class="btn" style="flex:1">↻ Restart</span><span class="btn danger" style="flex:1">Delete pod</span></div>
+        </div>
+      </div>
+      <figcaption><b>Pod</b>Streams logs while the screen is open and stops when you leave it. Delete asks for confirmation.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ============================================================ 6. MORE -->
+<section class="flow" id="f-more">
+  <h2>6 · More, notifications &amp; help</h2>
+  <div class="row-of-phones">
+
+    <figure id="s-more">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><div class="title">More</div></div>
+        <div class="body">
+          <div class="card"><div style="display:flex;gap:8px;align-items:center"><span style="font-size:22px">💻</span><div style="flex:1"><b>MacBook Pro</b><div class="muted small">DevCat 0.4.0 · macOS · 192.168.18.24</div></div><span class="badge ok ok">Full access</span></div></div>
+          <a class="item" href="#s-notify">🔔<div class="grow"><div class="name">Notifications</div><div class="meta">Done / needs input pushes</div></div><span class="muted">›</span></a>
+          <div class="item">☕<div class="grow"><div class="name">Keep computer awake</div><div class="meta">so it stays reachable</div></div><div class="toggle on"></div></div>
+          <a class="item" href="#s-activity">📜<div class="grow"><div class="name">Activity log</div><div class="meta">What this phone did on the computer</div></div><span class="muted">›</span></a>
+          <a class="item" href="#s-help">❓<div class="grow"><div class="name">Help &amp; troubleshooting</div></div><span class="muted">›</span></a>
+          <a class="item" href="#s-computers">⇆<div class="grow"><div class="name">Switch computer</div></div><span class="muted">›</span></a>
+          <div class="spacer"></div>
+          <a class="btn danger block" href="#s-welcome">Unpair this computer</a>
+        </div>
+        <div class="tabs"><a href="#s-agents"><i>✦</i>Agents</a><a href="#s-data"><i>⛁</i>Data</a><a href="#s-network"><i>⇄</i>Network</a><a href="#s-cluster"><i>☸</i>Cluster</a><a class="on" href="#s-more"><i>⋯</i>More</a></div>
+      </div>
+      <figcaption><b>More</b>Settings for this phone and this computer.</figcaption>
+    </figure>
+
+    <figure id="s-notify">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-more">‹</a><div class="title">Notifications</div></div>
+        <div class="body">
+          <div class="muted">Get a push when an agent finishes or needs you, even when this app is closed. DevCat on the computer sends it through the free <b style="color:var(--fg)">ntfy</b> app.</div>
+          <div class="item"><b class="acc">1</b><div class="grow"><div class="name">Install ntfy</div><div class="meta">free, open source</div></div><span class="btn sm">App Store</span></div>
+          <div class="item"><b class="acc">2</b><div class="grow"><div class="name">Subscribe to your private topic</div><div class="meta mono">devcat-k3v9q2x7mf4h</div></div><span class="btn sm primary">Subscribe</span></div>
+          <div class="item"><b class="acc">3</b><div class="grow"><div class="name">Send a test</div><div class="meta ok">✓ Received 09:40</div></div><span class="btn sm">Test</span></div>
+          <div class="sec">Notify me when</div>
+          <div class="item"><div class="grow"><div class="name">An agent finished</div><div class="meta">after running at least 30 s</div></div><div class="toggle on"></div></div>
+          <div class="item"><div class="grow"><div class="name">An agent needs input</div><div class="meta">permission prompts, questions</div></div><div class="toggle on"></div></div>
+          <div class="item"><div class="grow"><div class="name">Only when I'm away</div><div class="meta">not while DevCat is the active app</div></div><div class="toggle on"></div></div>
+          <div class="note">Notifications contain only the project name and status, never code or data.</div>
+        </div>
+      </div>
+      <figcaption><b>Notifications guide</b>The same settings appear on the computer, so they can be set up from either side.</figcaption>
+    </figure>
+
+    <figure id="s-help">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-more">‹</a><div class="title">Help &amp; troubleshooting</div></div>
+        <div class="body">
+          <div class="card"><b>Computer shows Offline</b><ul class="steps" style="margin-top:6px"><li>DevCat is open on the computer</li><li>📱 Mobile is turned <b>on</b> there</li><li>Same Wi-Fi (guest networks often block devices from seeing each other)</li><li>The computer isn't asleep: turn on <b>Keep awake</b></li></ul></div>
+          <div class="card"><b>Reaching it from outside</b><div class="muted small" style="margin-top:4px">Needs a public address: forward UDP port <span class="mono">47100</span> on the router to the computer, then add it with the manual address.</div></div>
+          <div class="card"><b>Approval never appears</b><div class="muted small" style="margin-top:4px">The code expired (5 minutes). Tap <i>New code</i> on the computer and scan again.</div></div>
+          <div class="card"><b>A database won't open</b><div class="muted small" style="margin-top:4px">It opens on the computer. Check that its VPN is on (Network tab).</div></div>
+        </div>
+      </div>
+      <figcaption><b>Help</b>Built into the app, written for the cases people actually hit.</figcaption>
+    </figure>
+
+    <figure id="s-activity">
+      <div class="phone"><div class="notch"></div><div class="status"><span>9:41</span><span>􀙇 100%</span></div>
+        <div class="bar"><a class="ic" href="#s-more">‹</a><div class="title">Activity log <span class="sub">kept on the computer</span></div></div>
+        <div class="body">
+          <div class="item"><span class="ok">✓</span><div class="grow"><div class="name">Saved row in orders</div><div class="meta">shop-db · 09:38</div></div></div>
+          <div class="item"><span class="ok">✓</span><div class="grow"><div class="name">Ran query</div><div class="meta mono">SELECT country, count(*)… · 09:31</div></div></div>
+          <div class="item"><span class="ok">✓</span><div class="grow"><div class="name">Started agent</div><div class="meta">~/Projects/api-gateway · 09:20</div></div></div>
+          <div class="item"><span class="danger">✕</span><div class="grow"><div class="name">Connect VPN office</div><div class="meta">handshake timed out · 09:12</div></div></div>
+          <div class="item"><span class="ok">✓</span><div class="grow"><div class="name">Restarted deployment worker</div><div class="meta">prod-cluster · 09:05</div></div></div>
+        </div>
+      </div>
+      <figcaption><b>Activity</b>Every change made from a phone is logged on the computer. Keystrokes typed into terminals are not logged.</figcaption>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ============================================================ 7. DESKTOP -->
+<section class="flow" id="f-desktop">
+  <h2>7 · Desktop side (DevCat on the computer)</h2>
+  <div class="row-of-phones">
+    <figure style="width:760px">
+      <div class="desk">
+        <div class="wbar"><i></i><i></i><i></i><b>DevCat · 📱 Mobile</b></div>
+        <div class="content">
+          <div class="tabsrow"><span class="on">Remote access</span><span>Notifications</span><span>Activity</span><span>Help</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><div class="toggle on"></div><b>On</b><span class="muted">· listening on</span><span class="mono">192.168.18.24 : 47100</span><span class="muted">· port</span><span class="input mono" style="padding:3px 8px;min-height:0">47100</span></div>
+          <div style="display:flex;gap:18px;align-items:flex-start">
+            <div class="qr"></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+              <ol class="steps">
+                <li>Install <b>DevCat Mobile</b> on your phone: <span class="link">Android APK</span> · <span class="link">iPhone (TestFlight)</span></li>
+                <li>Join <b>the same Wi-Fi</b> as this computer, or make this computer reachable on a public address (forward UDP port 47100)</li>
+                <li>In the app tap <b>Scan QR code</b> and scan this code. It works once and expires in <b>4:32</b></li>
+                <li>Click <b>Allow</b> when DevCat asks</li>
+              </ol>
+              <div style="display:flex;gap:8px"><span class="btn sm">Copy link</span><span class="btn sm">New code</span></div>
+            </div>
+          </div>
+          <div class="sec">Paired phones</div>
+          <div class="item"><span>📱</span><div class="grow"><div class="name">Arif's iPhone</div><div class="meta">iOS · paired 17 Oct · <span class="ok">● connected now</span></div></div><span class="input" style="padding:4px 8px;min-height:0">Full access ⌄</span><span class="btn sm danger">Revoke</span></div>
+          <div class="item"><span>📱</span><div class="grow"><div class="name">Pixel 8</div><div class="meta">Android · last seen 3 days ago</div></div><span class="input" style="padding:4px 8px;min-height:0">Read-only ⌄</span><span class="btn sm danger">Revoke</span></div>
+        </div>
+      </div>
+      <figcaption><b>Desktop: 📱 Mobile dialog</b>Opened from a new phone icon in the title bar, next to ☕ Keep awake. The icon shows a dot while a phone is connected.</figcaption>
+    </figure>
+
+    <figure style="width:420px">
+      <div class="desk" style="width:420px">
+        <div class="wbar"><i></i><i></i><i></i><b>DevCat</b></div>
+        <div class="content">
+          <b style="font-size:15px">Allow this phone to control DevCat?</b>
+          <div class="item"><span style="font-size:22px">📱</span><div class="grow"><div class="name">Arif's iPhone</div><div class="meta">iOS · 192.168.18.31 · key 8f3c…e21a</div></div></div>
+          <div class="muted small">It will see your connections, agents, VPNs and clusters on this computer, and can run queries and type into terminals. Passwords never leave this computer.</div>
+          <div class="field"><label>Access</label><div class="seg"><span class="on">Full</span><span>Read-only</span></div></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end"><span class="btn">Deny</span><span class="btn primary">Allow</span></div>
+        </div>
+      </div>
+      <figcaption><b>Desktop: approval prompt</b>Pops up over any DevCat window when a phone scans the code. Times out after 2 minutes.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<div style="height:60px"></div>
+<script>
+  // A made-up QR-looking pattern (not a real code): finder squares + random modules.
+  document.querySelectorAll(".qr").forEach((el) => {
+    const n = 25, finder = (r, c) => [[0, 0], [0, n - 7], [n - 7, 0]].some(([y, x]) => {
+      const dy = r - y, dx = c - x;
+      if (dy < 0 || dx < 0 || dy > 6 || dx > 6) return null;
+      return dy === 0 || dy === 6 || dx === 0 || dx === 6 || (dy > 1 && dy < 5 && dx > 1 && dx < 5);
+    });
+    const inFinder = (r, c) => [[0, 0], [0, n - 7], [n - 7, 0]].some(([y, x]) => r >= y - 1 && r <= y + 7 && c >= x - 1 && c <= x + 7);
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      const on = inFinder(r, c) ? finder(r, c) : rnd() > 0.52;
+      el.appendChild(document.createElement(on ? "i" : "b"));
+    }
+  });
+</script>
+</body>
+</html>

@@ -14,8 +14,13 @@ mod keep_awake;
 mod models;
 mod network;
 mod notes;
+mod notify;
 mod opened;
 mod projects;
+mod remote;
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub mod remotedemo;
 mod secrets;
 mod state;
 mod store;
@@ -56,7 +61,9 @@ pub fn run() {
             network::init(dir.clone());
             ai::init(dir.clone());
             network::start(app.handle().clone());
-            app.manage(state::AppState::new(dir));
+            app.manage(state::AppState::new(dir.clone()));
+            notify::init(app.handle().clone(), dir.clone());
+            remote::init(app.handle().clone(), dir);
             #[cfg(target_os = "macos")]
             windows::install_menu(app.handle())?;
             // Windows / Linux: files DevCat was launched with.
@@ -196,6 +203,24 @@ pub fn run() {
             claude::git::git_discard,
             claude::git::git_discard_all,
             claude::git::git_commit,
+            // phone notifications (agent hooks → ntfy)
+            notify::notify_settings,
+            notify::notify_save,
+            notify::notify_new_topic,
+            notify::notify_test,
+            notify::agents_status,
+            // remote access from the mobile app
+            remote::remote_status,
+            remote::remote_save,
+            remote::remote_pair_start,
+            remote::remote_pair_cancel,
+            remote::remote_qr,
+            remote::remote_pair_answer,
+            remote::remote_devices,
+            remote::remote_device_update,
+            remote::remote_device_revoke,
+            remote::remote_audit,
+            remote::remote_reset_identity,
             // notes
             notes::notes_list,
             notes::note_save,
@@ -260,6 +285,7 @@ pub fn run() {
             // Tear down VPNs / tunnels so no elevated openvpn or wg interface outlives the app.
             if let tauri::RunEvent::Exit = event {
                 network::shutdown();
+                tauri::async_runtime::block_on(remote::shutdown());
                 claude::runner::shutdown_all();
                 keep_awake::shutdown();
             }

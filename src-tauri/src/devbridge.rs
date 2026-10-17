@@ -30,6 +30,7 @@ async fn call(cmd: &str, args: &Value) -> Result<Value, Value> {
         r.map(|v| serde_json::to_value(v).unwrap_or(Value::Null)).map_err(|e| serde_json::to_value(e).unwrap_or_else(|_| json!("error")))
     }
     match cmd {
+        "remote_qr" => out(c!(crate::remote::remote_qr, "text")),
         "git_repos" => out(c!(gx::git_repos, "root", "maxDepth")),
         "git_log" => out(c!(gx::git_log, "cwd", "query")),
         "git_show" => out(c!(gx::git_show, "cwd", "sha")),

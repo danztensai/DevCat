@@ -1,0 +1,296 @@
+//! What a paired phone may call. This table is the allowlist: anything not listed here is
+//! refused. Read-only phones get only the reads (and read-only queries). Secrets never go out:
+//! `get_connection` (it returns passwords) and file writes aren't exposed at all.
+use super::server::Client;
+use crate::commands;
+use crate::state::AppState;
+use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
+
+pub type CallResult = Result<Value, Value>;
+
+fn arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<T, Value> {
+    serde_json::from_value(args.get(name).cloned().unwrap_or(Value::Null)).map_err(|e| json!(format!("bad argument {name}: {e}")))
+}
+
+fn out<T: serde::Serialize>(r: crate::error::AppResult<T>) -> CallResult {
+    r.map(|v| serde_json::to_value(v).unwrap_or(Value::Null)).map_err(|e| json!(e.to_string()))
+}
+
+/// Commands that change something (refused for read-only phones). `db_execute` is checked
+/// statement by statement instead.
+pub const WRITES: &[&str] = &[
+    "db_apply_changes",
+    "db_set_key",
+    "db_delete_key",
+    "net_connect",
+    "net_disconnect",
+    "k8s_delete",
+    "k8s_scale",
+    "k8s_restart",
+    "k8s_cronjob_suspend",
+    "pty_open",
+    "pty_write",
+    "pty_resize",
+    "pty_close",
+    "keep_awake_set",
+    "close_connection",
+    "notify_save",
+    "notify_test",
+];
+
+/// Calls too frequent or too private for the audit log (keystrokes, live views).
+pub const NOT_AUDITED: &[&str] = &["pty_write", "pty_resize", "pty_attach", "pty_detach", "net_traffic", "k8s_stream_stop", "agents"];
+
+/// A window to own streams started from a phone (they stop if that window closes).
+fn any_window(app: &AppHandle) -> Result<tauri::Window, Value> {
+    let windows = app.webview_windows();
+    let w = windows.get("main").or_else(|| windows.values().next()).ok_or_else(|| json!("Open a DevCat window on the computer first"))?;
+    Ok(w.as_ref().window())
+}
+
+pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value) -> CallResult {
+    if client.readonly() && WRITES.contains(&cmd) {
+        return Err(json!("This phone has read-only access. Change it on the computer: DevCat → Mobile → Paired phones."));
+    }
+    let st = || app.state::<AppState>();
+    macro_rules! a {
+        ($n:literal) => {
+            arg(args, $n)?
+        };
+    }
+    match cmd {
+        // ------------------------------------------------ host / agents / terminals
+        "host_info" => Ok(super::host_summary()),
+        "audit" => Ok(json!(super::audit_for(&client.device.id, arg(args, "limit").unwrap_or(200)))),
+        "notify_settings" => out(crate::notify::notify_settings().await),
+        "notify_save" => out(crate::notify::notify_save(a!("settings")).await),
+        "notify_test" => out(crate::notify::notify_test().await),
+        "agents" => Ok(json!({
+            "terminals": crate::claude::pty::list(),
+            "agents": crate::notify::hooks::all(),
+        })),
+        "pty_open" => {
+            let cwd: String = a!("cwd");
+            let program: Option<String> = a!("program");
+            let args_: Vec<String> = arg(args, "args").unwrap_or_default();
+            let cols: u16 = arg(args, "cols").unwrap_or(60);
+            let rows: u16 = arg(args, "rows").unwrap_or(30);
+            let provider: Option<String> = arg(args, "providerId").unwrap_or(None);
+            let cwd = expand_home(&cwd);
+            let (program, args_, env) = match provider.filter(|p| !p.is_empty()) {
+                Some(pid) => {
+                    let l = crate::ai::launch(&pid, args_).await.map_err(|e| json!(e.to_string()))?;
+                    (Some(l.program), l.args, l.env)
+                }
+                None => (program, args_, vec![]),
+            };
+            let origin = format!("phone:{}", client.device.name);
+            let sink = crate::claude::runner::app_sink(app.clone());
+            let id = crate::claude::pty::open(sink, &cwd, program, args_, env, cols, rows, &origin).await.map_err(|e| json!(e.to_string()))?;
+            client.attach(&id);
+            let info = crate::claude::pty::info(&id).map_err(|e| json!(e.to_string()))?;
+            super::emit_desktop("remote-pty-opened", json!(info));
+            Ok(json!(info))
+        }
+        "pty_attach" => {
+            let id: String = a!("id");
+            client.attach(&id);
+            let info = crate::claude::pty::info(&id).map_err(|e| json!(e.to_string()))?;
+            let data = crate::claude::pty::scrollback(&id).map_err(|e| json!(e.to_string()))?;
+            use base64::Engine;
+            Ok(json!({ "info": info, "data": base64::engine::general_purpose::STANDARD.encode(data), "agent": crate::notify::hooks::get(&id) }))
+        }
+        "pty_detach" => {
+            let id: String = a!("id");
+            client.detach(&id);
+            Ok(Value::Null)
+        }
+        "pty_write" => out(crate::claude::pty::pty_write(a!("id"), a!("data")).await),
+        "pty_resize" => {
+            // Only terminals the phone started: resizing a desktop terminal would garble its view there.
+            let id: String = a!("id");
+            let info = crate::claude::pty::info(&id).map_err(|e| json!(e.to_string()))?;
+            if !info.origin.starts_with("phone:") {
+                return Ok(Value::Null);
+            }
+            out(crate::claude::pty::pty_resize(id, a!("cols"), a!("rows")).await)
+        }
+        "pty_close" => out(crate::claude::pty::pty_close(a!("id")).await),
+        "claude_projects" => out(crate::claude::sessions::claude_projects().await),
+        "claude_sessions" => out(crate::claude::sessions::claude_sessions(a!("cwd")).await),
+        "claude_transcript" => out(crate::claude::sessions::claude_transcript(a!("cwd"), a!("sessionId")).await),
+        "ai_providers_list" => out(crate::ai::ai_providers_list().await),
+        "keep_awake_status" => Ok(json!(crate::keep_awake::keep_awake_status())),
+        "keep_awake_set" => out(crate::keep_awake::keep_awake_set(app.clone(), a!("on"), arg(args, "minutes").unwrap_or(None)).await),
+
+        // ------------------------------------------------ connections & databases
+        "list_connections" => out(commands::connections::list_connections(st()).await),
+        "list_projects" => out(commands::projects::list_projects(st()).await),
+        "open_connection_ids" => out(commands::connections::open_connection_ids(st()).await),
+        "close_connection" => out(commands::connections::close_connection(st(), a!("id")).await),
+        "db_children" => out(commands::db::db_children(st(), a!("connId"), a!("path")).await),
+        "db_list_databases" => out(commands::db::db_list_databases(st(), a!("connId")).await),
+        "db_table_data" => {
+            let req: crate::db::TableDataRequest = a!("req");
+            if client.readonly() && req.filter.as_deref().is_some_and(|f| f.contains(';')) {
+                return Err(json!("A filter can't contain ';' on a read-only phone"));
+            }
+            out(commands::db::db_table_data(st(), a!("connId"), req).await)
+        }
+        "db_table_structure" => out(commands::db::db_table_structure(st(), a!("connId"), a!("table")).await),
+        "db_object_ddl" => out(commands::db::db_object_ddl(st(), a!("connId"), a!("table"), a!("kind")).await),
+        "db_execute" => {
+            let conn_id: String = a!("connId");
+            let script: String = a!("script");
+            if client.readonly() {
+                let kind = st().store.load_all().ok().and_then(|all| all.into_iter().find(|c| c.id == conn_id)).map(|c| c.kind);
+                if !super::readonly::allowed(kind, &script) {
+                    return Err(json!("This phone has read-only access: only queries that read data can run."));
+                }
+            }
+            let opts: crate::db::ExecOptions = arg(args, "opts").unwrap_or(crate::db::ExecOptions { database: None, schema: None, max_rows: None });
+            out(commands::db::db_execute(st(), conn_id, script, opts, Some(false)).await)
+        }
+        "db_cancel" => out(commands::db::db_cancel(st(), a!("connId")).await),
+        "db_apply_changes" => out(commands::db::db_apply_changes(st(), a!("connId"), a!("table"), a!("changes")).await),
+        "db_get_key" => out(commands::db::db_get_key(st(), a!("connId"), a!("database"), a!("key")).await),
+        "db_set_key" => out(commands::db::db_set_key(st(), a!("connId"), a!("database"), a!("value")).await),
+        "db_delete_key" => out(commands::db::db_delete_key(st(), a!("connId"), a!("database"), a!("key")).await),
+        "history_list" => out(commands::history::history_list(st(), arg(args, "connectionId").unwrap_or(None), arg(args, "search").unwrap_or(None), arg(args, "limit").unwrap_or(None)).await),
+        "saved_queries_list" => out(commands::history::saved_queries_list(st()).await),
+
+        // ------------------------------------------------ network
+        "net_list" => out(crate::network::net_list().await),
+        "net_status" => out(crate::network::net_status().await),
+        "net_logs" => out(crate::network::net_logs(a!("id")).await),
+        "net_traffic" => out(crate::network::net_traffic(a!("id")).await),
+        "net_connect" => out(crate::network::net_connect(app.clone(), a!("id"), None).await),
+        "net_disconnect" => out(crate::network::net_disconnect(a!("id")).await),
+
+        // ------------------------------------------------ kubernetes
+        "k8s_connect" => out(crate::infra::k8s::k8s_connect(any_window(app)?, st(), a!("connId")).await),
+        "k8s_namespaces" => out(crate::infra::k8s::k8s_namespaces(st(), a!("connId")).await),
+        "k8s_list" => out(crate::infra::k8s::k8s_list(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), arg(args, "labelSelector").unwrap_or(None)).await),
+        "k8s_get" => out(crate::infra::k8s::k8s_get(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), a!("name")).await),
+        "k8s_get_yaml" => out(crate::infra::k8s::k8s_get_yaml(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), a!("name")).await),
+        "k8s_events_for" => out(crate::infra::k8s::k8s_events_for(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), a!("name")).await),
+        "k8s_cluster_overview" => out(crate::infra::k8s::k8s_cluster_overview(st(), a!("connId")).await),
+        "k8s_metrics" => out(crate::infra::k8s::k8s_metrics(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None)).await),
+        "k8s_delete" => out(crate::infra::k8s::k8s_delete(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), a!("name"), arg(args, "force").unwrap_or(None)).await),
+        "k8s_scale" => out(crate::infra::k8s::k8s_scale(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), a!("name"), a!("replicas")).await),
+        "k8s_restart" => out(crate::infra::k8s::k8s_restart(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), a!("name")).await),
+        "k8s_cronjob_suspend" => out(crate::infra::k8s::k8s_cronjob_suspend(st(), a!("connId"), a!("namespace"), a!("name"), a!("suspend")).await),
+        "k8s_logs_start" => {
+            let r = crate::infra::k8s::streams::k8s_logs_start(
+                app.clone(),
+                any_window(app)?,
+                st(),
+                a!("connId"),
+                a!("namespace"),
+                a!("pod"),
+                arg(args, "container").unwrap_or(None),
+                arg(args, "tailLines").unwrap_or(Some(500)),
+                arg(args, "follow").unwrap_or(true),
+                arg(args, "previous").unwrap_or(false),
+                arg(args, "timestamps").unwrap_or(false),
+                arg(args, "sinceSeconds").unwrap_or(None),
+            )
+            .await;
+            if let Ok(id) = &r {
+                client.own_stream(id);
+            }
+            out(r)
+        }
+        "k8s_watch_start" => {
+            let r = crate::infra::k8s::streams::k8s_watch_start(
+                app.clone(),
+                any_window(app)?,
+                st(),
+                a!("connId"),
+                a!("kind"),
+                arg(args, "namespace").unwrap_or(None),
+                arg(args, "labelSelector").unwrap_or(None),
+            )
+            .await;
+            if let Ok(id) = &r {
+                client.own_stream(id);
+            }
+            out(r)
+        }
+        "k8s_stream_stop" => {
+            let id: String = a!("streamId");
+            if !client.owns_stream(&id) {
+                return Err(json!("Not a stream this phone started"));
+            }
+            client.drop_stream(&id);
+            out(crate::infra::k8s::streams::k8s_stream_stop(id).await)
+        }
+
+        _ => Err(json!(format!("'{cmd}' isn't available from the phone"))),
+    }
+}
+
+/// `~/x` → the home folder (paths typed on the phone).
+fn expand_home(p: &str) -> String {
+    match (p.strip_prefix("~/").or(if p == "~" { Some("") } else { None }), dirs::home_dir()) {
+        (Some(rest), Some(h)) => h.join(rest).to_string_lossy().into_owned(),
+        _ => p.to_string(),
+    }
+}
+
+/// One line for the audit log: the call and its most telling arguments (never passwords).
+pub fn audit_detail(cmd: &str, args: &Value) -> Option<String> {
+    let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+    let d = match cmd {
+        "db_execute" => s("script").map(|q| {
+            let q: String = q.split_whitespace().collect::<Vec<_>>().join(" ");
+            if q.chars().count() > 160 { format!("{}…", q.chars().take(160).collect::<String>()) } else { q }
+        }),
+        "db_apply_changes" => args.get("table").and_then(|t| t.get("name")).and_then(Value::as_str).map(|t| {
+            let n = args.get("changes").and_then(Value::as_array).map_or(0, Vec::len);
+            format!("{t}: {n} change(s)")
+        }),
+        "db_set_key" => args.get("value").and_then(|v| v.get("key")).and_then(Value::as_str).map(str::to_string),
+        "db_delete_key" | "db_get_key" => s("key"),
+        "pty_open" => s("cwd").map(|c| format!("{c} ({})", s("program").unwrap_or_else(|| "shell".into()))),
+        "pty_close" => s("id"),
+        "net_connect" | "net_disconnect" | "net_logs" => s("id"),
+        "k8s_delete" | "k8s_scale" | "k8s_restart" | "k8s_get_yaml" | "k8s_events_for" => {
+            let mut v = format!("{} {}", s("kind").unwrap_or_default(), s("name").unwrap_or_default());
+            if let Some(r) = args.get("replicas").and_then(Value::as_i64) {
+                v.push_str(&format!(" → {r}"));
+            }
+            Some(v)
+        }
+        "k8s_logs_start" => s("pod"),
+        _ => None,
+    };
+    let conn = s("connId").map(|c| format!("[{c}] "));
+    d.map(|d| format!("{}{d}", conn.unwrap_or_default()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_lines() {
+        let a = json!({ "connId": "c1", "script": "SELECT  *\n  FROM orders" });
+        assert_eq!(audit_detail("db_execute", &a).unwrap(), "[c1] SELECT * FROM orders");
+        let a = json!({ "connId": "c1", "table": { "name": "orders" }, "changes": [1, 2] });
+        assert_eq!(audit_detail("db_apply_changes", &a).unwrap(), "[c1] orders: 2 change(s)");
+        let a = json!({ "connId": "k", "kind": "Deployment", "name": "web", "replicas": 3 });
+        assert_eq!(audit_detail("k8s_scale", &a).unwrap(), "[k] Deployment web → 3");
+        assert_eq!(audit_detail("list_connections", &json!({})), None);
+    }
+
+    #[test]
+    fn home_expansion() {
+        let h = dirs::home_dir().unwrap();
+        assert_eq!(expand_home("~/Projects"), h.join("Projects").to_string_lossy());
+        assert_eq!(expand_home("/tmp/x"), "/tmp/x");
+    }
+}

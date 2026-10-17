@@ -22,12 +22,35 @@ use std::time::{Duration, Instant};
 const BATCH_WINDOW: Duration = Duration::from_millis(12);
 const BATCH_BYTES: usize = 16 * 1024;
 
+/// Recent output kept per terminal, so a phone attaching later sees the current screen.
+const SCROLLBACK_MAX: usize = 1024 * 1024;
+const SCROLLBACK_KEEP: usize = 512 * 1024;
+
+/// What the remote app shows about a terminal.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyInfo {
+    pub id: String,
+    pub cwd: String,
+    /// Program name ("claude", "zsh", …).
+    pub program: String,
+    /// Runs Claude Code (gets the DevCat hooks: done / needs input notifications).
+    pub agent: bool,
+    /// "desktop" or "phone:<device name>".
+    pub origin: String,
+    pub started_at: i64,
+    pub cols: u16,
+    pub rows: u16,
+}
+
 struct Pty {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     /// Label of the window that opened the terminal (closed with it).
     owner: Mutex<Option<String>>,
+    info: Mutex<PtyInfo>,
+    scrollback: Mutex<Vec<u8>>,
 }
 
 static PTYS: Lazy<Mutex<HashMap<String, Arc<Pty>>>> = Lazy::new(Default::default);
@@ -59,6 +82,18 @@ fn default_shell() -> CommandBuilder {
     }
 }
 
+/// Is this program Claude Code ("claude" or a path to the claude binary)?
+fn is_claude(program: Option<&str>) -> bool {
+    program.is_some_and(|p| Path::new(p).file_stem().and_then(|s| s.to_str()) == Some("claude"))
+}
+
+fn program_label(program: Option<&str>) -> String {
+    match program.filter(|p| !p.is_empty()) {
+        Some(p) => Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.to_string()),
+        None => std::env::var("SHELL").ok().and_then(|s| Path::new(&s).file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_else(|| "shell".into()),
+    }
+}
+
 async fn build_command(cwd: &str, program: Option<String>, args: Vec<String>, env: Vec<(String, String)>) -> AppResult<CommandBuilder> {
     let mut cmd = match program.as_deref().filter(|p| !p.is_empty()) {
         None => default_shell(),
@@ -76,7 +111,7 @@ async fn build_command(cwd: &str, program: Option<String>, args: Vec<String>, en
         cmd.env("LANG", "en_US.UTF-8");
     }
     // Don't let claude think it's nested in another Claude Code / misdetect the host terminal.
-    for k in ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"] {
+    for k in ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_CHILD_SESSION", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"] {
         cmd.env_remove(k);
     }
     // AI connection env (incl. its API key from the keychain) last, so it can override the above.
@@ -86,32 +121,54 @@ async fn build_command(cwd: &str, program: Option<String>, args: Vec<String>, en
     Ok(cmd)
 }
 
-pub(super) async fn open(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn open(
     sink: Sink,
     cwd: &str,
     program: Option<String>,
-    args: Vec<String>,
-    env: Vec<(String, String)>,
+    mut args: Vec<String>,
+    mut env: Vec<(String, String)>,
     cols: u16,
     rows: u16,
+    origin: &str,
 ) -> AppResult<String> {
     if !Path::new(cwd).is_dir() {
         return Err(AppError::msg(format!("Not a directory: {cwd}")));
     }
+    let id = uuid::Uuid::new_v4().to_string();
+    let agent = is_claude(program.as_deref());
+    if agent {
+        // Claude Code hooks report "finished" / "needs input" back to DevCat (notifications).
+        if let Some(h) = crate::notify::hooks::launch(&id) {
+            args.splice(0..0, h.args);
+            env.extend(h.env);
+        }
+    }
+    let info = PtyInfo {
+        id: id.clone(),
+        cwd: cwd.to_string(),
+        program: program_label(program.as_deref()),
+        agent,
+        origin: origin.to_string(),
+        started_at: chrono::Utc::now().timestamp_millis(),
+        cols,
+        rows,
+    };
     let cmd = build_command(cwd, program, args, env).await?;
     let pair = native_pty_system().openpty(size(cols, rows)).map_err(|e| AppError::msg(format!("openpty: {e}")))?;
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| AppError::msg(format!("Failed to start terminal program: {e}")))?;
     drop(pair.slave); // so the reader sees EOF once the child exits
     let mut reader = pair.master.try_clone_reader().map_err(|e| AppError::msg(e.to_string()))?;
     let writer = pair.master.take_writer().map_err(|e| AppError::msg(e.to_string()))?;
-    let id = uuid::Uuid::new_v4().to_string();
     let pty = Arc::new(Pty {
         master: Mutex::new(pair.master),
         writer: Mutex::new(Some(writer)),
         killer: Mutex::new(child.clone_killer()),
         owner: Mutex::new(None),
+        info: Mutex::new(info),
+        scrollback: Mutex::new(Vec::new()),
     });
-    PTYS.lock().insert(id.clone(), pty);
+    PTYS.lock().insert(id.clone(), pty.clone());
 
     // reader → batcher → pty-output
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -131,6 +188,14 @@ pub(super) async fn open(
     let (s, pid) = (sink.clone(), id.clone());
     let batcher = std::thread::spawn(move || {
         let emit = |data: &[u8]| {
+            {
+                let mut sb = pty.scrollback.lock();
+                sb.extend_from_slice(data);
+                if sb.len() > SCROLLBACK_MAX {
+                    let cut = sb.len() - SCROLLBACK_KEEP;
+                    sb.drain(..cut);
+                }
+            }
             s("pty-output", json!({ "id": pid, "data": base64::engine::general_purpose::STANDARD.encode(data) }));
         };
         while let Ok(first) = rx.recv() {
@@ -156,6 +221,7 @@ pub(super) async fn open(
             std::thread::sleep(Duration::from_millis(10));
         }
         PTYS.lock().remove(&pid);
+        crate::notify::hooks::forget(&pid);
         sink("pty-exit", json!({ "id": pid, "code": code }));
     });
     Ok(id)
@@ -182,7 +248,7 @@ pub async fn pty_open(
         }
         None => (program, args, vec![]),
     };
-    let id = open(app_sink(app), &cwd, program, args, env, cols, rows).await?;
+    let id = open(app_sink(app), &cwd, program, args, env, cols, rows, "desktop").await?;
     if let Some(p) = PTYS.lock().get(&id) {
         *p.owner.lock() = Some(window.label().to_string());
     }
@@ -202,7 +268,27 @@ pub async fn pty_write(id: String, data: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn pty_resize(id: String, cols: u16, rows: u16) -> AppResult<()> {
-    get(&id)?.master.lock().resize(size(cols, rows)).map_err(|e| AppError::msg(format!("resize: {e}")))
+    let pty = get(&id)?;
+    pty.master.lock().resize(size(cols, rows)).map_err(|e| AppError::msg(format!("resize: {e}")))?;
+    let mut info = pty.info.lock();
+    (info.cols, info.rows) = (cols.max(1), rows.max(1));
+    Ok(())
+}
+
+/// Every open terminal, oldest first.
+pub fn list() -> Vec<PtyInfo> {
+    let mut v: Vec<PtyInfo> = PTYS.lock().values().map(|p| p.info.lock().clone()).collect();
+    v.sort_by_key(|i| i.started_at);
+    v
+}
+
+pub fn info(id: &str) -> AppResult<PtyInfo> {
+    Ok(get(id)?.info.lock().clone())
+}
+
+/// Recent output (raw bytes) of a terminal, for a viewer attaching late.
+pub fn scrollback(id: &str) -> AppResult<Vec<u8>> {
+    Ok(get(id)?.scrollback.lock().clone())
 }
 
 fn kill(pty: &Pty) {
@@ -259,7 +345,7 @@ mod tests {
     #[tokio::test]
     async fn runs_program_and_reports_exit() {
         let (sink, mut rx) = channel_sink();
-        let id = open(sink, "/tmp", Some("sh".into()), vec!["-c".into(), "printf hi-$TERM-$DEVCAT_T; exit 3".into()], vec![("DEVCAT_T".into(), "x1".into())], 80, 24).await.unwrap();
+        let id = open(sink, "/tmp", Some("sh".into()), vec!["-c".into(), "printf hi-$TERM-$DEVCAT_T; exit 3".into()], vec![("DEVCAT_T".into(), "x1".into())], 80, 24, "desktop").await.unwrap();
         pty_resize(id.clone(), 100, 30).await.unwrap();
         let (out, code) = collect_until_exit(&mut rx).await;
         assert!(out.contains("hi-xterm-256color-x1"), "{out:?}");
@@ -270,7 +356,8 @@ mod tests {
     #[tokio::test]
     async fn interactive_input_and_close() {
         let (sink, mut rx) = channel_sink();
-        let id = open(sink, "/tmp", Some("cat".into()), vec![], vec![], 80, 24).await.unwrap();
+        let id = open(sink, "/tmp", Some("cat".into()), vec![], vec![], 80, 24, "phone:Test").await.unwrap();
+        assert!(list().iter().any(|i| i.id == id && i.origin == "phone:Test" && i.program == "cat" && !i.agent));
         pty_write(id.clone(), "ping\r".into()).await.unwrap();
         let mut seen = String::new();
         while !seen.contains("ping") {
@@ -279,6 +366,7 @@ mod tests {
                 seen.push_str(&String::from_utf8_lossy(&base64::engine::general_purpose::STANDARD.decode(v["data"].as_str().unwrap()).unwrap()));
             }
         }
+        assert!(String::from_utf8_lossy(&scrollback(&id).unwrap()).contains("ping"));
         pty_close(id.clone()).await.unwrap();
         let (_, code) = collect_until_exit(&mut rx).await;
         assert_ne!(code, 0);
@@ -290,7 +378,7 @@ mod tests {
     #[ignore]
     async fn real_claude_version() {
         let (sink, mut rx) = channel_sink();
-        open(sink, "/tmp", Some("claude".into()), vec!["--version".into()], vec![], 80, 24).await.unwrap();
+        open(sink, "/tmp", Some("claude".into()), vec!["--version".into()], vec![], 80, 24, "desktop").await.unwrap();
         let (out, code) = collect_until_exit(&mut rx).await;
         println!("{out:?} {code}");
         assert!(out.contains("Claude Code") && code == 0);
@@ -299,6 +387,12 @@ mod tests {
     #[tokio::test]
     async fn rejects_bad_cwd() {
         let (sink, _rx) = channel_sink();
-        assert!(open(sink, "/definitely/not/here", None, vec![], vec![], 80, 24).await.is_err());
+        assert!(open(sink, "/definitely/not/here", None, vec![], vec![], 80, 24, "desktop").await.is_err());
+    }
+
+    #[test]
+    fn detects_claude() {
+        assert!(is_claude(Some("claude")) && is_claude(Some("/opt/homebrew/bin/claude")));
+        assert!(!is_claude(None) && !is_claude(Some("codex")));
     }
 }

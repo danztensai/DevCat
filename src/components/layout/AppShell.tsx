@@ -22,6 +22,9 @@ import { detectSession } from "../../features/claude/store";
 import { useTabActivity } from "../../features/claude/activity";
 import { KeepAwakeButton } from "../../features/keepawake/KeepAwakeButton";
 import { UpdateDialog } from "../../features/update/UpdateDialog";
+import { MobileButton, MobileDialog } from "../../features/mobile/MobileDialog";
+import { PairPrompt } from "../../features/mobile/PairPrompt";
+import { startMobileStatus } from "../../features/mobile/store";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
 import { IS_MAC, IS_MAIN_WINDOW, NEW_WINDOW_SHORTCUT, openNewWindow, takeLaunchTab, type TabTransfer } from "../../lib/windows";
 import "../../store/projectFolders";
@@ -58,6 +61,8 @@ export default function AppShell() {
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
   }, []);
+
+  useEffect(() => startMobileStatus(), []);
 
   // Sidebar hide / show: the store is the source of truth; the panel follows it.
   const sidebarPanel = usePanelRef();
@@ -117,6 +122,8 @@ export default function AppShell() {
       <ConnectionDialog />
       <AiConnectionsDialog />
       <UpdateDialog />
+      <MobileDialog />
+      <PairPrompt />
       <Toaster theme="dark" position="bottom-right" richColors closeButton />
     </div>
   );
@@ -258,6 +265,7 @@ function ProjectBar() {
         </>
       )}
       <div className={clsx("flex items-center gap-0.5", !focus && "ml-auto")}>
+        <MobileButton />
         <KeepAwakeButton />
         <IconButton title={`New window (${NEW_WINDOW_SHORTCUT})`} onClick={() => void openNewWindow(focus?.id)}>
           <AppWindow className="size-3.5" />

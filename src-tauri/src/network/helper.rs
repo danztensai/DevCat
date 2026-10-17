@@ -654,6 +654,7 @@ pub fn openvpn_args(config: &Path, port: u16, mgmt_pw: &Path, pid: &Path, log: &
         s(log),
         "--daemon".into(),
     ];
+    a.extend(super::openvpn::KEEP_SERVER_ROUTE.iter().map(|s| s.to_string()));
     if let Some(v) = verb {
         a.extend(["--verb".into(), v.to_string()]);
     }
@@ -1511,7 +1512,7 @@ mod tests {
             s(&[
                 "--config", "/r/p/x.ovpn", "--script-security", "1", "--management", "127.0.0.1", "40000", "/r/p/x.mgmt",
                 "--management-query-passwords", "--management-hold", "--writepid", "/r/x.pid", "--log", "/r/x.log", "--daemon",
-                "--verb", "4",
+                "--route", "remote_host", "255.255.255.255", "net_gateway", "--verb", "4",
             ])
         );
         let cfg = a.iter().position(|x| x == "--config").unwrap();

@@ -16,6 +16,7 @@ and React + TypeScript; runs on macOS, Windows and Linux.
 | NoSQL | MongoDB, Redis |
 | Infrastructure | Kubernetes (any kubeconfig context), RabbitMQ (management API) |
 | Networking | OpenVPN, WireGuard, SSH tunnels (local forwards + SOCKS proxy) |
+| Mobile | DevCat Mobile (Android, iPhone): agent notifications and control, databases, Redis, VPNs and Kubernetes through DevCat on your computer |
 
 ## Download
 
@@ -44,6 +45,40 @@ Grab the latest installer for macOS, Windows or Linux from the
 </table>
 
 The screenshots use made-up demo data (see [Screenshots and demo video](#screenshots-and-demo-video)).
+
+## Mobile app
+
+Leave an agent working and walk away: **DevCat Mobile** tells you when it finishes or needs your permission,
+shows its live terminal so you can answer, starts new chats and resumes old sessions. It also reaches everything
+DevCat on your computer can: browse and edit tables, run queries, edit Redis keys, switch VPNs and tunnels,
+and check pods, logs and deployments.
+
+<table>
+<tr>
+<td width="25%"><img src="assets/readme/mobile-agents.png" alt="Agents"></td>
+<td width="25%"><img src="assets/readme/mobile-terminal.png" alt="Live agent terminal"></td>
+<td width="25%"><img src="assets/readme/mobile-query.png" alt="Query"></td>
+<td width="25%"><img src="assets/readme/mobile-pod.png" alt="Pod logs"></td>
+</tr>
+</table>
+
+- **No server, no account.** The phone connects **directly** to DevCat on your computer (same Wi-Fi, or a
+  computer with a public address), encrypted end to end with keys made when you pair. Profiles and passwords stay
+  on the computer; the phone only keeps the list of computers it paired with.
+- **App or browser**: DevCat → 📱 in the title bar → turn on **Remote access** → point the phone's camera at the
+  QR code. It opens DevCat in the phone's browser (nothing to install); tap **Open in DevCat app** to pair the app
+  instead, or **Continue in browser**. Then click **Allow** on the computer. Browser sessions are encrypted with a
+  key from the QR code, but the page itself comes over plain HTTP, so on Wi-Fi you don't trust use the app (or turn
+  **Allow phone browsers** off).
+- Give each phone **full access** or **read-only**; **Revoke** cuts one off immediately. Every change a phone makes
+  is in the **Activity** log on the computer.
+- **Notifications** ("finished", "needs you") come through the free [ntfy](https://ntfy.sh) app, so they arrive
+  even when DevCat Mobile is closed. DevCat learns an agent's state from Claude Code hooks it adds to the
+  terminals it starts (macOS and Linux).
+- **Get it**: the Android APK is attached to each [release](https://github.com/devileya/DevCat/releases/latest);
+  for iPhone, build it with Xcode for now. See [mobile/README.md](mobile/README.md).
+
+<p align="center"><img src="assets/readme/mobile-desktop.png" width="720" alt="Pairing a phone in DevCat"></p>
 
 ## Features
 
@@ -239,5 +274,9 @@ src-tauri/src/
   ai/                     AI connections (agent CLI profiles, detection, keychain API keys)
   commands/               Tauri command handlers
   store.rs                saved connections (JSON) + OS keychain secrets
+  remote/                 remote access for DevCat Mobile: QUIC server, pairing, command allowlist, audit log
+  notify/                 agent status from Claude Code hooks, ntfy notifications
+crates/remote-proto/      wire protocol shared by the desktop app and DevCat Mobile
+mobile/                   DevCat Mobile (Tauri 2 for Android / iOS): src = React UI, src-tauri = client
 promo/                    README screenshots + demo video (demo mode capture, Remotion)
 ```

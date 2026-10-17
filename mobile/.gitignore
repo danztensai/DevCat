@@ -1,0 +1,5 @@
+dist/
+src-tauri/target/
+# `tauri android init` / `tauri ios init` output (CI generates it; see mobile/README.md)
+src-tauri/gen/
+dist-web/

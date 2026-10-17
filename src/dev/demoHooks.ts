@@ -3,6 +3,7 @@ import { openClaudeWorkspace } from "../features/claude/open";
 import { useWorkspace } from "../features/claude/sidebar/workspace";
 import { openGitRepo } from "../features/git/open";
 import { openNote, useNotes } from "../features/notes/store";
+import { useMobile } from "../features/mobile/store";
 import { useConnections } from "../store/connections";
 import { openTab, useTabs } from "../store/tabs";
 import { useUi } from "../store/ui";
@@ -11,4 +12,4 @@ declare global {
   interface Window { __demo?: unknown }
 }
 
-window.__demo = { useTabs, useUi, useConnections, useNotes, useWorkspace, openTab, openClaudeWorkspace, openGitRepo, openNote };
+window.__demo = { useTabs, useUi, useConnections, useNotes, useWorkspace, useMobile, openTab, openClaudeWorkspace, openGitRepo, openNote };
