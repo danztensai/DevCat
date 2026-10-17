@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
+// @ts-expect-error type error without @types/node package
+import { fileURLToPath } from "node:url";
 
 // DevCat Mobile frontend (mobile/src).
 // `--mode web`: the browser version DevCat serves to phone browsers (→ dist-web, embedded in the
@@ -10,9 +12,10 @@ import process from "node:process";
 // `--mode bridge`: run it in a normal browser against the mobile bridge (`cargo run --example
 //   bridge` in mobile/src-tauri) for UI testing.
 const host = process.env.TAURI_DEV_HOST;
-const root = new URL(".", import.meta.url).pathname;
-const bridge = new URL("./src/dev/bridge.ts", import.meta.url).pathname;
-const web = new URL("./src/web/shim.ts", import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: on Windows the latter is "/D:/…".
+const root = fileURLToPath(new URL(".", import.meta.url));
+const bridge = fileURLToPath(new URL("./src/dev/bridge.ts", import.meta.url));
+const web = fileURLToPath(new URL("./src/web/shim.ts", import.meta.url));
 const shimmed = ["api/core", "api/event", "plugin-notification", "plugin-barcode-scanner", "plugin-opener", "plugin-deep-link"];
 
 export default defineConfig(({ mode }) => ({
