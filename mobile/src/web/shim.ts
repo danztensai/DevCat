@@ -1,8 +1,10 @@
-// The browser version (`vite --mode web`): stands in for @tauri-apps/* so the same screens run
-// in a phone browser. The phone-side commands (m_*) are answered here by WebHost, which talks
-// to the DevCat that served the page; camera and notifications are stubs (the QR code is
-// scanned with the phone's camera app, notifications come through ntfy).
-import { WebHost, deviceName, platform, saved, setDeviceName } from "./client";
+// The browser versions (`vite --mode web` / `--mode hosted`): stand in for @tauri-apps/* so the
+// same screens run in a phone browser. The phone-side commands (m_*) are answered here by
+// WebHost (talks to the DevCat that served the page) or, in the hosted version, RelayHost
+// (through the computer's relay); camera and notifications are stubs (the QR code is scanned
+// with the phone's camera app, notifications come through ntfy).
+import { WebHost, deviceName, platform, saved as webSaved, setDeviceName } from "./client";
+import type { RelayHost, RelaySaved } from "./relay";
 
 type Handler = (e: { event: string; payload: unknown }) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -10,18 +12,25 @@ function emit(event: string, payload: unknown) {
   handlers.get(event)?.forEach((h) => h({ event, payload }));
 }
 
-const host = new WebHost(emit);
+// The relay code and its WebAssembly are only in the hosted build (MODE is replaced at build
+// time, so the computer's copy drops the import).
+const HOSTED = import.meta.env.MODE === "hosted";
+const hostP: Promise<WebHost | RelayHost> = HOSTED ? import("./relay").then((m) => new m.RelayHost(emit)) : Promise.resolve(new WebHost(emit));
+let host: WebHost | RelayHost;
+const saved = () => (HOSTED ? (host as RelayHost).saved() : webSaved());
 
 function machine() {
   const s = saved();
   if (!s) return null;
+  const relayed = HOSTED ? (s as RelaySaved) : null;
   return {
-    id: s.hostId, name: s.hostName, addrs: [location.host], os: s.os ?? "", appVersion: s.appVersion ?? "",
-    access: s.access ?? "", addedAt: s.addedAt, lastSeen: Date.now(), manualAddrs: [],
+    id: s.hostId, name: s.hostName, addrs: relayed ? relayed.addrs : [location.host], os: s.os ?? "", appVersion: s.appVersion ?? "",
+    access: s.access ?? "", addedAt: s.addedAt, lastSeen: Date.now(), manualAddrs: [], relay: relayed?.relay ?? null,
   };
 }
 
 export async function invoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
+  host ??= await hostP;
   const r = await (async (): Promise<unknown> => {
     switch (cmd) {
       case "m_info": return { deviceId: saved()?.deviceId ?? "", deviceName: deviceName(), platform: platform(), version: "web", online: host.online() && saved() ? [saved()!.hostId] : [] };

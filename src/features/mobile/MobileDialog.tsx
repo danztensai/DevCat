@@ -10,7 +10,7 @@ import { Badge, Button, Checkbox, Dialog, Field, Input, Select, Spinner } from "
 import { errMsg } from "../../lib/api";
 import {
   MOBILE_RELEASES_URL, NTFY_ANDROID_URL, NTFY_IOS_URL, mobileApi, ntfyLink,
-  type Access, type AuditEntry, type Device, type NotifySettings, type PairInfo, type RemoteSettings,
+  type Access, type AuditEntry, type Device, type NotifySettings, type PairInfo, type RelayChoice, type RemoteSettings,
 } from "./api";
 import { useMobile, type MobileTab } from "./store";
 
@@ -106,7 +106,9 @@ function RemoteTab() {
 
   if (!status || !draft) return <Spinner />;
   const s = status.settings;
-  const dirty = draft.port !== s.port || (draft.hostName ?? "") !== (s.hostName ?? "") || (draft.publicAddr ?? "") !== (s.publicAddr ?? "");
+  const dirty = draft.port !== s.port || (draft.hostName ?? "") !== (s.hostName ?? "") || (draft.publicAddr ?? "") !== (s.publicAddr ?? "")
+    || draft.relay !== s.relay || (draft.relayUrl ?? "") !== (s.relayUrl ?? "");
+  const relayOn = s.relay !== "off";
 
   const save = async (next: RemoteSettings) => {
     setBusy(true);
@@ -115,7 +117,7 @@ function RemoteTab() {
       setDraft(st.settings);
       if (st.settings.enabled && st.running && !s.enabled) {
         setPair(await mobileApi.pairStart(qrAddr));
-      } else if (st.settings.enabled && pair && st.settings.web !== s.web) {
+      } else if (st.settings.enabled && pair && (st.settings.web !== s.web || st.settings.relay !== s.relay || st.settings.relayUrl !== s.relayUrl)) {
         setPair(await mobileApi.pairStart(qrAddr));
       }
       if (!st.settings.enabled) setPair(null);
@@ -128,7 +130,8 @@ function RemoteTab() {
   const newCode = async (addr: string | null = qrAddr) => {
     try { setPair(await mobileApi.pairStart(addr)); } catch (e) { toast.error(errMsg(e)); }
   };
-  const browser = !!pair?.webLink;
+  const browser = !!pair?.webLink || !!pair?.hostedLink;
+  const anywhere = !!pair?.hostedLink || (!pair && relayOn);
   const connected = (id: string) => status.clients.some((c) => c.deviceId === id);
 
   return (
@@ -139,9 +142,16 @@ function RemoteTab() {
           <div className="font-semibold">{s.enabled ? (status.running ? "On" : "Starting…") : "Off"}</div>
           <div className="truncate text-[12px] text-muted">
             {s.enabled && status.running
-              ? <>Phones can reach this computer at <span className="font-mono text-fg">{status.addrs.join(", ") || `port ${s.port}`}</span></>
+              ? <>Phones can reach this computer at <span className="font-mono text-fg">{status.addrs.join(", ") || `port ${s.port}`}</span>{relayOn && <> and from any network through the relay</>}</>
               : "Turn on to control DevCat on this computer from your phone."}
           </div>
+          {s.enabled && status.running && relayOn && (
+            <div className="truncate text-[11.5px]">
+              {status.relayConnected
+                ? <span className="text-ok">● Relay connected <span className="font-mono text-muted">{status.relayConnected.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span></span>
+                : <span className="text-warn">○ Connecting to the relay… (needs internet)</span>}
+            </div>
+          )}
         </div>
         {busy && <Spinner />}
       </div>
@@ -158,7 +168,7 @@ function RemoteTab() {
             <div className="min-w-0 flex-1 space-y-3">
               {browser || (!pair && s.web && status.webRunning) ? (
                 <Steps>
-                  <li>Join <b>the same Wi-Fi</b> as this computer, or set a public address below</li>
+                  {anywhere ? <li>Any network works: Wi-Fi or mobile data</li> : <li>Join <b>the same Wi-Fi</b> as this computer, or set a public address below</li>}
                   <li>Point the phone's <b>camera</b> at this code and open the link{pair && <>. It works once and expires in <Countdown until={pair.expiresAt} /></>}</li>
                   <li>DevCat opens in the phone's browser: tap <b>Open in DevCat app</b> if you have the app (<button className="text-accent hover:underline" onClick={() => void openUrl(MOBILE_RELEASES_URL)}>get it</button>), or <b>Continue in browser</b></li>
                   <li>Click <b>Allow</b> when DevCat asks here</li>
@@ -166,7 +176,7 @@ function RemoteTab() {
               ) : (
                 <Steps>
                   <li>Install <b>DevCat Mobile</b> on your phone (<button className="text-accent hover:underline" onClick={() => void openUrl(MOBILE_RELEASES_URL)}>Android APK · iPhone</button>)</li>
-                  <li>Join <b>the same Wi-Fi</b> as this computer, or set a public address below</li>
+                  {anywhere ? <li>Any network works: Wi-Fi or mobile data</li> : <li>Join <b>the same Wi-Fi</b> as this computer, or set a public address below</li>}
                   <li>In the app tap <b>Scan QR code</b> and scan this code{pair && <>. It works once and expires in <Countdown until={pair.expiresAt} /></>}</li>
                   <li>Click <b>Allow</b> when DevCat asks here</li>
                 </Steps>
@@ -175,11 +185,12 @@ function RemoteTab() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" onClick={() => void copy(pair.link, "Pairing link")}><Copy className="size-3" />Copy link</Button>
                   {browser && <Button size="sm" variant="ghost" onClick={() => void copy(pair.appLink, "App link")} title="For pasting into the app">Copy app link</Button>}
+                  {pair.hostedLink && pair.webLink && <Button size="sm" variant="ghost" onClick={() => void copy(pair.webLink!, "Same-Wi-Fi link")} title="Opens the page served by this computer: faster, but only on the same network">Copy same-Wi-Fi link</Button>}
                   <Button size="sm" onClick={() => void newCode()}><RefreshCw className="size-3" />New code</Button>
                   <span className="text-[11px] text-faint">Code <span className="font-mono text-muted">{pair.code}</span></span>
                 </div>
               )}
-              {pair && browser && status.addrs.length > 1 && (
+              {pair && browser && !pair.hostedLink && status.addrs.length > 1 && (
                 <label className="flex items-center gap-2 text-[11.5px] text-muted">
                   Address in the code
                   <Select className="w-56" value={qrAddr ?? status.addrs[0]} onChange={(e) => { setQrAddr(e.target.value); void newCode(e.target.value); }}>
@@ -199,11 +210,11 @@ function RemoteTab() {
           <div className="space-y-1.5">
             {devices.map((d) => (
               <div key={d.id} className="flex items-center gap-3 rounded-md border border-line bg-raised px-3 py-2">
-                {d.kind === "web" ? <Globe className="size-4 shrink-0 text-muted" /> : <Smartphone className="size-4 shrink-0 text-muted" />}
+                {d.kind !== "app" ? <Globe className="size-4 shrink-0 text-muted" /> : <Smartphone className="size-4 shrink-0 text-muted" />}
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{d.name}</div>
                   <div className="truncate text-[11px] text-muted">
-                    {d.kind === "web" ? "browser" : "app"} · {d.platform || "phone"} · paired {new Date(d.pairedAt).toLocaleDateString()} ·{" "}
+                    {d.kind !== "app" ? "browser" : "app"} · {d.platform || "phone"} · paired {new Date(d.pairedAt).toLocaleDateString()} ·{" "}
                     {connected(d.id) ? <span className="text-ok">● connected now</span> : d.lastSeen ? `last seen ${ago(d.lastSeen)}` : "never connected"}
                   </div>
                 </div>
@@ -243,7 +254,22 @@ function RemoteTab() {
           <Field label="Port" hint="UDP for the app, TCP for browsers">
             <Input type="number" min={1024} max={65535} value={draft.port} onChange={(e) => setDraft({ ...draft, port: Number(e.target.value) || 0 })} />
           </Field>
-          <Field className="col-span-2" label="Public address (optional)" hint={`For phones outside this network: a host name or IP that reaches this computer. Your router must forward port ${draft.port} (UDP for the app, TCP for browsers) to it.`}>
+          <Field className="col-span-2" label="Reach from other networks"
+            hint={draft.relay === "public"
+              ? "Phones on mobile data or another Wi-Fi connect through iroh's free public relays (like RustDesk's public servers), switching to a direct path when they can. Relays only pass along end-to-end encrypted traffic; they can't read it."
+              : draft.relay === "custom"
+                ? "Your own iroh-relay server (one small program or Docker container on any server with a public address). Nothing goes through third parties."
+                : "Only the same network, or the public address below."}>
+            <div className="flex gap-2">
+              <Select className="w-64" value={draft.relay} onChange={(e) => setDraft({ ...draft, relay: e.target.value as RelayChoice })}>
+                <option value="public">Public relays (recommended)</option>
+                <option value="custom">My own relay</option>
+                <option value="off">Off: same network only</option>
+              </Select>
+              {draft.relay === "custom" && <Input className="flex-1 font-mono" value={draft.relayUrl ?? ""} placeholder="https://relay.example.com" onChange={(e) => setDraft({ ...draft, relayUrl: e.target.value })} />}
+            </div>
+          </Field>
+          <Field className="col-span-2" label="Public address (optional)" hint={`Without a relay: a host name or IP that reaches this computer. Your router must forward port ${draft.port} (UDP for the app, TCP for browsers) to it.`}>
             <Input value={draft.publicAddr ?? ""} placeholder="e.g. devbox.example.com or 203.0.113.40" onChange={(e) => setDraft({ ...draft, publicAddr: e.target.value })} />
           </Field>
         </div>
@@ -398,12 +424,13 @@ function HelpTab() {
   return (
     <div className="space-y-2.5">
       <Item q="How does it work?">
-        <p>The phone talks <b>directly</b> to DevCat on this computer, encrypted end to end with keys made during pairing. There's no DevCat server or account. Your connections, passwords and VPNs stay here; the phone only sends requests and shows the answers.</p>
+        <p>The phone talks to DevCat on this computer, encrypted end to end with keys made during pairing. There's no DevCat server or account. Your connections, passwords and VPNs stay here; the phone only sends requests and shows the answers.</p>
+        <p>On the same network it connects <b>directly</b>. From elsewhere it goes through a <b>relay</b> (iroh's public relays, or your own), which only passes along encrypted traffic, and switches to a direct path when the networks allow it.</p>
       </Item>
       <Item q="The phone says the computer is offline">
         <ul className="list-disc space-y-0.5 pl-4">
           <li>DevCat is running here and <b>Remote access</b> is on</li>
-          <li>Both are on the <b>same Wi-Fi</b> (guest networks often keep devices apart)</li>
+          <li>With relays on (Connection settings), both need internet; otherwise both on the <b>same Wi-Fi</b> (guest networks often keep devices apart)</li>
           <li>The QR code holds one of this computer's addresses; if it has several (Wi-Fi and Ethernet), pick the one the phone can reach under <b>Address in the code</b></li>
           <li>This computer isn't asleep: turn on <b>Keep awake</b> (☕ in the title bar)</li>
           <li>macOS firewall: allow DevCat to accept incoming connections if it asks</li>
@@ -411,7 +438,8 @@ function HelpTab() {
         </ul>
       </Item>
       <Item q="Reaching this computer from outside (4G, another network)">
-        <p>Needs a public address: on your router forward the <b>port</b> (Remote access → Connection settings; UDP for the app, TCP for browsers) to this computer, and enter your public IP or host name as <b>Public address</b>. Then pair again (or add the address in the app). Only paired phones get in; everyone else is refused.</p>
+        <p>Leave <b>Reach from other networks</b> on <b>Public relays</b> (the default) and pair: it works from anywhere, nothing to set up. Prefer no third party? Run your own <button className="text-accent hover:underline" onClick={() => void openUrl("https://github.com/n0-computer/iroh/tree/main/iroh-relay")}>iroh-relay</button> and choose <b>My own relay</b>.</p>
+        <p>Or, without relays, a public address: on your router forward the <b>port</b> (Remote access → Connection settings; UDP for the app, TCP for browsers) to this computer, and enter your public IP or host name as <b>Public address</b>. Then pair again (or add the address in the app). Only paired phones get in; everyone else is refused.</p>
       </Item>
       <Item q="App or browser?">
         <p>The QR code opens DevCat in the phone's <b>browser</b>: nothing to install, works on any phone. Traffic is encrypted with a key from the code, but the page itself comes over plain HTTP, so someone who controls the Wi-Fi could tamper with it. The <b>app</b> doesn't have that gap and scans codes itself; on the landing page tap <b>Open in DevCat app</b> to pair the app instead. Turn <b>Allow phone browsers</b> off to require the app.</p>

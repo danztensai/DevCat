@@ -24,6 +24,21 @@ pub struct RemoteSettings {
     /// Also serve DevCat Mobile to phone browsers (TCP, same port number).
     #[serde(default = "yes")]
     pub web: bool,
+    /// How phones on other networks get here: through iroh's public relays, your own relay
+    /// (`relay_url`), or not at all (same network / public address only).
+    #[serde(default)]
+    pub relay: RelayChoice,
+    #[serde(default)]
+    pub relay_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RelayChoice {
+    #[default]
+    Public,
+    Custom,
+    Off,
 }
 
 fn yes() -> bool {
@@ -34,9 +49,20 @@ fn default_port() -> u16 {
     devcat_remote_proto::DEFAULT_PORT
 }
 
+impl RemoteSettings {
+    /// The relay as phones see it ([`devcat_remote_proto::RELAY_PUBLIC`] or a URL); `None` when off.
+    pub fn relay_value(&self) -> Option<String> {
+        match self.relay {
+            RelayChoice::Public => Some(devcat_remote_proto::RELAY_PUBLIC.into()),
+            RelayChoice::Custom => self.relay_url.clone().filter(|u| !u.is_empty()),
+            RelayChoice::Off => None,
+        }
+    }
+}
+
 impl Default for RemoteSettings {
     fn default() -> Self {
-        Self { enabled: false, host_name: None, port: default_port(), public_addr: None, web: true }
+        Self { enabled: false, host_name: None, port: default_port(), public_addr: None, web: true, relay: RelayChoice::Public, relay_url: None }
     }
 }
 
@@ -52,7 +78,8 @@ pub struct Device {
     pub paired_at: i64,
     #[serde(default)]
     pub last_seen: Option<i64>,
-    /// "app" (DevCat Mobile) or "web" (a phone browser).
+    /// "app" (DevCat Mobile), "web" (a phone browser on this computer's page) or "browser" (the
+    /// hosted page, through the relay; same protocol as the app).
     #[serde(default = "app_kind")]
     pub kind: String,
     /// Browsers: the device secret (base64url) their session keys come from. Never sent to

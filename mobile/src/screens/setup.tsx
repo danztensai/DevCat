@@ -1,7 +1,7 @@
 // First launch and pairing: welcome guide, QR scan, paste link, approval wait, computer list.
 import { Clipboard, Laptop, Monitor, Plus, QrCode, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
-import { IS_WEB, isPairLink } from "../lib/env";
+import { IS_HOSTED, IS_WEB, isPairLink } from "../lib/env";
 import { errMsg, onPair, phone } from "../lib/rpc";
 import { loadMachines, nav, selectMachine, toast, useApp } from "../lib/store";
 import { appLink, parseLink } from "../web/client";
@@ -21,12 +21,12 @@ function StepRow({ n, title, meta }: { n: number; title: string; meta: string })
 export function Welcome() {
   return (
     <div className="flex h-full flex-col gap-3 px-5" style={{ paddingTop: "max(36px, env(safe-area-inset-top))", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
-      <img src="/icon.png" alt="" className="size-14 rounded-2xl" />
+      <img src={`${import.meta.env.BASE_URL}icon.png`} alt="" className="size-14 rounded-2xl" />
       <div className="text-[24px] font-bold">DevCat Mobile</div>
       <div className="text-muted">Watch your AI agents and reach your databases, Redis, VPNs and clusters through DevCat on your computer.</div>
       <div className="pt-2 text-[10.5px] font-semibold tracking-wider text-faint uppercase">Set up in 3 steps</div>
       <StepRow n={1} title="Open DevCat on your computer" meta="Title bar → 📱 Mobile → turn on" />
-      <StepRow n={2} title="Same Wi-Fi as the computer" meta="or it has a public address" />
+      <StepRow n={2} title="Any network: Wi-Fi or mobile data" meta="through a relay (the default); with relays off, the same Wi-Fi" />
       <StepRow n={3} title={IS_WEB ? "Scan the QR code with your camera" : "Scan the QR code it shows"} meta={IS_WEB ? "it opens this page, ready to pair" : "then click Allow on the computer"} />
       <div className="flex-1" />
       {IS_WEB ? (
@@ -209,7 +209,7 @@ export function Computers() {
           </Card>
         );
       })}
-      <Note>A computer is <b>Offline</b> when DevCat isn't running there, Remote access is off, or this phone isn't on the same network. <button className="font-semibold text-accent" onClick={() => nav.push({ s: "help" })}>Help</button></Note>
+      <Note>A computer is <b>Offline</b> when DevCat isn't running there, Remote access is off, or this phone has no internet (with the computer's relays off: isn't on the same network). <button className="font-semibold text-accent" onClick={() => nav.push({ s: "help" })}>Help</button></Note>
       {!IS_WEB && <Btn block onClick={() => nav.push({ s: "scan" })}><Smartphone className="size-4" />Pair another computer</Btn>}
     </Screen>
   );
@@ -228,7 +228,7 @@ export function WebLanding({ link }: { link: string }) {
   };
   return (
     <div className="flex h-full flex-col gap-3 px-5" style={{ paddingTop: "max(36px, env(safe-area-inset-top))", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
-      <img src="/icon.png" alt="" className="size-14 rounded-2xl" />
+      <img src={`${import.meta.env.BASE_URL}icon.png`} alt="" className="size-14 rounded-2xl" />
       <div className="text-[24px] font-bold">Pair with {info.name}</div>
       <div className="text-muted">Control DevCat on this computer from your phone: agents, databases, Redis, VPNs and clusters.</div>
       <Card>
@@ -239,7 +239,9 @@ export function WebLanding({ link }: { link: string }) {
       </Card>
       <Card>
         <div className="font-semibold">Or use this browser</div>
-        <div className="mt-1 text-[12.5px] text-muted">Nothing to install. Traffic is encrypted with a key from the QR code; on public Wi-Fi prefer the app.</div>
+        <div className="mt-1 text-[12.5px] text-muted">{IS_HOSTED
+          ? "Nothing to install, works on any network. Encrypted end to end between this browser and the computer."
+          : "Nothing to install. Traffic is encrypted with a key from the QR code; on public Wi-Fi prefer the app."}</div>
         <Btn block className="mt-3" onClick={() => nav.replace({ s: "pairing", link })}>Continue in browser</Btn>
       </Card>
       <div className="flex-1" />

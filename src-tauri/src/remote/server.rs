@@ -6,7 +6,7 @@
 use super::store::{AuditEntry, Device, RemoteStore};
 use devcat_remote_proto::{ALPN, ClientMsg, DeviceInfo, HostInfo, HostMsg, read_frame, write_frame};
 use iroh::endpoint::{Connection, presets};
-use iroh::{Endpoint, RelayMode, SecretKey};
+use iroh::{Endpoint, RelayMode, RelayUrl, SecretKey};
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -206,11 +206,20 @@ impl Host {
     }
 
     /// Listen on `port`: UDP for the app (all interfaces) and, with `web`, TCP for browsers.
-    pub async fn start(self: &Arc<Self>, port: u16, web: bool) -> Result<(), String> {
+    /// `relay`: [`devcat_remote_proto::RELAY_PUBLIC`] (iroh's public relays, found by phones
+    /// through iroh's DNS lookup), a relay URL, or `None` (direct connections only).
+    pub async fn start(self: &Arc<Self>, port: u16, web: bool, relay: Option<&str>) -> Result<(), String> {
         self.stop().await;
         let key = SecretKey::from_bytes(&self.store.secret_key().map_err(|e| e.to_string())?);
-        let builder = Endpoint::builder(presets::Minimal)
-            .relay_mode(RelayMode::Disabled)
+        let builder = match relay {
+            None => Endpoint::builder(presets::Minimal).relay_mode(RelayMode::Disabled),
+            Some(devcat_remote_proto::RELAY_PUBLIC) => Endpoint::builder(presets::N0),
+            Some(url) => {
+                let url: RelayUrl = url.parse().map_err(|_| format!("Not a relay address: {url} (it looks like https://relay.example.com)"))?;
+                Endpoint::builder(presets::Minimal).relay_mode(RelayMode::custom([url]))
+            }
+        };
+        let builder = builder
             .secret_key(key)
             .alpns(vec![ALPN.to_vec()])
             .bind_addr(format!("0.0.0.0:{port}").as_str())
@@ -219,6 +228,14 @@ impl Host {
             let s = e.to_string();
             if s.to_lowercase().contains("in use") { format!("Port {port} is already in use. Pick another port.") } else { format!("Couldn't listen on port {port}: {s}") }
         })?;
+        if relay.is_some() {
+            // Show the relay as connected once it is.
+            let (ep, me) = (endpoint.clone(), self.clone());
+            tokio::spawn(async move {
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(30), ep.online()).await;
+                me.backend.changed();
+            });
+        }
         let (ep, me) = (endpoint.clone(), self.clone());
         let task = tokio::spawn(async move {
             while let Some(incoming) = ep.accept().await {
@@ -253,6 +270,11 @@ impl Host {
         *self.running.lock() = Some(Running { endpoint, task, web: web_task });
         self.backend.changed();
         Ok(())
+    }
+
+    /// The relay this computer is connected to right now, if any.
+    pub fn home_relay(&self) -> Option<String> {
+        self.running.lock().as_ref().and_then(|r| r.endpoint.addr().relay_urls().next().map(|u| u.to_string()))
     }
 
     pub async fn stop(&self) {
@@ -399,7 +421,7 @@ impl Host {
             return;
         };
         let hello = match tokio::time::timeout(HELLO_TIMEOUT, read_frame::<_, ClientMsg>(&mut recv)).await {
-            Ok(Ok(Some(ClientMsg::Hello { name, platform, app_version: _, pair_code }))) => (name, platform, pair_code),
+            Ok(Ok(Some(ClientMsg::Hello { name, platform, app_version, pair_code }))) => (name, platform, pair_code, app_version),
             _ => {
                 conn.close(1u32.into(), b"expected hello");
                 return;
@@ -418,7 +440,9 @@ impl Host {
                     if write_frame(&mut send, &HostMsg::Pairing { host_name }).await.is_err() {
                         return;
                     }
-                    let new = Device { id: device_id.clone(), name, platform, access: String::new(), paired_at: 0, last_seen: None, kind: "app".into(), secret: None };
+                    // The hosted browser version speaks the app protocol through the relay ("web" version).
+                    let kind = if hello.3 == "web" { "browser" } else { "app" };
+                    let new = Device { id: device_id.clone(), name, platform, access: String::new(), paired_at: 0, last_seen: None, kind: kind.into(), secret: None };
                     let c2 = conn.clone();
                     self.approve_new(new, addr.clone(), async move {
                         c2.closed().await;
@@ -559,7 +583,7 @@ pub(crate) mod tests {
             self.allow.then(|| "readonly".to_string())
         }
         fn host_info(&self) -> HostInfo {
-            HostInfo { id: String::new(), name: "Test Mac".into(), os: "macos".into(), app_version: "0".into(), addrs: vec![] }
+            HostInfo { id: String::new(), name: "Test Mac".into(), os: "macos".into(), app_version: "0".into(), addrs: vec![], relay: None }
         }
         fn changed(&self) {}
         async fn disconnected(&self, _: &Arc<Client>) {
@@ -603,7 +627,7 @@ pub(crate) mod tests {
         let backend = Arc::new(TestBackend { allow: true, events: Mutex::new(vec![]) });
         let host = Host::new(tmp_store(), backend.clone());
         let port = free_port();
-        host.start(port, false).await.unwrap();
+        host.start(port, false, None).await.unwrap();
         let host_id = host.endpoint_id().unwrap();
         let key = SecretKey::generate();
 
@@ -663,7 +687,7 @@ pub(crate) mod tests {
         let backend = Arc::new(TestBackend { allow: false, events: Mutex::new(vec![]) });
         let host = Host::new(tmp_store(), backend);
         let port = free_port();
-        host.start(port, false).await.unwrap();
+        host.start(port, false, None).await.unwrap();
         let id = host.endpoint_id().unwrap();
         let (code, _, _) = host.pair_start();
         let (_p, m) = phone(&SecretKey::generate(), &id, port, Some(&code)).await;
@@ -682,9 +706,9 @@ pub(crate) mod tests {
     async fn port_in_use_is_explained() {
         let a = Host::new(tmp_store(), Arc::new(TestBackend { allow: true, events: Mutex::new(vec![]) }));
         let port = free_port();
-        a.start(port, false).await.unwrap();
+        a.start(port, false, None).await.unwrap();
         let b = Host::new(tmp_store(), Arc::new(TestBackend { allow: true, events: Mutex::new(vec![]) }));
-        let err = b.start(port, false).await.unwrap_err();
+        let err = b.start(port, false, None).await.unwrap_err();
         assert!(err.contains(&port.to_string()), "{err}");
         a.stop().await;
     }

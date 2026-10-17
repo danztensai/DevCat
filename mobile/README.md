@@ -4,12 +4,13 @@ A remote control for DevCat on your computer: watch AI agents (and get told when
 
 Files (the **Files** tab, or **Browse files** in an agent's menu) uploads and downloads files, and copies a file's path relative to the project (⋯ menu) to paste into an agent's chat. It can't open folders with keys or credentials (`~/.ssh`, `~/.aws`, `~/.kube`, …) or DevCat's own data.
 
-There's no DevCat server and no account. The phone talks **directly** to DevCat on your computer (same Wi-Fi, or a computer with a public address), encrypted end to end with keys created when you pair. Connection profiles and passwords stay on the computer; the phone only keeps its own key and the list of computers it paired with.
+There's no DevCat server and no account. The phone talks to DevCat on your computer, encrypted end to end with keys created when you pair: **directly** on the same network, and from any other network (mobile data, another Wi-Fi) through a **relay**, switching to a direct path when the networks allow it (like RustDesk). The relay only forwards encrypted packets. By default these are [iroh](https://iroh.computer)'s free public relays; DevCat → 📱 → **Reach from other networks** can point at your own [iroh-relay](https://github.com/n0-computer/iroh/tree/main/iroh-relay) or turn relays off. Connection profiles and passwords stay on the computer; the phone only keeps its own key and the list of computers it paired with.
 
 ```
-Phone (DevCat Mobile) ──QUIC, direct, encrypted──► DevCat on the computer ──► databases, Redis, VPNs, clusters, agents
-                                                              │
-ntfy app on the phone ◄──── push "finished / needs you" ──────┘  (optional, via ntfy.sh or your own ntfy server)
+Phone (app or browser) ──QUIC, encrypted──► DevCat on the computer ──► databases, Redis, VPNs, clusters, agents
+        │   same network: direct              ▲         │
+        └── elsewhere: via the relay ─────────┘         │
+ntfy app on the phone ◄──── push "finished / needs you" ┘  (optional, via ntfy.sh or your own ntfy server)
 ```
 
 ## Using it
@@ -23,10 +24,14 @@ ntfy app on the phone ◄──── push "finished / needs you" ────�
 
 ### App or browser
 
-Both have the same screens. The browser version is served by DevCat on the computer (TCP, same port number as the
-app's UDP) and encrypts every message with a key that comes from the QR code: the part of the link after `#`,
-which browsers never send over the network (protocol: `crates/remote-proto/src/web.rs`). The page itself is
-plain HTTP, so someone who controls the Wi-Fi could alter it; the app has no such gap. Browsers also can't scan
+Both have the same screens. With relays on, the QR code opens the browser version on GitHub Pages
+(`https://devileya.github.io/DevCat/`, over HTTPS). It reaches the computer through the relay with an iroh endpoint
+compiled to WebAssembly (`mobile/web-iroh`), speaking the same protocol as the app, so it works on any network.
+The pairing details are in the part of the link after `#`, which browsers never send to the page's server.
+
+With relays off, the QR code opens the copy served by DevCat on the computer (TCP, same port number as the app's
+UDP), which encrypts every message with a key from the QR code (protocol: `crates/remote-proto/src/web.rs`). That
+page is plain HTTP, so someone who controls the Wi-Fi could alter it; the app has no such gap. Browsers also can't scan
 codes in the page (use the camera app) or show notifications (use ntfy). DevCat → 📱 → **Allow phone browsers**
 turns the browser version off.
 
@@ -36,13 +41,15 @@ Both apps have a **Help** section for the usual problems (offline computer, fire
 
 ### Reaching the computer from outside the network
 
-Forward the port shown in DevCat → 📱 (47100 by default; **UDP** for the app, **TCP** for browsers) on your router to the computer, enter your public IP or host name as **Public address** there, and pair again (or add the address in the app under More → Computer settings). Only paired phones are let in.
+Nothing to do with relays on (the default): pair and use it anywhere. Without relays, forward the port shown in DevCat → 📱 (47100 by default; **UDP** for the app, **TCP** for browsers) on your router to the computer, enter your public IP or host name as **Public address** there, and pair again (or add the address in the app under More → Computer settings). Only paired phones are let in.
 
 ## Building
 
 The frontend is `mobile/src` (React, built by `mobile/vite.config.ts`); the native side is `mobile/src-tauri` (Tauri 2). Both share the wire protocol in `crates/remote-proto` with the desktop app (`src-tauri/src/remote`).
 
 The browser version is the same frontend built with `pnpm mobile:web` (→ `mobile/dist-web`, with `mobile/src/web` standing in for the Tauri APIs); the desktop build embeds it (`src-tauri/build.rs`). `pnpm mobile:check-crypto` checks the browser crypto against the Rust known answer.
+
+The hosted version (GitHub Pages, `.github/workflows/pages.yml`): `mobile/web-iroh/build.sh` (WebAssembly; needs `rustup target add wasm32-unknown-unknown`, `rustup component add llvm-tools` on macOS, and `wasm-bindgen-cli` matching `mobile/web-iroh/Cargo.lock`), then `pnpm mobile:hosted` (→ `mobile/dist-hosted`). To try it against the demo host: `DEVCAT_DEMO_RELAY=public DEVCAT_DEMO_PAGE=http://127.0.0.1:8090/ cargo run --example remotedemo` and serve `mobile/dist-hosted` on port 8090.
 
 Requirements: Node 22 + pnpm, Rust, and the platform SDKs below. Run commands from `mobile/`.
 

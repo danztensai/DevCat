@@ -104,6 +104,7 @@ export function MachineSettings() {
         <span className="text-muted">Paired</span><span>{new Date(m.addedAt).toLocaleString()}</span>
         <span className="text-muted">Last seen</span><span>{m.lastSeen ? ago(m.lastSeen) : "—"}</span>
         <span className="text-muted">Access</span><span>{m.access === "readonly" ? "Read-only" : "Full"} (change on the computer)</span>
+        <span className="text-muted">Other networks</span><span className="break-all">{!m.relay ? "Off (same network only)" : m.relay === "public" ? "Through public relays" : <>Through <span className="font-mono text-[11.5px]">{m.relay}</span></>}</span>
         <span className="text-muted">Key</span><span className="font-mono text-[11px] break-all">{m.id}</span>
       </div>
     </Screen>
@@ -186,7 +187,8 @@ export function Help() {
   return (
     <Screen title="Help & troubleshooting">
       <Q q="How does it work?">
-        <p>This app talks <b>directly</b> to DevCat on your computer, encrypted with keys made when you paired. There's no DevCat server or account. Connections, passwords and VPNs stay on the computer; the phone sends requests and shows the answers.</p>
+        <p>This app talks to DevCat on your computer, encrypted end to end with keys made when you paired. There's no DevCat server or account. Connections, passwords and VPNs stay on the computer; the phone sends requests and shows the answers.</p>
+        <p>On the same network it connects <b>directly</b>. Elsewhere it goes through the computer's <b>relay</b>, which only passes along encrypted traffic, and switches to a direct path when the networks allow it.</p>
       </Q>
       <Q q="Setting up the computer">
         <p>1. Open DevCat on the computer. 2. Click the <b>📱</b> icon in the title bar (next to ☕). 3. Turn <b>Remote access</b> on. 4. Click <b>Show pairing code</b> and scan it here. 5. Click <b>Allow</b> on the computer.</p>
@@ -194,7 +196,7 @@ export function Help() {
       <Q q="The computer shows Offline">
         <ul className="list-disc space-y-1 pl-4">
           <li>DevCat is open on the computer and Remote access is <b>on</b></li>
-          <li>Both are on the <b>same Wi-Fi</b>. Guest networks often keep devices apart</li>
+          <li>This phone has internet. If the computer's relays are off (DevCat → Mobile → Reach from other networks), both must be on the <b>same Wi-Fi</b>; guest networks often keep devices apart</li>
           <li>The computer isn't asleep: turn on <b>Keep awake</b> (More tab, or ☕ on the computer)</li>
           <li>macOS asked whether DevCat may accept incoming connections: click <b>Allow</b> (System Settings → Network → Firewall)</li>
           <li>A VPN on this phone can block the local network: pause it or allow LAN access</li>
@@ -202,7 +204,8 @@ export function Help() {
         </ul>
       </Q>
       <Q q="Reaching the computer from outside (4G, another network)">
-        <p>The computer needs a public address. On your router, forward the <b>UDP port</b> shown in DevCat → Mobile (47100 by default) to the computer, and enter your public IP or host name as <b>Public address</b> there. Then add it here under More → Computer settings → Your own addresses. Only paired phones get in.</p>
+        <p>Works out of the box: DevCat → Mobile → <b>Reach from other networks</b> is on <b>Public relays</b> by default. If it was off when you paired, turn it on and pair again.</p>
+        <p>Without relays the computer needs a public address. On your router, forward the <b>UDP port</b> shown in DevCat → Mobile (47100 by default) to the computer, and enter your public IP or host name as <b>Public address</b> there. Then add it here under More → Computer settings → Your own addresses. Only paired phones get in.</p>
       </Q>
       <Q q="Pairing fails">
         <p>The code works <b>once</b> and expires after <b>5 minutes</b>. On the computer click <b>New code</b> and scan again. Five wrong tries cancel the code.</p>

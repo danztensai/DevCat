@@ -11,7 +11,7 @@ import { FileView, Files, FilesHome } from "./screens/files";
 import { Cluster, NetLog, Network, Pod } from "./screens/ops";
 import { IS_WEB, isPairLink } from "./lib/env";
 import { Computers, Pairing, Paste, Scan, WebLanding, Welcome, prefersApp } from "./screens/setup";
-import { appLink, parseLink, saved as webSaved } from "./web/client";
+import { appLink, pairedHostId, parseLink } from "./web/client";
 import { Loading, Toasts } from "./ui";
 
 function screen(r: Route) {
@@ -80,8 +80,7 @@ async function boot() {
   useApp.setState({ info });
   if (webLink) {
     const l = parseLink(webLink);
-    const s = webSaved();
-    if (l && s && s.hostId === l.id) {
+    if (l && pairedHostId() === l.id) {
       // Already paired with this computer in this browser: just open it.
     } else if (l && prefersApp()) {
       location.href = appLink(l);

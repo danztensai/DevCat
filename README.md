@@ -63,9 +63,11 @@ logs and deployments.
 </tr>
 </table>
 
-- **No server, no account.** The phone connects **directly** to DevCat on your computer (same Wi-Fi, or a
-  computer with a public address), encrypted end to end with keys made when you pair. Profiles and passwords stay
-  on the computer; the phone only keeps the list of computers it paired with.
+- **No server, no account, any network.** The phone connects to DevCat on your computer, encrypted end to end
+  with keys made when you pair: directly on the same Wi-Fi, and from anywhere else (mobile data, another
+  network) through a relay that only forwards encrypted traffic, like RustDesk. iroh's free public relays by
+  default, or your own. Profiles and passwords stay on the computer; the phone only keeps the list of computers
+  it paired with.
 - **App or browser**: DevCat → 📱 in the title bar → turn on **Remote access** → point the phone's camera at the
   QR code. It opens DevCat in the phone's browser (nothing to install); tap **Open in DevCat app** to pair the app
   instead, or **Continue in browser**. Then click **Allow** on the computer. Browser sessions are encrypted with a

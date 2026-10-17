@@ -12,7 +12,12 @@ export interface RemoteSettings {
   publicAddr?: string | null;
   /** Also serve DevCat Mobile to phone browsers (TCP, same port). */
   web: boolean;
+  /** How phones on other networks get here: iroh's public relays, your own relay, or not at all. */
+  relay: RelayChoice;
+  relayUrl?: string | null;
 }
+
+export type RelayChoice = "public" | "custom" | "off";
 
 export interface ClientInfo {
   deviceId: string;
@@ -45,6 +50,8 @@ export interface RemoteStatus {
   webError?: string | null;
   /** This build includes the browser version. */
   webAvailable: boolean;
+  /** The relay this computer is connected to right now. */
+  relayConnected?: string | null;
 }
 
 export type Access = "full" | "readonly";
@@ -64,7 +71,10 @@ export interface PairInfo {
   /** What the QR code holds: the browser link when browser access is on, else the app link. */
   link: string;
   appLink: string;
+  /** Same-network browser link (http://this computer/…). */
   webLink?: string | null;
+  /** Browser link that works on any network (the hosted page, through the relay). */
+  hostedLink?: string | null;
   code: string;
   svg: string;
   expiresAt: number;

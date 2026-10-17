@@ -1,11 +1,12 @@
 //! Connections from this phone to paired computers: one QUIC connection per computer, made
-//! directly to its address (no relay). Calls are multiplexed over one stream and answered by id;
+//! directly to its address and, if it has one, through its relay. Calls are multiplexed over one stream and answered by id;
 //! events from the computer are handed to the app. Connections are opened on demand and
 //! dropped when the network changes; the app reconnects by calling again.
 use crate::store::{Machine, Store, merged_addrs, now_ms};
-use devcat_remote_proto::{ALPN, ClientMsg, DeviceInfo, HostInfo, HostMsg, PairLink, read_frame, write_frame};
+use devcat_remote_proto::{ALPN, ClientMsg, DeviceInfo, HostInfo, HostMsg, PairLink, RELAY_PUBLIC, read_frame, write_frame};
 use iroh::endpoint::{Connection, presets};
-use iroh::{Endpoint, EndpointAddr, RelayMode, SecretKey};
+use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey};
+use std::collections::BTreeSet;
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -69,7 +70,8 @@ pub struct Client {
     store: Arc<Store>,
     sink: Sink,
     hello: Mutex<Hello>,
-    endpoint: tokio::sync::Mutex<Option<Endpoint>>,
+    /// The endpoint and the relays it was made with.
+    endpoint: tokio::sync::Mutex<Option<(Endpoint, BTreeSet<String>)>>,
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     /// One connect at a time per computer.
     connecting: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
@@ -92,8 +94,8 @@ async fn resolve(addrs: &[String]) -> Vec<SocketAddr> {
 fn friendly(e: impl std::fmt::Display, name: &str) -> String {
     let s = e.to_string();
     let low = s.to_lowercase();
-    if low.contains("timed out") || low.contains("timeout") || low.contains("no addressing") || low.contains("unreachable") {
-        format!("Couldn't reach {name}. Check that it's on the same Wi-Fi (or its public address works), DevCat is open there and Remote access is on.")
+    if low.contains("timed out") || low.contains("timeout") || low.contains("no addressing") || low.contains("unreachable") || low.contains("no address") {
+        format!("Couldn't reach {name}. Check that DevCat is open there with Remote access on, and that this phone has internet (or is on the same Wi-Fi when relays are off).")
     } else {
         format!("Couldn't connect to {name}: {s}")
     }
@@ -125,18 +127,37 @@ impl Client {
         self.hello.lock().clone()
     }
 
-    async fn endpoint(&self) -> Result<Endpoint, String> {
+    /// The phone's endpoint, able to use the relays of every paired computer (and `extra`, the
+    /// relay of a computer being paired). Made again when a new relay is needed.
+    async fn endpoint(&self, extra: Option<&str>) -> Result<Endpoint, String> {
+        let mut want: BTreeSet<String> = self.store.machines().into_iter().filter_map(|m| m.relay).collect();
+        want.extend(extra.map(str::to_string));
         let mut ep = self.endpoint.lock().await;
-        if let Some(e) = ep.as_ref() {
-            return Ok(e.clone());
+        if let Some((e, has)) = ep.as_ref() {
+            if want.is_subset(has) {
+                return Ok(e.clone());
+            }
         }
-        let e = Endpoint::builder(presets::Minimal)
-            .relay_mode(RelayMode::Disabled)
-            .secret_key(self.key.clone())
-            .bind()
-            .await
-            .map_err(|e| format!("Couldn't start networking: {e}"))?;
-        *ep = Some(e.clone());
+        if let Some((old, _)) = ep.take() {
+            let dropped: Vec<String> = self.sessions.lock().drain().map(|(id, _)| id).collect();
+            old.close().await;
+            for id in dropped {
+                self.state(&id, "offline", None);
+            }
+        }
+        let customs: Vec<RelayUrl> = want.iter().filter(|r| r.as_str() != RELAY_PUBLIC).filter_map(|r| r.parse().ok()).collect();
+        let builder = if want.contains(RELAY_PUBLIC) {
+            // iroh's public relays, plus its DNS lookup to find which one the computer is on.
+            let map = RelayMode::Default.relay_map();
+            map.extend(&RelayMode::custom(customs).relay_map());
+            Endpoint::builder(presets::N0).relay_mode(RelayMode::Custom(map))
+        } else if !customs.is_empty() {
+            Endpoint::builder(presets::Minimal).relay_mode(RelayMode::custom(customs))
+        } else {
+            Endpoint::builder(presets::Minimal).relay_mode(RelayMode::Disabled)
+        };
+        let e = builder.secret_key(self.key.clone()).bind().await.map_err(|e| format!("Couldn't start networking: {e}"))?;
+        *ep = Some((e.clone(), want));
         Ok(e)
     }
 
@@ -149,16 +170,20 @@ impl Client {
     }
 
     /// Open a connection (used for both pairing and normal use).
-    async fn open(self: &Arc<Self>, machine_id: &str, name: &str, addrs: &[String], pair_code: Option<String>) -> Result<Arc<Session>, String> {
-        let ep = self.endpoint().await?;
+    /// `relay`: the computer's relay ([`RELAY_PUBLIC`]: found through iroh's DNS lookup).
+    async fn open(self: &Arc<Self>, machine_id: &str, name: &str, addrs: &[String], relay: Option<&str>, pair_code: Option<String>) -> Result<Arc<Session>, String> {
+        let ep = self.endpoint(relay).await?;
         let id = machine_id.parse().map_err(|_| "Invalid computer id".to_string())?;
         let sock = resolve(addrs).await;
-        if sock.is_empty() {
-            return Err(format!("{name} has no address this phone can use. Add one in the computer's settings on this phone."));
+        if sock.is_empty() && relay.is_none() {
+            return Err(format!("{name} has no address this phone can use. Add one in the computer's settings on this phone, or turn on relays on the computer."));
         }
         let mut addr = EndpointAddr::new(id);
         for s in sock {
             addr = addr.with_ip_addr(s);
+        }
+        if let Some(url) = relay.filter(|r| *r != RELAY_PUBLIC).and_then(|r| r.parse::<RelayUrl>().ok()) {
+            addr = addr.with_relay_url(url);
         }
         let conn = tokio::time::timeout(CONNECT_TIMEOUT, ep.connect(addr, ALPN))
             .await
@@ -264,7 +289,7 @@ impl Client {
         }
         let m = self.store.machine(machine_id).ok_or_else(|| "This computer isn't paired any more".to_string())?;
         self.state(machine_id, "connecting", None);
-        match self.open(&m.id, &m.name, &m.addrs, None).await {
+        match self.open(&m.id, &m.name, &m.addrs, m.relay.as_deref(), None).await {
             Ok(s) => {
                 self.remember(&m, &s);
                 self.sessions.lock().insert(m.id.clone(), s.clone());
@@ -286,6 +311,7 @@ impl Client {
             x.app_version = s.host.app_version.clone();
             x.access = s.device.access.clone();
             x.addrs = merged_addrs(&x.manual_addrs, if s.host.addrs.is_empty() { &m.addrs } else { &s.host.addrs });
+            x.relay = s.host.relay.clone();
             x.last_seen = Some(now_ms());
         });
     }
@@ -302,7 +328,7 @@ impl Client {
         let manual: Vec<String> = extra_addr.map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).into_iter().collect();
         let addrs = merged_addrs(&manual, &l.addrs);
         (self.sink)("m-pair", json!({ "stage": "connecting", "hostName": l.name }));
-        let s = self.open(&l.id, &l.name, &addrs, Some(l.code.clone())).await?;
+        let s = self.open(&l.id, &l.name, &addrs, l.relay.as_deref(), Some(l.code.clone())).await?;
         let m = Machine {
             id: l.id.clone(),
             name: s.host.name.clone(),
@@ -313,6 +339,7 @@ impl Client {
             added_at: now_ms(),
             last_seen: Some(now_ms()),
             manual_addrs: manual,
+            relay: s.host.relay.clone().or(l.relay.clone()),
         };
         self.store.upsert(m.clone())?;
         if let Some(old) = self.sessions.lock().insert(m.id.clone(), s) {
@@ -337,7 +364,7 @@ impl Client {
         for id in ids {
             self.disconnect(&id);
         }
-        if let Some(ep) = self.endpoint.lock().await.as_ref() {
+        if let Some((ep, _)) = self.endpoint.lock().await.as_ref() {
             ep.network_change().await;
         }
     }

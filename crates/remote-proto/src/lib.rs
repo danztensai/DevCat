@@ -1,8 +1,10 @@
 //! DevCat remote access: the wire protocol between DevCat on a computer (the host) and the
 //! DevCat mobile app (the client). Shared by both so they can't drift apart.
 //!
-//! Transport: one iroh (QUIC) connection per phone, ALPN [`ALPN`], made directly to the host's
-//! address (same network, or a host with a public address; no relay servers). The client opens a single
+//! Transport: one iroh (QUIC) connection per phone, ALPN [`ALPN`]. iroh tries the host's
+//! addresses directly and, when the host has a relay ([`PairLink::relay`]), also goes through
+//! the relay and punches a direct path from there (other networks). Relays only forward
+//! end-to-end encrypted packets. The client opens a single
 //! bidirectional stream and both sides exchange length-prefixed JSON frames on it:
 //!   u32 big-endian length, then that many bytes of JSON ([`ClientMsg`] / [`HostMsg`]).
 //!
@@ -80,7 +82,14 @@ pub struct HostInfo {
     /// Where the host listens right now ("ip:port"), so phones follow address changes.
     #[serde(default)]
     pub addrs: Vec<String>,
+    /// The relay the host uses: [`RELAY_PUBLIC`] or a relay URL; none when relays are off.
+    #[serde(default)]
+    pub relay: Option<String>,
 }
+
+/// [`PairLink::relay`] / [`HostInfo::relay`] value for iroh's public relays (the host's current
+/// relay is then found through iroh's DNS lookup).
+pub const RELAY_PUBLIC: &str = "public";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,6 +169,8 @@ pub struct PairLink {
     pub name: String,
     /// Addresses to try ("ip:port" or "host:port"), most likely first.
     pub addrs: Vec<String>,
+    /// The host's relay ([`RELAY_PUBLIC`] or a relay URL), for reaching it from other networks.
+    pub relay: Option<String>,
 }
 
 pub const PAIR_SCHEME: &str = "devcat://pair";
@@ -167,6 +178,22 @@ pub const PAIR_SCHEME: &str = "devcat://pair";
 impl PairLink {
     pub fn to_url(&self) -> String {
         let mut s = format!("{PAIR_SCHEME}?v=1&id={}&code={}&name={}", enc(&self.id), enc(&self.code), enc(&self.name));
+        for a in &self.addrs {
+            s.push_str(&format!("&addr={}", enc(a)));
+        }
+        if let Some(r) = &self.relay {
+            s.push_str(&format!("&relay={}", enc(r)));
+        }
+        s
+    }
+
+    /// The link for the hosted browser version (`page`, e.g. `https://…github.io/DevCat/`), which
+    /// connects through the relay: `<page>#v=1&id=…&code=…&name=…&relay=…[&addr=…]`.
+    pub fn to_hosted_url(&self, page: &str) -> String {
+        let mut s = format!("{page}#v=1&id={}&code={}&name={}", enc(&self.id), enc(&self.code), enc(&self.name));
+        if let Some(r) = &self.relay {
+            s.push_str(&format!("&relay={}", enc(r)));
+        }
         for a in &self.addrs {
             s.push_str(&format!("&addr={}", enc(a)));
         }
@@ -181,23 +208,28 @@ impl PairLink {
         for a in self.addrs.iter().skip(1) {
             s.push_str(&format!("&addr={}", enc(a)));
         }
+        if let Some(r) = &self.relay {
+            s.push_str(&format!("&relay={}", enc(r)));
+        }
         s
     }
 
     /// Accepts the link with surrounding whitespace (pasted text): `devcat://pair?…`, or the
-    /// browser link `http://host:port/#…` (its host:port becomes the first address).
+    /// browser link `http://host:port/#…` (its host:port becomes the first address), or the hosted
+    /// browser link `https://…#…`.
     pub fn parse(s: &str) -> Result<Self, String> {
         let s = s.trim();
         let (query, mut addrs) = if let Some(q) = s.strip_prefix(PAIR_SCHEME).and_then(|q| q.strip_prefix('?')) {
             (q, Vec::new())
-        } else if let Some(rest) = s.strip_prefix("http://").or_else(|| s.strip_prefix("https://")) {
+        } else if let Some((rest, served_by_host)) = s.strip_prefix("http://").map(|r| (r, true)).or_else(|| s.strip_prefix("https://").map(|r| (r, false))) {
             let (host, frag) = rest.split_once('#').ok_or("This link has no pairing details (nothing after #)")?;
+            // DevCat serves its page over plain HTTP; an https page is the hosted one.
             let host = host.trim_end_matches('/').to_string();
-            (frag, if host.is_empty() { vec![] } else { vec![host] })
+            (frag, if !served_by_host || host.is_empty() || host.contains('/') { vec![] } else { vec![host] })
         } else {
             return Err("Not a DevCat pairing link (it starts with devcat://pair or http://)".to_string());
         };
-        let (mut id, mut code, mut name) = (None, None, None);
+        let (mut id, mut code, mut name, mut relay) = (None, None, None, None);
         for part in query.split('&') {
             let (k, v) = part.split_once('=').unwrap_or((part, ""));
             let v = dec(v);
@@ -205,16 +237,17 @@ impl PairLink {
                 "id" => id = Some(v),
                 "code" => code = Some(v),
                 "name" => name = Some(v),
+                "relay" if !v.is_empty() => relay = Some(v),
                 "addr" if !v.is_empty() && !addrs.contains(&v) => addrs.push(v),
                 _ => {}
             }
         }
         let id = id.filter(|v| v.len() == 64 && v.bytes().all(|b| b.is_ascii_hexdigit())).ok_or("The pairing link has no valid computer id")?;
         let code = code.filter(|v| !v.is_empty()).ok_or("The pairing link has no pairing code")?;
-        if addrs.is_empty() {
+        if addrs.is_empty() && relay.is_none() {
             return Err("The pairing link has no address".into());
         }
-        Ok(PairLink { id, code, name: name.unwrap_or_else(|| "DevCat".into()), addrs })
+        Ok(PairLink { id, code, name: name.unwrap_or_else(|| "DevCat".into()), addrs, relay })
     }
 }
 
@@ -306,6 +339,7 @@ mod tests {
             code: "K7Q2-X9".into(),
             name: "Arif's MacBook Pro".into(),
             addrs: vec!["192.168.1.20:47100".into(), "[fe80::1]:47100".into()],
+            relay: None,
         };
         let url = l.to_url();
         assert!(url.starts_with("devcat://pair?v=1&id=abab"), "{url}");
@@ -320,6 +354,15 @@ mod tests {
         assert!(web.contains("&s=c2VjcmV0&"), "{web}");
         assert_eq!(PairLink::parse(&web).unwrap(), l);
         assert_eq!(web::fragment_param(web.split_once('#').unwrap().1, "s").as_deref(), Some("c2VjcmV0"));
+
+        // With a relay, an address isn't needed; the hosted page's host isn't an address.
+        let relayed = PairLink { addrs: vec![], relay: Some(RELAY_PUBLIC.into()), ..l.clone() };
+        assert_eq!(PairLink::parse(&relayed.to_url()).unwrap(), relayed);
+        let hosted = relayed.to_hosted_url("https://example.github.io/DevCat/");
+        assert!(hosted.starts_with("https://example.github.io/DevCat/#v=1&id=abab"), "{hosted}");
+        assert_eq!(PairLink::parse(&hosted).unwrap(), relayed);
+        let custom = PairLink { relay: Some("https://relay.example.com./".into()), ..l.clone() };
+        assert_eq!(PairLink::parse(&custom.to_hosted_url("https://x.dev/")).unwrap(), custom);
     }
 
     #[test]

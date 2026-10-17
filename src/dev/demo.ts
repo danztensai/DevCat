@@ -264,10 +264,10 @@ const SHELL_SESSION = [
 
 const PHONE_ID = "8f3c1d9e" + "a".repeat(48) + "77e21a0b";
 const remoteStatus = {
-  settings: { enabled: true, hostName: null, port: 47100, publicAddr: null, web: true },
+  settings: { enabled: true, hostName: null, port: 47100, publicAddr: null, web: true, relay: "public", relayUrl: null },
   running: true, error: null, id: "4be1" + "c".repeat(56) + "93d0", hostName: "Acme MacBook Pro", addrs: ["192.168.1.24:47100"],
   clients: [{ deviceId: PHONE_ID, name: "Ava's iPhone", platform: "ios", access: "full", since: NOW - 600_000, addr: "192.168.1.31:53120" }],
-  pairingExpires: null, pending: [], webRunning: true, webError: null, webAvailable: true,
+  pairingExpires: null, pending: [], webRunning: true, webError: null, webAvailable: true, relayConnected: "https://euc1-1.relay.n0.iroh.link./",
 };
 const remoteDevices = [
   { id: PHONE_ID, name: "Ava's iPhone", platform: "ios", access: "full", pairedAt: NOW - 86_400_000 * 2, lastSeen: NOW, kind: "app" },
@@ -359,8 +359,9 @@ export function demoInvoke(cmd: string, args: Record<string, unknown>, emit: Emi
     case "remote_qr": return bridgeQr(String(args.text));
     case "remote_pair_start": {
       const appLink = `devcat://pair?v=1&id=${remoteStatus.id}&code=K7Q2X9MPLA&name=Acme%20MacBook%20Pro&addr=192.168.1.24%3A47100`;
-      const link = `http://192.168.1.24:47100/#v=1&id=${remoteStatus.id}&code=K7Q2X9MPLA&s=demo-secret-not-real&name=Acme%20MacBook%20Pro`;
-      return bridgeQr(link).then((svg: string) => ({ link, appLink, webLink: link, code: "K7Q2X9MPLA", svg, expiresAt: Date.now() + 272_000 }));
+      const webLink = `http://192.168.1.24:47100/#v=1&id=${remoteStatus.id}&code=K7Q2X9MPLA&s=demo-secret-not-real&name=Acme%20MacBook%20Pro&relay=public`;
+      const link = `https://devileya.github.io/DevCat/#v=1&id=${remoteStatus.id}&code=K7Q2X9MPLA&name=Acme%20MacBook%20Pro&relay=public&addr=192.168.1.24%3A47100`;
+      return bridgeQr(link).then((svg: string) => ({ link, appLink: `${appLink}&relay=public`, webLink, hostedLink: link, code: "K7Q2X9MPLA", svg, expiresAt: Date.now() + 272_000 }));
     }
     case "notify_settings": case "notify_save": return args.settings ?? notifySettings;
     default: return undefined;

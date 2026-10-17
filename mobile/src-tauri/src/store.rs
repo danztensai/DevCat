@@ -25,6 +25,9 @@ pub struct Machine {
     /// Addresses the user typed (kept first, and not replaced by what the computer reports).
     #[serde(default)]
     pub manual_addrs: Vec<String>,
+    /// The computer's relay (`public` or a relay URL), for reaching it from other networks.
+    #[serde(default)]
+    pub relay: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -147,7 +150,7 @@ mod tests {
         let s = Store::new(d);
         let k = s.secret_key().unwrap();
         assert_eq!(k, s.secret_key().unwrap());
-        let m = Machine { id: "a".into(), name: "Mac".into(), addrs: vec!["1.2.3.4:1".into()], os: String::new(), app_version: String::new(), access: "full".into(), added_at: 1, last_seen: None, manual_addrs: vec![] };
+        let m = Machine { id: "a".into(), name: "Mac".into(), addrs: vec!["1.2.3.4:1".into()], os: String::new(), app_version: String::new(), access: "full".into(), added_at: 1, last_seen: None, manual_addrs: vec![], relay: None };
         s.upsert(m.clone()).unwrap();
         s.update("a", |m| m.name = "Mac 2".into()).unwrap();
         assert_eq!(s.machine("a").unwrap().name, "Mac 2");

@@ -13,6 +13,8 @@ export interface Machine {
   addedAt: number;
   lastSeen?: number | null;
   manualAddrs: string[];
+  /** The computer's relay (`public` or a URL), when it allows other networks. */
+  relay?: string | null;
 }
 
 export interface PhoneInfo {

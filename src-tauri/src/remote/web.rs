@@ -284,7 +284,7 @@ mod tests {
         let host = Host::new(tmp_store(), backend);
         let port = free_port();
         // The TCP port might differ in use from the UDP one in tests; same number is the norm.
-        host.start(port, true).await.unwrap();
+        host.start(port, true, None).await.unwrap();
         assert!(host.web_running(), "{:?}", host.web_error());
 
         // No pairing in progress: refused before any crypto.
