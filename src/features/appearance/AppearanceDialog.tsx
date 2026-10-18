@@ -7,7 +7,7 @@ import { create } from "zustand";
 import { useConnections } from "../../store/connections";
 import { Button, Dialog } from "../../components/ui";
 import { Segmented } from "../connections/dialog/formBits";
-import { GLASS_SUPPORTED, effectiveOf, useAppearance, type Appearance, type Glass, type Mode } from "./store";
+import { GLASS_SUPPORTED, effectiveOf, useAppearance, type Appearance, type Glass, type GlassStyle, type Mode } from "./store";
 import { DARK_PRESETS, LIGHT_PRESETS, type Palette } from "./themes";
 
 const useOpen = create<{ open: boolean; set: (o: boolean) => void }>((set) => ({ open: false, set: (open) => set({ open }) }));
@@ -49,7 +49,7 @@ function Slider({ label, value, onChange }: { label: string; value: number; onCh
   return (
     <label className="flex items-center gap-3 text-[12px]">
       <span className="w-28 text-muted">{label}</span>
-      <input type="range" min={15} max={100} step={1} value={Math.round(value * 100)} onChange={(e) => onChange(Number(e.target.value) / 100)} className="flex-1 accent-[var(--color-accent)]" />
+      <input type="range" min={1} max={100} step={1} value={Math.round(value * 100)} onChange={(e) => onChange(Number(e.target.value) / 100)} className="flex-1 accent-[var(--color-accent)]" />
       <span className="w-9 text-right font-mono text-[11px] text-muted">{Math.round(value * 100)}%</span>
     </label>
   );
@@ -117,7 +117,7 @@ export function AppearanceDialog() {
         )}
         <Section title="Window glass"
           hint={GLASS_SUPPORTED
-            ? "The window shows your desktop, blurred, behind the sidebar and work area. Editors, terminals, dialogs and menus stay solid."
+            ? "The window shows your desktop behind it: blurred, or clear as glass. The sliders set how much of the theme color stays; dialogs and menus stay solid."
             : "Window glass needs macOS or Windows."}>
           {GLASS_SUPPORTED && (
             <>
@@ -125,6 +125,8 @@ export function AppearanceDialog() {
                 options={[{ value: "off", label: "Off" }, { value: "dark", label: "Dark mode only" }, { value: "always", label: "Always" }]} />
               {glassShown && (
                 <div className="space-y-2 pt-1">
+                  <Segmented<GlassStyle> value={a.glassStyle} onChange={(glassStyle) => set({ glassStyle })}
+                    options={[{ value: "blur", label: "Blur" }, { value: "clear", label: "Clear" }]} />
                   <Slider label="Sidebar opacity" value={a.sidebarOpacity} onChange={(sidebarOpacity) => set({ sidebarOpacity })} />
                   <Slider label="Work area opacity" value={a.workOpacity} onChange={(workOpacity) => set({ workOpacity })} />
                 </div>

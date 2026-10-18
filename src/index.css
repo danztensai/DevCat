@@ -37,10 +37,10 @@ input, textarea, [contenteditable], .selectable { user-select: text; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar, #2f3540); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover, #3d4452); }
 
-/* Window glass (features/appearance): the window shows the desktop blurred behind it. Each region
-   (sidebar, work area, bars) gets one tint layer, whose opacity the sliders set; surfaces inside
-   are clear (stacked see-through layers would add up to opaque). Editors and terminals paint their
-   own solid background; dialogs, menus, popovers and sticky headers stay solid. */
+/* Window glass (features/appearance): the window shows the desktop behind it, blurred or clear.
+   Each region (sidebar, work area, bars) gets one tint layer, whose opacity the sliders set (down
+   to 1%); surfaces inside, editors and terminals included, are see-through (stacked layers would
+   add up to opaque). Dialogs, menus, popovers and sticky headers stay solid. */
 html.glass, html.glass body, html.glass #root { background: transparent; }
 html.glass .glass-work, html.glass .glass-side {
   --color-app: transparent; --color-panel: transparent;

@@ -7,7 +7,7 @@ import { Button, Select } from "../../components/ui";
 import { errMsg } from "../../lib/api";
 import { events, eventsReady, k8s } from "./api";
 import PodSwitcher from "./PodSwitcher";
-import { onPaletteChange, palette } from "../appearance/store";
+import { glassOn, onPaletteChange, palette } from "../appearance/store";
 import { terminalTheme } from "../appearance/themes";
 
 export interface ShellTarget { namespace: string; pod: string; containers: string[]; container?: string | null; owner?: string; pods?: string[] }
@@ -31,7 +31,7 @@ export default function ShellPanel({ connId, target, visible, onPodChange }: { c
   const [state, setState] = useState<"connecting" | "open" | "closed">("connecting");
   const [nonce, setNonce] = useState(0);
 
-  useEffect(() => onPaletteChange((p) => { if (termRef.current) termRef.current.term.options.theme = terminalTheme(p); }), []);
+  useEffect(() => onPaletteChange((p, glass) => { if (termRef.current) termRef.current.term.options.theme = terminalTheme(p, glass); }), []);
 
   // Terminal instance lives for the panel's lifetime.
   useEffect(() => {
@@ -41,7 +41,8 @@ export default function ShellPanel({ connId, target, visible, onPodChange }: { c
       cursorBlink: true,
       scrollback: 10000,
       allowProposedApi: true,
-      theme: terminalTheme(palette()),
+      allowTransparency: true,
+      theme: terminalTheme(palette(), glassOn()),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

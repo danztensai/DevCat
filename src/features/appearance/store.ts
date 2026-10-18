@@ -11,18 +11,21 @@ import { findPreset, withAlpha, type Palette } from "./themes";
 
 export type Mode = "dark" | "light" | "system";
 export type Glass = "off" | "dark" | "always";
+/** Blur: the desktop shows through blurred (vibrancy / Acrylic). Clear: as it is. */
+export type GlassStyle = "blur" | "clear";
 
 export interface Appearance {
   mode: Mode;
   dark: string;
   light: string;
   glass: Glass;
-  /** How much the sidebar / work area tint covers the glass (0.15–1). */
+  glassStyle: GlassStyle;
+  /** How much the sidebar / work area tint covers the glass (0.01–1). */
   sidebarOpacity: number;
   workOpacity: number;
 }
 
-const DEFAULTS: Appearance = { mode: "dark", dark: "devcat", light: "light", glass: "off", sidebarOpacity: 0.45, workOpacity: 0.7 };
+const DEFAULTS: Appearance = { mode: "dark", dark: "devcat", light: "light", glass: "off", glassStyle: "blur", sidebarOpacity: 0.45, workOpacity: 0.7 };
 const KEYS = Object.keys(DEFAULTS) as (keyof Appearance)[];
 const KEY = "devcat.appearance";
 const IS_LINUX = navigator.userAgent.toLowerCase().includes("linux");
@@ -98,22 +101,23 @@ export function glassOn(a: Appearance = effective()): boolean {
   return GLASS_SUPPORTED && (a.glass === "always" || (a.glass === "dark" && paletteOf(a).dark));
 }
 
-const listeners = new Set<(p: Palette) => void>();
-/** Follow theme changes (terminals, editors). Returns unsubscribe. */
-export function onPaletteChange(f: (p: Palette) => void): () => void {
+const listeners = new Set<(p: Palette, glass: boolean) => void>();
+/** Follow theme changes (terminals, editors; `glass`: make backgrounds see-through). Returns unsubscribe. */
+export function onPaletteChange(f: (p: Palette, glass: boolean) => void): () => void {
   listeners.add(f);
   return () => { listeners.delete(f); };
 }
 
-let lastEffect: boolean | null = null;
-async function windowLook(p: Palette, glass: boolean, mode: Mode) {
+let lastEffect: string | null = null;
+async function windowLook(p: Palette, glass: boolean, style: GlassStyle, mode: Mode) {
   const w = getCurrentWindow();
   // Native title bar and vibrancy material follow the theme ("system": the OS decides).
   await w.setTheme(mode === "system" ? null : p.dark ? "dark" : "light").catch(() => {});
-  if (glass === lastEffect) return;
-  lastEffect = glass;
+  const effect = glass && style === "blur" ? "blur" : "none";
+  if (effect === lastEffect) return;
+  lastEffect = effect;
   try {
-    if (glass) {
+    if (effect === "blur") {
       await w.setEffects({ effects: IS_MAC ? [Effect.UnderWindowBackground] : [Effect.Acrylic], state: EffectState.Active });
     } else {
       await w.clearEffects();
@@ -146,11 +150,11 @@ function apply() {
   root.classList.toggle("glass", glass);
   root.classList.toggle("light", !p.dark);
   root.style.colorScheme = p.dark ? "dark" : "light";
-  void windowLook(p, glass, a.mode);
-  const key = JSON.stringify(p);
+  void windowLook(p, glass, a.glassStyle, a.mode);
+  const key = JSON.stringify([p, glass]);
   if (key !== lastPalette) {
     lastPalette = key;
-    listeners.forEach((f) => f(p));
+    listeners.forEach((f) => f(p, glass));
   }
 }
 

@@ -3,7 +3,7 @@ import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/language/json/json.worker?worker";
-import { onPaletteChange, palette } from "../features/appearance/store";
+import { glassOn, onPaletteChange, palette } from "../features/appearance/store";
 import { monacoTheme } from "../features/appearance/themes";
 
 self.MonacoEnvironment = {
@@ -14,9 +14,9 @@ self.MonacoEnvironment = {
 };
 
 // "devcat" follows the Appearance theme; every editor uses it.
-monaco.editor.defineTheme("devcat", monacoTheme(palette()));
-onPaletteChange((p) => {
-  monaco.editor.defineTheme("devcat", monacoTheme(p));
+monaco.editor.defineTheme("devcat", monacoTheme(palette(), glassOn()));
+onPaletteChange((p, glass) => {
+  monaco.editor.defineTheme("devcat", monacoTheme(p, glass));
   monaco.editor.setTheme("devcat");
 });
 

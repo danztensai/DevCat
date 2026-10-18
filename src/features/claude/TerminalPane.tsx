@@ -12,7 +12,7 @@ import { ActivityDetector } from "./activity";
 import { api, errMsg } from "../../lib/api";
 import { ptyEventsReady, subscribePty } from "./pty";
 import { openFile } from "./util";
-import { onPaletteChange, palette } from "../appearance/store";
+import { glassOn, onPaletteChange, palette } from "../appearance/store";
 import { terminalTheme } from "../appearance/themes";
 
 const IS_MAC = navigator.platform.toLowerCase().includes("mac");
@@ -61,7 +61,7 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
   cb.current = { getArgs, onPty, beforeRestart, cwd };
 
   // Colors follow the Appearance theme.
-  useEffect(() => onPaletteChange((p) => { if (termRef.current) termRef.current.term.options.theme = terminalTheme(p); }), []);
+  useEffect(() => onPaletteChange((p, glass) => { if (termRef.current) termRef.current.term.options.theme = terminalTheme(p, glass); }), []);
 
   // Terminal instance lives for the component's lifetime.
   useEffect(() => {
@@ -77,7 +77,8 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
       macOptionClickForcesSelection: true,
       rightClickSelectsWord: IS_MAC,
       drawBoldTextInBrightColors: false,
-      theme: terminalTheme(palette()),
+      allowTransparency: true,
+      theme: terminalTheme(palette(), glassOn()),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

@@ -59,10 +59,11 @@ export function withAlpha(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${Math.max(0, Math.min(1, a)).toFixed(3)})`;
 }
 
-/** Terminal colors (xterm) for a palette. */
-export function terminalTheme(p: Palette) {
+/** Terminal colors (xterm) for a palette; `glass`: a see-through background (the window's tint
+ *  shows instead; the terminal needs `allowTransparency`). */
+export function terminalTheme(p: Palette, glass = false) {
   const base = {
-    background: p.app,
+    background: glass ? "rgba(0, 0, 0, 0)" : p.app,
     foreground: p.fg,
     cursor: p.accent,
     cursorAccent: p.app,
@@ -84,8 +85,9 @@ export function terminalTheme(p: Palette) {
 
 const hex6 = (c: string) => c.replace("#", "").toUpperCase();
 
-/** The Monaco theme "devcat" for a palette. */
-export function monacoTheme(p: Palette) {
+/** The Monaco theme "devcat" for a palette (`glass`: see-through editor background). */
+export function monacoTheme(p: Palette, glass = false) {
+  const bg = glass ? "#00000000" : p.panel;
   return {
     base: (p.dark ? "vs-dark" : "vs") as "vs-dark" | "vs",
     inherit: true,
@@ -103,10 +105,11 @@ export function monacoTheme(p: Palette) {
         { token: "comment", foreground: "6E7781", fontStyle: "italic" },
       ],
     colors: {
-      "editor.background": p.panel,
-      "editor.lineHighlightBackground": p.raised,
+      "editor.background": bg,
+      "editor.lineHighlightBackground": glass ? (p.dark ? "#ffffff0d" : "#0000000a") : p.raised,
       "editorLineNumber.foreground": p.faint,
-      "editorGutter.background": p.panel,
+      "editorGutter.background": bg,
+      "minimap.background": bg,
       "editorWidget.background": p.raised,
       "editorWidget.border": p.line,
       "editorSuggestWidget.background": p.raised,
