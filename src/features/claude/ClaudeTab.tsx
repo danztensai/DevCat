@@ -2,13 +2,13 @@
 // Codex / Gemini / Copilot / Aider / opencode / custom) in a terminal (Chat), plus Diff and — for
 // Claude — Code Review views, a git branch chip and a review badge in the header. Other agents get a
 // "Review" button that types a review request into their terminal.
-// ⌥⇧⌘1/2/3 switch views when the tab is active. "+" (⌥⇧⌘T) opens extra terminals in the folder,
-// each its own view next to Chat / Diff.
+// ⌥⇧⌘1/2/3 switch views when the tab is active. "Terminal" (⌥⇧⌘T) opens a shell in the folder in
+// its own tab.
 import clsx from "clsx";
 import {
-  AlertOctagon, AlertTriangle, ArrowDown, ArrowUp, Bot, CheckCircle2, ChevronDown, GitBranch, MessageSquarePlus, Plus, RotateCcw, ScanSearch, SquareTerminal,
+  AlertOctagon, AlertTriangle, ArrowDown, ArrowUp, Bot, CheckCircle2, ChevronDown, GitBranch, MessageSquarePlus, RotateCcw, ScanSearch, SquareTerminal,
   Terminal,
-  Sparkle, X,
+  Sparkle,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -26,13 +26,14 @@ import {
 } from "./providers";
 import { ReviewView, reviewBadge } from "./ReviewView";
 import {
-  addTerminal, claudeLaunchArgs, closeTerminal, detectSession, ensureTab, loadInfo, newSession, pasteToClaude, refreshGit, restartClaude, sendToAgent, setLaunchOptions, setPty,
-  setActiveTerminal, setTabIsClaude, startReview, useClaude, type Finding, type WorkspaceTerminal,
+  claudeLaunchArgs, detectSession, ensureTab, loadInfo, newSession, pasteToClaude, refreshGit, restartClaude, sendToAgent, setLaunchOptions, setPty,
+  setTabIsClaude, startReview, useClaude, type Finding,
 } from "./store";
 import { setTabVisible, useTabActivity } from "./activity";
 import { TerminalPane } from "./TerminalPane";
 import { basename, modelOptions, PERMISSION_MODES } from "./util";
 import { isRemote } from "../../lib/remotePath";
+import { openTerminal } from "../terminal/open";
 
 type ClaudeTabT = Extract<Tab, { type: "claude" }>;
 
@@ -209,60 +210,6 @@ function ChatPane({ tabId, cwd, visible, provider }: { tabId: string; cwd: strin
   );
 }
 
-/** Extra terminals: tabs in the header (next to Chat / Diff), "+" opens another. */
-function TerminalTabs({ tabId, view, onShow }: { tabId: string; view: ClaudeView; onShow: (id: string | null) => void }) {
-  const terminals = useClaude((s) => s.tabs[tabId]?.terminals ?? NO_TERMINALS);
-  const activeTerminal = useClaude((s) => s.tabs[tabId]?.activeTerminal ?? null);
-  return (
-    <div className="flex min-w-0 shrink items-center gap-1">
-      {/* the tabs scroll sideways when there are many; "+" stays visible */}
-      <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {terminals.map((t) => {
-        const on = view === "terminal" && activeTerminal === t.id;
-        return (
-          <div
-            key={t.id}
-            className={clsx("group flex h-7 shrink-0 items-center gap-1 rounded-md border pr-0.5 pl-2 text-xs",
-              on ? "border-line bg-raised text-fg shadow-sm" : "border-transparent text-muted hover:text-fg")}
-          >
-            <button type="button" className="flex items-center gap-1.5" title={`${t.title}: a shell in this folder`} onClick={() => onShow(t.id)}>
-              <SquareTerminal className="size-3" />{t.title}
-            </button>
-            <button
-              type="button"
-              title={`Close ${t.title} (ends its shell)`}
-              onClick={() => onShow(closeTerminal(tabId, t.id) ?? null)}
-              className={clsx("rounded p-0.5 hover:bg-hover", on ? "opacity-70" : "opacity-0 group-hover:opacity-70")}
-            >
-              <X className="size-3" />
-            </button>
-          </div>
-        );
-      })}
-      </div>
-      <IconButton className="shrink-0" title={`New terminal in this folder (${IS_MAC ? "⌥⇧⌘T" : "Ctrl+Alt+Shift+T"})`} onClick={() => onShow(addTerminal(tabId))}>
-        <Plus className="size-3.5" />
-      </IconButton>
-    </div>
-  );
-}
-
-const NO_TERMINALS: WorkspaceTerminal[] = [];
-
-/** Every terminal stays mounted (its shell keeps running); only the active one is shown. */
-function TerminalViews({ tabId, cwd, show }: { tabId: string; cwd: string; show: boolean }) {
-  const terminals = useClaude((s) => s.tabs[tabId]?.terminals ?? NO_TERMINALS);
-  const activeTerminal = useClaude((s) => s.tabs[tabId]?.activeTerminal ?? null);
-  return (
-    <>
-      {terminals.map((t) => (
-        <div key={t.id} className={clsx("absolute inset-0 bg-app", !(show && activeTerminal === t.id) && "invisible")}>
-          <TerminalPane cwd={cwd} program={null} name="shell" visible={show && activeTerminal === t.id} />
-        </div>
-      ))}
-    </>
-  );
-}
 
 export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
   const tabId = tab.id;
@@ -282,9 +229,8 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
   // Diff and Code Review use git on this computer: not for folders on SSH hosts (yet).
   const remote = isRemote(tab.cwd);
   const views = useMemo(() => VIEWS.filter((v) => !(remote && (v.id === "diff" || v.id === "review")) && (isClaude || v.id !== "review")), [isClaude, remote]);
-  const hasTerminals = useClaude((s) => (s.tabs[tabId]?.terminals.length ?? 0) > 0);
   const wanted: ClaudeView = tab.view ?? "chat";
-  const view: ClaudeView = !views.some((v) => v.id === wanted) || (wanted === "terminal" && !hasTerminals) ? "chat" : wanted;
+  const view: ClaudeView = views.some((v) => v.id === wanted) ? wanted : "chat";
   const info = useClaude((s) => s.info);
   const infoLoaded = useClaude((s) => s.infoLoaded);
   const infoError = useClaude((s) => s.infoError);
@@ -300,11 +246,6 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
   useEffect(() => { if (isClaude) void loadInfo(); }, [isClaude]);
 
   const setView = useCallback((v: ClaudeView) => useTabs.getState().update(tabId, { view: v } as never), [tabId]);
-  /** Show terminal `id` (null = none left: back to Chat). */
-  const showTerminal = useCallback((id: string | null) => {
-    if (id) { setActiveTerminal(tabId, id); setView("terminal"); }
-    else if ((useTabs.getState().tabs.find((t) => t.id === tabId) as ClaudeTabT | undefined)?.view === "terminal") setView("chat");
-  }, [tabId, setView]);
 
   // Git status: poll every 5s while this tab is visible.
   useEffect(() => {
@@ -321,7 +262,7 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
       if (!e.altKey || !e.shiftKey || !(e.metaKey || e.ctrlKey)) return;
       if (e.code === "KeyT") {
         e.preventDefault();
-        showTerminal(addTerminal(tabId));
+        openTerminal(tab.cwd);
         return;
       }
       const v = views.find((x) => e.code === `Digit${x.key}`);
@@ -331,7 +272,7 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [active, setView, views, showTerminal, tabId]);
+  }, [active, setView, views, tab.cwd]);
 
   // Claude: structured review run (Code Review view). Others: ask the agent in its terminal.
   const reviewNow = () => {
@@ -384,7 +325,9 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
             </button>
           ))}
         </div>
-        <TerminalTabs tabId={tabId} view={view} onShow={showTerminal} />
+        <Button size="sm" title={`Open a terminal in this folder, in its own tab (${IS_MAC ? "⌥⇧⌘T" : "Ctrl+Alt+Shift+T"})`} onClick={() => openTerminal(tab.cwd)}>
+          <SquareTerminal className="size-3.5" />Terminal
+        </Button>
         {provider && <AgentChip tabId={tabId} cwd={tab.cwd} provider={provider} />}
         <BranchChip tabId={tabId} onClick={() => setView("diff")} />
         {isClaude && <ReviewBadge tabId={tabId} onClick={() => setView("review")} />}
@@ -420,7 +363,6 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
             <ChatPane tabId={tabId} cwd={tab.cwd} visible={active && view === "chat"} provider={provider} />
           )}
         </div>
-        <TerminalViews tabId={tabId} cwd={tab.cwd} show={active && view === "terminal"} />
         {view === "diff" && <div className="absolute inset-0 bg-app"><DiffView tabId={tabId} cwd={tab.cwd} active={active} onReview={reviewNow} agent={agent} /></div>}
         {isClaude && (
           <div className={clsx("absolute inset-0 bg-app", view !== "review" && "hidden")}>

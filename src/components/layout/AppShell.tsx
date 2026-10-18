@@ -24,7 +24,7 @@ import { KeepAwakeButton } from "../../features/keepawake/KeepAwakeButton";
 import { UpdateDialog } from "../../features/update/UpdateDialog";
 import { MobileButton, MobileDialog } from "../../features/mobile/MobileDialog";
 import { AppearanceButton, AppearanceDialog } from "../../features/appearance/AppearanceDialog";
-import { useIsDark } from "../../features/appearance/store";
+import { useAppearance, useIsDark } from "../../features/appearance/store";
 import { PairPrompt } from "../../features/mobile/PairPrompt";
 import { startMobileStatus } from "../../features/mobile/store";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
@@ -34,6 +34,7 @@ import "../../features/network/openedFiles";
 import { openTab, useTabs } from "../../store/tabs";
 import { useUi, type SidebarView } from "../../store/ui";
 import { TabContent } from "../../tabs/registry";
+import { TabIcon, tabKindLabel } from "../../tabs/TabIcon";
 import { tabConnId, type Tab } from "../../tabs/types";
 import { IconButton } from "../ui";
 import { AiTerminalIcon } from "../ui/AppIcons";
@@ -65,6 +66,9 @@ export default function AppShell() {
   }, []);
 
   useEffect(() => startMobileStatus(), []);
+  // A project's own look (Appearance → This project) follows the window's focus.
+  const focusId = useConnections((s) => s.focusProjectId);
+  useEffect(() => useAppearance.getState().setFocus(focusId), [focusId]);
   const toastTheme = useIsDark() ? "dark" : "light";
 
   // Sidebar hide / show: the store is the source of truth; the panel follows it.
@@ -346,6 +350,7 @@ function Workspace() {
     [allTabs, focusId, connections, notes], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const hiddenCount = allTabs.length - tabs.length;
+  const connName = (t: Tab) => { const id = tabConnId(t); return id ? connections.find((c) => c.id === id)?.name : undefined; };
   useEffect(() => {
     if (!tabs.some((t) => t.id === activeId) && tabs.length) activate(tabs[tabs.length - 1].id);
   }, [tabs, activeId, activate]);
@@ -357,11 +362,13 @@ function Workspace() {
             key={t.id}
             onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); close(t.id); } else activate(t.id); }}
             onContextMenu={(e) => tabMenu(e, t)}
+            title={tabKindLabel(t, connName(t))}
             className={clsx(
               "group flex max-w-56 shrink-0 cursor-default items-center gap-2 border-r border-line pl-3 pr-1.5",
               t.id === activeId ? "bg-panel text-fg shadow-[inset_0_2px_0_var(--color-accent)]" : "text-muted hover:bg-panel/60",
             )}
           >
+            <TabIcon tab={t} />
             {t.type === "claude" ? <AgentTabTitle tabId={t.id} title={t.title} /> : <span className="truncate">{t.title}</span>}
             {t.dirty && <span className="size-1.5 rounded-full bg-accent" />}
             <button

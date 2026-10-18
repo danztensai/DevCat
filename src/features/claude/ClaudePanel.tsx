@@ -2,7 +2,7 @@
 // The AI connection new chats use is picked in the sidebar header (ProviderPicker).
 import clsx from "clsx";
 import {
-  ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X, Server,
+  ChevronDown, ChevronRight, Copy, FolderGit2, FolderOpen, FolderSearch, GitBranch, History, Plus, RefreshCw, Sparkles, Terminal, X, Server, SquareTerminal,
 } from "lucide-react";
 import { AiTerminalIcon } from "../../components/ui/AppIcons";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
@@ -20,6 +20,7 @@ import FileTree, { type FileTreeHandle } from "./sidebar/FileTree";
 import { SessionsList } from "./sidebar/SessionsList";
 import { pickFolder, useWorkspace } from "./sidebar/workspace";
 import { RemoteFolderDialog, openRemoteFolderDialog } from "./sidebar/RemoteFolderDialog";
+import { openTerminal } from "../terminal/open";
 import { displayPath, isRemote, remoteParts } from "../../lib/remotePath";
 
 const REFRESH_MS = 15_000;
@@ -164,9 +165,14 @@ function WorkspaceHeader() {
         <ChevronDown className="size-3.5 shrink-0 text-faint" />
       </button>
       {cwd && (
-        <Button variant="primary" className="mt-1.5 w-full justify-center" onClick={() => openClaudeWorkspace(cwd)}>
-          <Plus className="size-3.5" /> New {isClaude ? "" : `${provider.name} `}chat
-        </Button>
+        <div className="mt-1.5 flex gap-1.5">
+          <Button variant="primary" className="min-w-0 flex-1 justify-center" onClick={() => openClaudeWorkspace(cwd)}>
+            <Plus className="size-3.5" /> New {isClaude ? "" : `${provider.name} `}chat
+          </Button>
+          <Button className="shrink-0" title="Open a terminal in this folder, in its own tab" onClick={() => openTerminal(cwd)}>
+            <SquareTerminal className="size-3.5" /> Terminal
+          </Button>
+        </div>
       )}
       {menu.element}
       <RemoteFolderDialog />

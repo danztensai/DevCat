@@ -23,6 +23,7 @@ const registry: Record<Tab["type"], ComponentType<{ tab: any }>> = {
   file: lazy(() => import("../features/files/FilePreviewTab")),
   git: lazy(() => import("../features/git/GitTab")),
   note: lazy(() => import("../features/notes/NoteTab")),
+  terminal: lazy(() => import("../features/terminal/TerminalTab")),
 };
 
 export function TabContent({ tab }: { tab: Tab }) {

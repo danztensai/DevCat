@@ -19,11 +19,13 @@ export type TabSpec =
   | { type: "network"; profileId: string; kind?: "ssh" | "openvpn" | "wireguard" | "k8s"; importPath?: string }
   /** AI workspace for a folder: Chat / Diff / Code Review. providerId = AI connection the chat runs
    *  (absent = Claude Code); sessionId resumes a past Claude session. */
-  | { type: "claude"; cwd: string; sessionId?: string | null; view?: "chat" | "diff" | "review" | "terminal"; providerId?: string | null }
+  | { type: "claude"; cwd: string; sessionId?: string | null; view?: "chat" | "diff" | "review"; providerId?: string | null }
   /** Preview of a file (code, markdown, pdf, image, spreadsheet, …). blame = show git blame instead. */
   | { type: "file"; path: string; root?: string | null; blame?: boolean }
   /** Git repository: history graph / working-tree changes / branches / stashes.
    *  path = file-history filter, sha = commit to select in History (consumed once shown). */
+  /** A shell in a folder (local or ssh://…), on its own tab. */
+  | { type: "terminal"; cwd: string }
   /** Markdown note (see features/notes). */
   | { type: "note"; noteId: string }
   | { type: "git"; repo: string; view?: GitView; path?: string | null; sha?: string | null };

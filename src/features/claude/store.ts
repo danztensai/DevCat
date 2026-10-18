@@ -35,8 +35,6 @@ export interface ReviewState {
 
 export interface LaunchOptions { model: string; permissionMode: ClaudePermissionMode | "" }
 
-export interface WorkspaceTerminal { id: string; title: string }
-
 export interface TabState {
   cwd: string;
   /** The tab runs Claude Code (sessions, launch options and reviews apply); false = another AI CLI. */
@@ -51,12 +49,6 @@ export interface TabState {
   ptyId: string | null;
   /** Bump to (re)start the claude process. */
   startSeq: number;
-  /** Extra login shells in the workspace folder, each a view next to Chat / Diff. */
-  terminals: WorkspaceTerminal[];
-  /** Terminal shown while the tab's view is "terminal". */
-  activeTerminal: string | null;
-  /** Numbers new terminals ("Terminal 3"). */
-  terminalSeq: number;
   git: GitStatus | null;
   gitError: string | null;
   gitLoading: boolean;
@@ -71,7 +63,7 @@ const newReview = (): ReviewState => ({ runId: null, status: "idle", scope: "unc
 
 const newTab = (cwd: string, sessionId: string | null): TabState => ({
   cwd, isClaude: true, sessionId, options: { model: "", permissionMode: "" }, launched: null, launchedAt: null, ptyId: null, startSeq: 0,
-  terminals: [], activeTerminal: null, terminalSeq: 0,
+
   git: null, gitError: null, gitLoading: false, gitTick: 0, diffFocus: null, review: newReview(),
 });
 
@@ -99,28 +91,6 @@ function patchReview(tabId: string, p: Partial<ReviewState> | ((r: ReviewState) 
   patch(tabId, (s) => ({ review: { ...s.review, ...(typeof p === "function" ? p(s.review) : p) } }));
 }
 
-/** Open another terminal in the workspace folder; returns its id. */
-export function addTerminal(tabId: string): string | null {
-  const cur = get(tabId);
-  if (!cur) return null;
-  const n = cur.terminalSeq + 1;
-  const id = `${tabId}:term${n}`;
-  patch(tabId, (s) => ({ terminals: [...s.terminals, { id, title: `Terminal ${n}` }], activeTerminal: id, terminalSeq: n }));
-  return id;
-}
-
-/** Close a terminal (its shell is ended). Returns the terminal to show next, if any. */
-export function closeTerminal(tabId: string, id: string): string | null {
-  const cur = get(tabId);
-  if (!cur) return null;
-  const i = cur.terminals.findIndex((t) => t.id === id);
-  const rest = cur.terminals.filter((t) => t.id !== id);
-  const next = cur.activeTerminal === id ? (rest[Math.min(Math.max(i, 0), rest.length - 1)]?.id ?? null) : cur.activeTerminal;
-  patch(tabId, { terminals: rest, activeTerminal: next });
-  return next;
-}
-
-export const setActiveTerminal = (tabId: string, id: string) => patch(tabId, { activeTerminal: id });
 
 /** Create the tab's state if missing. */
 export function ensureTab(tabId: string, cwd: string, sessionId: string | null | undefined) {
