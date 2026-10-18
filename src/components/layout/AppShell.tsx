@@ -356,7 +356,7 @@ function Workspace() {
   }, [tabs, activeId, activate]);
   return (
     <div className="flex h-full flex-col bg-panel">
-      <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-line bg-app">
+      <div className="no-select flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-line bg-app">
         {tabs.map((t) => (
           <div
             key={t.id}

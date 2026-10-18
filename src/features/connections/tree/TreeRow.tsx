@@ -61,7 +61,7 @@ export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, c
     onDoubleClick: () => onActivate(row),
     onContextMenu: (e: MouseEvent) => onContextMenu(e, row),
     className: clsx(
-      "group relative flex h-6 cursor-default items-center gap-1.5 pr-2 text-[13px]",
+      "no-select group relative flex h-6 cursor-default items-center gap-1.5 pr-2 text-[13px]",
       selected ? (focused ? "bg-accent/20 text-fg" : "bg-hover") : "hover:bg-hover/60",
     ),
     style: { paddingLeft: pad },

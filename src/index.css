@@ -29,9 +29,11 @@ body {
   font-family: var(--font-sans);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
-  user-select: none;
   overflow: hidden;
 }
+/* Text can be selected and copied anywhere (⌘C / Ctrl+C), except on controls, where a click or a
+   drag shouldn't start a selection; .no-select opts out (the data grid has its own cell selection). */
+button, [role="button"], [role="tab"], [role="menuitem"], [role="separator"], summary, label, svg, .no-select { user-select: none; }
 input, textarea, [contenteditable], .selectable { user-select: text; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar, #2f3540); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }

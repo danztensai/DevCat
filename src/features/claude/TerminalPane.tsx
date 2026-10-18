@@ -14,6 +14,7 @@ import { ptyEventsReady, subscribePty } from "./pty";
 import { openFile } from "./util";
 import { glassOn, onPaletteChange, palette } from "../appearance/store";
 import { terminalTheme } from "../appearance/themes";
+import { enableGpu } from "../../lib/xtermGpu";
 
 const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 
@@ -87,6 +88,7 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
     term.loadAddon(uni);
     term.unicode.activeVersion = "11";
     term.open(host.current!);
+    enableGpu(term);
     termRef.current = { term, fit };
 
     term.attachCustomKeyEventHandler((e) => {

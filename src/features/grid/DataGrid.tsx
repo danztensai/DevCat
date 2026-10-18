@@ -355,7 +355,7 @@ export default function DataGrid(props: DataGridProps) {
         ref={scrollRef}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="relative min-h-0 flex-1 overflow-auto font-mono text-xs outline-none"
+        className="no-select relative min-h-0 flex-1 overflow-auto font-mono text-xs outline-none"
       >
         <div style={{ width: totalW, height: totalH + headH, position: "relative" }}>
           {/* header */}

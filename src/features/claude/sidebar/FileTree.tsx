@@ -325,7 +325,7 @@ const EntryRow = memo(function EntryRow({ row, selected, active, git, dirty, onA
   return (
     <div
       className={clsx(
-        "group flex h-full cursor-default items-center gap-1 pr-2 text-[13px]",
+        "no-select group flex h-full cursor-default items-center gap-1 pr-2 text-[13px]",
         selected ? "bg-accent/20" : active ? "bg-hover" : "hover:bg-hover/60",
         e.ignored && "opacity-55",
       )}
