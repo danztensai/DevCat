@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppWindow, ArrowUpCircle, Cable, Sparkle, ChevronDown, Copy, Crosshair, Folder, Layers, FolderPlus, GitBranch, History, LogOut, NotebookPen, PanelLeftClose, PanelLeftOpen, Plus, Shield, SquareArrowOutUpRight, X } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { Toaster } from "sonner";
 import ConnectionDialog from "../../features/connections/ConnectionDialog";
@@ -30,7 +30,7 @@ import { startMobileStatus } from "../../features/mobile/store";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
 import { IS_MAC, IS_MAIN_WINDOW, NEW_WINDOW_SHORTCUT, openNewWindow, takeLaunchTab, type TabTransfer } from "../../lib/windows";
 import "../../store/projectFolders";
-import "../../features/network/openedFiles";
+import "../../features/files/openedFiles";
 import { openTab, useTabs } from "../../store/tabs";
 import { useUi, type SidebarView } from "../../store/ui";
 import { TabContent } from "../../tabs/registry";
@@ -354,20 +354,34 @@ function Workspace() {
   useEffect(() => {
     if (!tabs.some((t) => t.id === activeId) && tabs.length) activate(tabs[tabs.length - 1].id);
   }, [tabs, activeId, activate]);
+  const { barRef, drag, startDrag } = useTabDrag();
   return (
     <div className="flex h-full flex-col bg-panel">
-      <div className="no-select flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-line bg-app">
-        {tabs.map((t) => (
+      <div ref={barRef} className="no-select flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-line bg-app">
+        {tabs.map((t, i) => (
           <div
             key={t.id}
-            onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); close(t.id); } else activate(t.id); }}
+            data-tab-id={t.id}
+            onMouseDown={(e) => {
+              if (e.button === 1) { e.preventDefault(); close(t.id); return; }
+              activate(t.id);
+              if (e.button === 0) startDrag(e, t.id);
+            }}
             onContextMenu={(e) => tabMenu(e, t)}
-            title={tabKindLabel(t, connName(t))}
+            title={drag ? undefined : tabKindLabel(t, connName(t))}
             className={clsx(
-              "group flex max-w-56 shrink-0 cursor-default items-center gap-2 border-r border-line pl-3 pr-1.5",
+              "group relative flex max-w-56 shrink-0 cursor-default items-center gap-2 border-r border-line pl-3 pr-1.5",
               t.id === activeId ? "bg-panel text-fg shadow-[inset_0_2px_0_var(--color-accent)]" : "text-muted hover:bg-panel/60",
+              drag?.id === t.id && "opacity-50",
             )}
           >
+            {/* Where the dragged tab lands: before this one (or after the last). */}
+            {drag && drag.before === t.id && drag.id !== t.id && tabs[i - 1]?.id !== drag.id && (
+              <span className="pointer-events-none absolute inset-y-1 -left-px w-0.5 rounded bg-accent" />
+            )}
+            {drag && drag.before === null && i === tabs.length - 1 && drag.id !== t.id && (
+              <span className="pointer-events-none absolute inset-y-1 -right-px w-0.5 rounded bg-accent" />
+            )}
             <TabIcon tab={t} />
             {t.type === "claude" ? <AgentTabTitle tabId={t.id} title={t.title} /> : <span className="truncate">{t.title}</span>}
             {t.dirty && <span className="size-1.5 rounded-full bg-accent" />}
@@ -398,6 +412,46 @@ function Workspace() {
       </div>
     </div>
   );
+}
+
+/** Reorder tabs by dragging them along the tab bar (mouse events: Tauri's file drop handling
+ *  gets in the way of HTML drag and drop). The bar scrolls when dragging near its edges. */
+function useTabDrag() {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ id: string; before: string | null } | null>(null);
+  const startDrag = (e: React.MouseEvent, id: string) => {
+    const x0 = e.clientX;
+    let moving = false;
+    // The tab whose left half is under the pointer, or the next one; null = past the last.
+    const target = (x: number): string | null => {
+      for (const el of barRef.current?.querySelectorAll<HTMLElement>("[data-tab-id]") ?? []) {
+        const r = el.getBoundingClientRect();
+        if (x < r.left + r.width / 2) return el.dataset.tabId ?? null;
+      }
+      return null;
+    };
+    const onMove = (ev: MouseEvent) => {
+      if (!moving && Math.abs(ev.clientX - x0) < 5) return;
+      moving = true;
+      const bar = barRef.current;
+      if (bar) {
+        const r = bar.getBoundingClientRect();
+        if (ev.clientX < r.left + 24) bar.scrollLeft -= 16;
+        else if (ev.clientX > r.right - 24) bar.scrollLeft += 16;
+      }
+      const before = target(ev.clientX);
+      setDrag((d) => (d?.before === before && d.id === id ? d : { id, before }));
+    };
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moving) useTabs.getState().move(id, target(ev.clientX));
+      setDrag(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  return { barRef, drag, startDrag };
 }
 
 function StatusBar() {

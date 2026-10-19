@@ -1,19 +1,31 @@
-// .ovpn files opened with DevCat (double-click in Finder / Explorer, "Open With", or dropped on
-// the Dock icon): the backend queues them and pokes the main window, which opens the import form.
+// Files opened with DevCat (double-click in Finder / Explorer, "Open With", or dropped on the
+// Dock icon): the backend queues them and pokes a window. .ovpn profiles open the VPN import
+// form; anything else opens in an editor tab.
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { IS_MAIN_WINDOW } from "../../lib/windows";
 import { useUi } from "../../store/ui";
-import { openImportTab } from "./actions";
+import { openImportTab } from "../network/actions";
+import { openFilePreview } from "./format";
+
+interface OpenedFile {
+  path: string;
+  /** Its git repository, else its folder. */
+  root: string | null;
+}
 
 async function drain() {
-  const paths = (await invoke<string[] | null>("take_opened_files").catch(() => null)) ?? [];
-  if (!paths.length) return;
-  const ui = useUi.getState();
-  ui.setSidebar("network");
-  ui.setSidebarCollapsed(false);
-  paths.forEach(openImportTab);
+  const files = (await invoke<OpenedFile[] | null>("take_opened_files").catch(() => null)) ?? [];
+  if (!files.length) return;
+  const vpn = files.filter((f) => /\.ovpn$/i.test(f.path));
+  if (vpn.length) {
+    const ui = useUi.getState();
+    ui.setSidebar("network");
+    ui.setSidebarCollapsed(false);
+    vpn.forEach((f) => openImportTab(f.path));
+  }
+  files.filter((f) => !vpn.includes(f)).forEach((f) => openFilePreview(f.path, f.root));
   const w = getCurrentWindow();
   await w.unminimize().catch(() => {});
   await w.setFocus().catch(() => {});

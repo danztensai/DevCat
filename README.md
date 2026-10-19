@@ -135,6 +135,10 @@ needs `libdbus` (installed almost everywhere).
   signed and verified before installing. Linux .deb/.rpm installs get a download link instead (the AppImage self-updates).
 - **Keep awake**: the coffee cup at the top right keeps the screen and computer from sleeping (like Caffeine /
   Amphetamine). Click to toggle; right-click to keep awake for 15 minutes to 8 hours.
+- **Tabs**: drag a tab along the tab bar to reorder it; every **New chat** opens a chat of its own.
+- **Open files with DevCat**: on macOS DevCat is in Finder's *Open With* for code and text files (choose
+  *Always Open With*, or *Get Info → Open with → Change All…* to make it the default); the file opens in an editor tab,
+  shown relative to its git repository. On Windows / Linux pick DevCat under *Open with → Choose another app*.
 - **Multiple windows**: ⇧⌘N (Ctrl+Shift+N) opens another window; open a project in its own window or move a tab
   to a new window. Each window has its own tabs and project focus.
 - **Connections**: saved profiles with color tags, SSH tunnels, SSL, read-only mode.

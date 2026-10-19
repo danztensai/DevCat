@@ -11,6 +11,8 @@ interface TabsState {
   closeOthers: (id: string) => void;
   activate: (id: string) => void;
   update: (id: string, patch: Partial<Tab>) => void;
+  /** Move a tab in front of `beforeId` (null: to the end). */
+  move: (id: string, beforeId: string | null) => void;
 }
 
 let seq = 0;
@@ -70,6 +72,15 @@ export const useTabs = create<TabsState>((set, get) => ({
   activate: (id) => set({ activeId: id }),
   update: (id, patch) =>
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? ({ ...t, ...patch } as Tab) : t)) })),
+  move: (id, beforeId) =>
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === id);
+      if (!tab || beforeId === id) return s;
+      const rest = s.tabs.filter((t) => t.id !== id);
+      const at = beforeId === null ? rest.length : rest.findIndex((t) => t.id === beforeId);
+      if (at < 0) return s;
+      return { tabs: [...rest.slice(0, at), tab, ...rest.slice(at)] };
+    }),
 }));
 
 /** Convenience helpers used across features. */

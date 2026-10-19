@@ -8,11 +8,13 @@ export function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-/** Stable tab key: `claude:${cwd}` for a new Claude chat, `claude:${cwd}:${sessionId}` for a resumed session,
- *  `claude:${cwd}@${providerId}` for other AI connections. */
+let newChats = 0;
+
+/** Tab key: `claude:${cwd}:${sessionId}` for a resumed session (opening it again focuses that tab).
+ *  A new chat always gets a tab of its own, whatever is already open for the folder. */
 export function claudeTabKey(cwd: string, sessionId?: string | null, providerId?: string | null): string {
-  if (providerId && providerId !== CLAUDE_PROVIDER_ID) return `claude:${cwd}@${providerId}`;
-  return sessionId ? `claude:${cwd}:${sessionId}` : `claude:${cwd}`;
+  if (sessionId && (!providerId || providerId === CLAUDE_PROVIDER_ID)) return `claude:${cwd}:${sessionId}`;
+  return `claude:${cwd}:new-${Date.now().toString(36)}-${++newChats}`;
 }
 
 /** Open (or focus) the AI workspace tab for a folder. Returns the tab id.
