@@ -7,18 +7,17 @@
 use crate::db::TableRef;
 use crate::db::transfer::{self, ExportSource, TransferTarget};
 use crate::error::{AppError, AppResult};
-use crate::state::AppState;
+use crate::state::St;
 use serde_json::Value;
 use std::path::Path;
-use tauri::{AppHandle, Emitter, State};
 
-fn progress_emitter(app: AppHandle, options: &Value) -> impl Fn(Value) + Send + Sync + 'static {
+fn progress_emitter(options: &Value) -> impl Fn(Value) + Send + Sync + 'static {
     let job = options.get("jobId").cloned().unwrap_or(Value::Null);
     move |mut v: Value| {
         if let Value::Object(m) = &mut v {
             m.insert("jobId".into(), job.clone());
         }
-        let _ = app.emit("transfer-progress", v);
+        crate::events::emit("transfer-progress", v);
     }
 }
 
@@ -39,10 +38,9 @@ fn progress_emitter(app: AppHandle, options: &Value) -> impl Fn(Value) + Send + 
 ///   `insertBatch` (rows per INSERT, default 100; max 1000 on MSSQL)
 /// - xlsx: `header` (default true), `sheetName` (default `Sheet1`)
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn export_data(
-    app: AppHandle,
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     table: Option<TableRef>,
     query: Option<String>,
@@ -62,7 +60,7 @@ pub async fn export_data(
         (None, Some(sql)) => ExportSource::Query { sql, database },
         (None, None) => return Err(AppError::msg("export needs a table or a query")),
     };
-    let progress = progress_emitter(app, &options);
+    let progress = progress_emitter(&options);
     transfer::export_data(&driver, source, &format, Path::new(&path), &options, &progress).await
 }
 
@@ -82,10 +80,9 @@ pub async fn export_data(
 ///
 /// Values are coerced to the target column types (numbers, booleans); for MongoDB CSV
 /// imports numbers and true/false are inferred. Redis is not supported.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn import_data(
-    app: AppHandle,
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     table: TableRef,
     format: String,
@@ -93,14 +90,14 @@ pub async fn import_data(
     options: Value,
 ) -> AppResult<u64> {
     let driver = state.driver(&conn_id).await?;
-    let progress = progress_emitter(app, &options);
+    let progress = progress_emitter(&options);
     transfer::import_data(&driver, &table, &format, Path::new(&path), &options, &progress).await
 }
 
 /// Preview the first rows of a CSV/JSON file: `{ columns: [..], rows: [[..]] }`.
 ///
 /// Options: same parsing options as `import_data` plus `limit` (default 100).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn import_preview(format: String, path: String, options: Value) -> AppResult<Value> {
     tokio::task::spawn_blocking(move || transfer::import_preview(&format, Path::new(&path), &options))
         .await
@@ -116,10 +113,9 @@ pub async fn import_preview(format: String, path: String, options: Value) -> App
 /// `includeData` (default true), `structureOnly` (default false), `dropIfExists` /
 /// `dropExisting` / `dropTables` (emit DROP ... IF EXISTS, default true), `includeViews` (default true),
 /// `insertBatch` (rows per INSERT, default 100), `batchSize` (read page size, default 1000).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn backup_database(
-    app: AppHandle,
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     database: Option<String>,
     schema: Option<String>,
@@ -127,7 +123,7 @@ pub async fn backup_database(
     options: Value,
 ) -> AppResult<String> {
     let driver = state.driver(&conn_id).await?;
-    let progress = progress_emitter(app, &options);
+    let progress = progress_emitter(&options);
     transfer::backup_database(&driver, database.as_deref(), schema.as_deref(), Path::new(&path), &options, &progress).await
 }
 
@@ -138,17 +134,16 @@ pub async fn backup_database(
 /// Options: `jobId`, `continueOnError` (default false: stop at the first failing statement
 /// and return an error), `schema` (default schema for execution), `dropExisting`
 /// (MongoDB only: empty collections before loading).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn restore_database(
-    app: AppHandle,
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     database: Option<String>,
     path: String,
     options: Value,
 ) -> AppResult<String> {
     let driver = state.driver(&conn_id).await?;
-    let progress = progress_emitter(app, &options);
+    let progress = progress_emitter(&options);
     transfer::restore_database(&driver, database.as_deref(), Path::new(&path), &options, &progress).await
 }
 
@@ -161,10 +156,9 @@ pub async fn restore_database(
 /// `foreignKeys` (add FKs after copying, default false), `batchSize` (default 1000),
 /// `continueOnError` (skip failing tables, default false).
 /// Progress events carry `table`, `tableIndex`, `tables`, `tableRows`, `tableTotal`, `rows`.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn transfer_tables(
-    app: AppHandle,
-    state: State<'_, AppState>,
+    state: St,
     source_conn: String,
     target_conn: String,
     tables: Vec<TableRef>,
@@ -174,7 +168,7 @@ pub async fn transfer_tables(
 ) -> AppResult<u64> {
     let src = state.driver(&source_conn).await?;
     let dst = state.driver(&target_conn).await?;
-    let progress = progress_emitter(app, &options);
+    let progress = progress_emitter(&options);
     let target = TransferTarget { database: target_database, schema: target_schema };
     transfer::transfer_tables(&src, &dst, &tables, &target, &options, &progress).await
 }

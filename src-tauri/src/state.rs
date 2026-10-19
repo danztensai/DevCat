@@ -44,3 +44,35 @@ impl AppState {
         Ok(d)
     }
 }
+
+static STATE: once_cell::sync::OnceCell<AppState> = once_cell::sync::OnceCell::new();
+
+/// Create the app state (once, at startup).
+pub fn init(data_dir: std::path::PathBuf) {
+    let _ = STATE.set(AppState::new(data_dir));
+}
+
+/// The app state, as a command argument (`state: St`): commands then work the same from a
+/// window, a phone, or `devcat serve` (no Tauri app at all).
+#[derive(Clone, Copy)]
+pub struct St(&'static AppState);
+
+impl St {
+    pub fn get() -> Self {
+        St(STATE.get().expect("app state not initialized"))
+    }
+}
+
+impl std::ops::Deref for St {
+    type Target = AppState;
+    fn deref(&self) -> &AppState {
+        self.0
+    }
+}
+
+#[cfg(feature = "gui")]
+impl<'de, R: tauri::Runtime> tauri::ipc::CommandArg<'de, R> for St {
+    fn from_command(_: tauri::ipc::CommandItem<'de, R>) -> Result<Self, tauri::ipc::InvokeError> {
+        STATE.get().map(St).ok_or_else(|| tauri::ipc::InvokeError::from("DevCat isn't ready yet"))
+    }
+}

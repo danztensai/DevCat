@@ -140,7 +140,7 @@ pub(super) async fn scan(root: &Path, max_depth: u32) -> AppResult<Vec<GitRepo>>
     }
     let depth = max_depth.min(MAX_DEPTH);
     let walk_root = root.to_path_buf();
-    let mut found = tauri::async_runtime::spawn_blocking(move || walk(&walk_root, depth))
+    let mut found = crate::rt::spawn_blocking(move || walk(&walk_root, depth))
         .await
         .map_err(|e| AppError::msg(e.to_string()))?;
     let mut rels: HashMap<PathBuf, String> = found.iter().map(|f| (f.path.clone(), rel_of(root, &f.path))).collect();

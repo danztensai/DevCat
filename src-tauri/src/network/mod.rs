@@ -152,11 +152,10 @@ pub fn init(data_dir: PathBuf) {
 }
 
 /// Called from `lib.rs` setup after `init`: enables events and connects `auto_connect` profiles.
-pub fn start(app: tauri::AppHandle) {
-    let _ = registry::APP.set(app);
+pub fn start() {
     registry::spawn_log_flusher();
     traffic::spawn_sampler();
-    tauri::async_runtime::spawn(async {
+    crate::rt::spawn(async {
         let Ok(profiles) = store().and_then(|s| s.load_all()) else { return };
         // OpenVPN daemons a previous DevCat process left running (crash, update restart):
         // take them over so they keep working (and get "hold release" after a reconnect).
@@ -177,7 +176,7 @@ pub fn start(app: tauri::AppHandle) {
 
 /// Disconnect everything (app exit), so no openvpn / wg interface outlives DevCat.
 pub fn shutdown() {
-    tauri::async_runtime::block_on(shutdown_async());
+    crate::rt::block_on(shutdown_async());
 }
 
 /// `shutdown` for async callers (e.g. before an update restart): `block_on` would panic
@@ -189,22 +188,12 @@ pub async fn shutdown_async() {
     let _ = tokio::time::timeout(Duration::from_secs(20), all).await;
 }
 
-/// Make sure the profile `id` is connected (used before opening a connection that
-/// declares `options.networkId`). Waits until connected or fails.
-pub async fn ensure_connected(app: &tauri::AppHandle, id: &str) -> AppResult<()> {
-    let _ = registry::APP.set(app.clone());
-    ensure(id).await
-}
-
 /// Connect the network profile a connection depends on (`options.networkId`), if any.
 pub(crate) async fn ensure_for(cfg: &ConnectionConfig) -> AppResult<()> {
     let Some(id) = cfg.options.get("networkId").map(|s| s.trim()).filter(|s| !s.is_empty()) else {
         return Ok(());
     };
-    match registry::APP.get() {
-        Some(app) => ensure_connected(app, id).await,
-        None => ensure(id).await,
-    }
+    ensure(id).await
 }
 
 async fn ensure(id: &str) -> AppResult<()> {
@@ -295,23 +284,23 @@ async fn disconnect(id: &str) -> AppResult<()> {
     res
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_list() -> AppResult<Vec<NetProfile>> {
     store()?.load_all()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_get(id: String) -> AppResult<NetProfileFull> {
     store()?.get(&id)
 }
 
 /// Create (empty id) or update. `config_text` = full .ovpn / WireGuard .conf for VPN kinds.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_save(profile: NetProfile, config_text: Option<String>) -> AppResult<NetProfile> {
     store()?.save(profile, config_text)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_delete(id: String) -> AppResult<()> {
     check_id(&id)?;
     let _ = disconnect(&id).await;
@@ -322,7 +311,7 @@ pub async fn net_delete(id: String) -> AppResult<()> {
 }
 
 /// Read a .ovpn / .conf file and return an unsaved draft (id "") with the config text.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_import(path: String) -> AppResult<NetProfileFull> {
     let path = expand_home(&path);
     let meta = std::fs::metadata(&path)?;
@@ -367,7 +356,7 @@ pub async fn net_import(path: String) -> AppResult<NetProfileFull> {
 }
 
 /// Parse config text (kind "openvpn" | "wireguard") into a summary + detected fields, for live preview.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_parse(kind: NetKind, text: String) -> AppResult<serde_json::Value> {
     match kind {
         NetKind::Openvpn => Ok(serde_json::to_value(parse::parse_ovpn(&text))?),
@@ -378,21 +367,20 @@ pub async fn net_parse(kind: NetKind, text: String) -> AppResult<serde_json::Val
 
 /// `password_prompt`: connect with the admin password prompt even when the passwordless
 /// helper is set up (e.g. after the helper refused the config).
-#[tauri::command]
-pub async fn net_connect(app: tauri::AppHandle, id: String, password_prompt: Option<bool>) -> AppResult<()> {
-    let _ = registry::APP.set(app);
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn net_connect(id: String, password_prompt: Option<bool>) -> AppResult<()> {
     start_connect(&id, password_prompt.unwrap_or(false)).await?;
     // Returns early (Ok) if still connecting after the timeout; `net-status` follows.
     wait_connected(&id, ENSURE_TIMEOUT).await.map(|_| ())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_disconnect(id: String) -> AppResult<()> {
     check_id(&id)?;
     disconnect(&id).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_status() -> AppResult<Vec<NetStatus>> {
     let live = registry::statuses();
     Ok(store()?
@@ -402,13 +390,14 @@ pub async fn net_status() -> AppResult<Vec<NetStatus>> {
         .collect())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_logs(id: String) -> AppResult<Vec<String>> {
     Ok(registry::logs(&id))
 }
 
 /// Windows: install OpenVPN / WireGuard with the official installer DevCat ships (one UAC
 /// prompt), then report the tools again. `restartNeeded` is set when Windows asks for a reboot.
+#[cfg(feature = "gui")]
 #[tauri::command]
 pub async fn net_install_tool(app: tauri::AppHandle, tool: String) -> AppResult<serde_json::Value> {
     if tool != "openvpn" && tool != "wireguard" {
@@ -419,9 +408,9 @@ pub async fn net_install_tool(app: tauri::AppHandle, tool: String) -> AppResult<
     Ok(serde_json::json!({ "tools": tools, "restartNeeded": restart_needed }))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_tools() -> AppResult<NetTools> {
-    tauri::async_runtime::spawn_blocking(|| NetTools {
+    crate::rt::spawn_blocking(|| NetTools {
         openvpn: tools::find_openvpn().map(|p| p.to_string_lossy().to_string()),
         wireguard: tools::find_wireguard().map(|p| p.to_string_lossy().to_string()),
         elevation: elevate::mechanism().into(),
@@ -435,32 +424,32 @@ pub async fn net_tools() -> AppResult<NetTools> {
     .map_err(|e| AppError::msg(e.to_string()))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_ssh_config_hosts() -> AppResult<Vec<SshConfigHost>> {
-    tauri::async_runtime::spawn_blocking(parse::read_ssh_config).await.map_err(|e| AppError::msg(e.to_string()))
+    crate::rt::spawn_blocking(parse::read_ssh_config).await.map_err(|e| AppError::msg(e.to_string()))
 }
 
 /// Recent traffic samples (1/s, up to 5 minutes) for a profile; live updates arrive as
 /// `net-traffic` events with the same `TrafficSample` shape.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_traffic(id: String) -> AppResult<Vec<traffic::TrafficSample>> {
     Ok(traffic::history(&id))
 }
 
 /// Passwordless VPN helper: installed / up to date, and whether it can run the VPN tools here.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_helper_status() -> AppResult<helper::HelperStatus> {
-    tauri::async_runtime::spawn_blocking(helper::status).await.map_err(|e| AppError::msg(e.to_string()))
+    crate::rt::spawn_blocking(helper::status).await.map_err(|e| AppError::msg(e.to_string()))
 }
 
 /// Install or update the helper and its sudoers rule (one administrator prompt).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_helper_install() -> AppResult<helper::HelperStatus> {
     helper::install().await
 }
 
 /// Remove the helper and its sudoers rule (one administrator prompt).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn net_helper_uninstall() -> AppResult<helper::HelperStatus> {
     helper::uninstall().await
 }

@@ -131,14 +131,14 @@ fn list_dir(dir: &Path, show_ignored: bool) -> AppResult<(Vec<RawEntry>, Option<
     Ok((out, rel))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn fs_list(dir: String, show_ignored: Option<bool>) -> AppResult<Vec<FileEntry>> {
     let show_ignored = show_ignored.unwrap_or(false);
     if let Some(t) = super::remote::Target::parse(&dir) {
         return super::remote::fs_list(&t, show_ignored).await;
     }
     let dir_path = PathBuf::from(&dir);
-    let (raw, repo) = tauri::async_runtime::spawn_blocking(move || list_dir(&dir_path, show_ignored))
+    let (raw, repo) = crate::rt::spawn_blocking(move || list_dir(&dir_path, show_ignored))
         .await
         .map_err(|e| AppError::msg(e.to_string()))??;
     let status = match &repo {
@@ -581,12 +581,12 @@ fn preview_kind(path: &str, size: u64) -> AppResult<FilePreview> {
     text_preview("text", path, size, Some(language_for(&name, &ext)), "text/plain")
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn fs_preview(path: String) -> AppResult<FilePreview> {
     if let Some(t) = super::remote::Target::parse(&path) {
         return super::remote::fs_preview(&t).await;
     }
-    tauri::async_runtime::spawn_blocking(move || preview_sync(&path)).await.map_err(|e| AppError::msg(e.to_string()))?
+    crate::rt::spawn_blocking(move || preview_sync(&path)).await.map_err(|e| AppError::msg(e.to_string()))?
 }
 
 // ---------- fs_write_text ----------
@@ -663,12 +663,12 @@ fn write_text_sync(path: &str, content: &str, expected_version: Option<&str>, eo
 /// disk meanwhile — mismatches fail with a "CONFLICT:" error; pass None to overwrite (or
 /// recreate a deleted file). `line_ending` "lf" / "crlf" normalizes line breaks. Returns the
 /// new version token.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn fs_write_text(path: String, content: String, expected_version: Option<String>, line_ending: Option<String>) -> AppResult<String> {
     if let Some(t) = super::remote::Target::parse(&path) {
         return super::remote::fs_write_text(&t, &content, expected_version.as_deref(), line_ending.as_deref()).await;
     }
-    tauri::async_runtime::spawn_blocking(move || write_text_sync(&path, &content, expected_version.as_deref(), line_ending.as_deref()))
+    crate::rt::spawn_blocking(move || write_text_sync(&path, &content, expected_version.as_deref(), line_ending.as_deref()))
         .await
         .map_err(|e| AppError::msg(e.to_string()))?
 }

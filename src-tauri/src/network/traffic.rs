@@ -13,7 +13,6 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
-use tauri::Emitter;
 
 /// Samples kept per profile (1/s → 5 minutes).
 pub const HISTORY: usize = 300;
@@ -118,7 +117,7 @@ fn sample(id: &str, c: &mut Counter, now_ms: i64) -> Option<TrafficSample> {
 
 /// Sample every connected profile once a second and emit `net-traffic`.
 pub fn spawn_sampler() {
-    tauri::async_runtime::spawn(async {
+    crate::rt::spawn(async {
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
@@ -151,10 +150,8 @@ pub fn spawn_sampler() {
                     }
                 }
             }
-            if let Some(app) = registry::APP.get() {
-                for s in out {
-                    let _ = app.emit("net-traffic", &s);
-                }
+            for s in out {
+                crate::events::emit("net-traffic", &s);
             }
         }
     });

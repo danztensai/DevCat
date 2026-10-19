@@ -5,7 +5,7 @@
 //!   `pty-output` → { id, data }   (raw bytes, base64; batched ~12ms / 16KB)
 //!   `pty-exit`   → { id, code }
 use super::locate;
-use super::runner::{Sink, app_sink};
+use super::runner::Sink;
 use crate::error::{AppError, AppResult};
 use base64::Engine;
 use once_cell::sync::Lazy;
@@ -261,11 +261,10 @@ pub(crate) async fn open(
 
 /// Open a terminal in `cwd`. `program`: "claude" (resolved binary), None (login shell) or any program.
 /// With `provider_id` the AI connection decides program / env instead (its args come before `args`).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn pty_open(
-    app: tauri::AppHandle,
-    window: tauri::Window,
+    window: crate::events::Owner,
     cwd: String,
     program: Option<String>,
     args: Vec<String>,
@@ -280,7 +279,7 @@ pub async fn pty_open(
         }
         None => (program, args, vec![]),
     };
-    let id = open(app_sink(app), &cwd, program, args, env, cols, rows, "desktop").await?;
+    let id = open(crate::events::sink(), &cwd, program, args, env, cols, rows, "desktop").await?;
     if let Some(p) = PTYS.lock().get(&id) {
         *p.owner.lock() = Some(window.label().to_string());
     }
@@ -288,7 +287,7 @@ pub async fn pty_open(
 }
 
 /// Raw keystrokes (UTF-8).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn pty_write(id: String, data: String) -> AppResult<()> {
     let pty = get(&id)?;
     let mut w = pty.writer.lock();
@@ -298,7 +297,7 @@ pub async fn pty_write(id: String, data: String) -> AppResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn pty_resize(id: String, cols: u16, rows: u16) -> AppResult<()> {
     let pty = get(&id)?;
     pty.master.lock().resize(size(cols, rows)).map_err(|e| AppError::msg(format!("resize: {e}")))?;
@@ -330,7 +329,7 @@ fn kill(pty: &Pty) {
 }
 
 /// Kill the program and drop the terminal (`pty-exit` still follows).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn pty_close(id: String) -> AppResult<()> {
     if let Some(p) = PTYS.lock().remove(&id) {
         kill(&p);

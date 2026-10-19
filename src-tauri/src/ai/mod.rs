@@ -246,24 +246,24 @@ async fn detect_one(p: &AiProvider, provider_id: Option<String>) -> AiDetect {
 
 // ---------------------------------------------------------------- commands
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn ai_providers_list() -> AppResult<Vec<AiProvider>> {
     store()?.list()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn ai_provider_save(provider: AiProvider) -> AppResult<AiProvider> {
     store()?.save(provider)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn ai_provider_delete(id: String) -> AppResult<()> {
     store()?.delete(&id)
 }
 
 /// Without `provider`: whether each built-in CLI is installed (+ version).
 /// With one (possibly unsaved edits): test that profile's program.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn ai_provider_detect(provider: Option<AiProvider>) -> AppResult<Vec<AiDetect>> {
     Ok(match provider {
         Some(p) => vec![detect_one(&p, Some(p.id.clone()).filter(|i| !i.is_empty())).await],

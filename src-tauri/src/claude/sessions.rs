@@ -344,18 +344,18 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
     tokio::task::spawn_blocking(f).await.map_err(|e| AppError::msg(e.to_string()))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_projects() -> AppResult<Vec<ClaudeProject>> {
     blocking(|| projects_in(&projects_root())).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_sessions(cwd: String) -> AppResult<Vec<SessionMeta>> {
     blocking(move || sessions_in(&projects_root(), &cwd)).await
 }
 
 /// Transcript lines of a session (only user/assistant/system/result-like entries, raw JSON).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_transcript(cwd: String, session_id: String) -> AppResult<Vec<Value>> {
     if !valid_session_id(&session_id) {
         return Err(AppError::msg(format!("Invalid session id: {session_id}")));

@@ -14,7 +14,6 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::Api;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
-use tauri::Manager;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
@@ -84,9 +83,8 @@ async fn connect(id: String, generation: u64, profile: NetProfile) -> AppResult<
         .filter(|s| !s.is_empty())
         .cloned()
         .ok_or_else(|| AppError::msg("Pick the Kubernetes connection this tunnel uses"))?;
-    let app = registry::APP.get().ok_or_else(|| AppError::msg("DevCat isn't ready yet"))?;
     let cfg = {
-        let state = app.state::<crate::state::AppState>();
+        let state = crate::state::St::get();
         state.store.get(&conn_id).map_err(|_| AppError::msg("The Kubernetes connection this tunnel uses was deleted"))?
     };
     registry::log(&id, &format!("Using Kubernetes connection \"{}\"", cfg.name));

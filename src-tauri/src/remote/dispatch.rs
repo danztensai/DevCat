@@ -3,11 +3,11 @@
 //! `get_connection` (it returns passwords) and file writes aren't exposed at all.
 use super::server::Client;
 use crate::commands;
-use crate::state::AppState;
+use crate::events::Owner;
+use crate::state::St;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
 
 pub type CallResult = Result<Value, Value>;
 
@@ -60,18 +60,15 @@ pub fn audit_skip(cmd: &str, args: &Value) -> bool {
     }
 }
 
-/// A window to own streams started from a phone (they stop if that window closes).
-fn any_window(app: &AppHandle) -> Result<tauri::Window, Value> {
-    let windows = app.webview_windows();
-    let w = windows.get("main").or_else(|| windows.values().next()).ok_or_else(|| json!("Open a DevCat window on the computer first"))?;
-    Ok(w.as_ref().window())
-}
-
-pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value) -> CallResult {
+pub async fn call(client: &Arc<Client>, cmd: &str, args: &Value) -> CallResult {
     if client.readonly() && WRITES.contains(&cmd) {
-        return Err(json!("This phone has read-only access. Change it on the computer: DevCat → Mobile → Paired phones."));
+        return Err(json!(if crate::events::headless() {
+            "This phone has read-only access. Change it on the computer: type `devices`, then `access <n> full` where `devcat serve` runs."
+        } else {
+            "This phone has read-only access. Change it on the computer: DevCat → Mobile → Paired phones."
+        }));
     }
-    let st = || app.state::<AppState>();
+    let st = St::get;
     macro_rules! a {
         ($n:literal) => {
             arg(args, $n)?
@@ -104,11 +101,11 @@ pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value
                 None => (program, args_, vec![]),
             };
             let origin = format!("phone:{}", client.device.name);
-            let sink = crate::claude::runner::app_sink(app.clone());
+            let sink = crate::events::sink();
             let id = crate::claude::pty::open(sink, &cwd, program, args_, env, cols, rows, &origin).await.map_err(|e| json!(e.to_string()))?;
             client.attach(&id);
             let info = crate::claude::pty::info(&id).map_err(|e| json!(e.to_string()))?;
-            super::emit_desktop("remote-pty-opened", json!(info));
+            crate::events::emit("remote-pty-opened", &info);
             Ok(json!(info))
         }
         "pty_attach" => {
@@ -179,7 +176,7 @@ pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value
         "claude_transcript" => out(crate::claude::sessions::claude_transcript(a!("cwd"), a!("sessionId")).await),
         "ai_providers_list" => out(crate::ai::ai_providers_list().await),
         "keep_awake_status" => Ok(json!(crate::keep_awake::keep_awake_status())),
-        "keep_awake_set" => out(crate::keep_awake::keep_awake_set(app.clone(), a!("on"), arg(args, "minutes").unwrap_or(None)).await),
+        "keep_awake_set" => out(crate::keep_awake::keep_awake_set(a!("on"), arg(args, "minutes").unwrap_or(None)).await),
 
         // ------------------------------------------------ connections & databases
         "list_connections" => out(commands::connections::list_connections(st()).await),
@@ -222,11 +219,11 @@ pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value
         "net_status" => out(crate::network::net_status().await),
         "net_logs" => out(crate::network::net_logs(a!("id")).await),
         "net_traffic" => out(crate::network::net_traffic(a!("id")).await),
-        "net_connect" => out(crate::network::net_connect(app.clone(), a!("id"), None).await),
+        "net_connect" => out(crate::network::net_connect(a!("id"), None).await),
         "net_disconnect" => out(crate::network::net_disconnect(a!("id")).await),
 
         // ------------------------------------------------ kubernetes
-        "k8s_connect" => out(crate::infra::k8s::k8s_connect(any_window(app)?, st(), a!("connId")).await),
+        "k8s_connect" => out(crate::infra::k8s::k8s_connect(Owner::phones(), st(), a!("connId")).await),
         "k8s_namespaces" => out(crate::infra::k8s::k8s_namespaces(st(), a!("connId")).await),
         "k8s_list" => out(crate::infra::k8s::k8s_list(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), arg(args, "labelSelector").unwrap_or(None)).await),
         "k8s_get" => out(crate::infra::k8s::k8s_get(st(), a!("connId"), a!("kind"), arg(args, "namespace").unwrap_or(None), a!("name")).await),
@@ -240,8 +237,7 @@ pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value
         "k8s_cronjob_suspend" => out(crate::infra::k8s::k8s_cronjob_suspend(st(), a!("connId"), a!("namespace"), a!("name"), a!("suspend")).await),
         "k8s_logs_start" => {
             let r = crate::infra::k8s::streams::k8s_logs_start(
-                app.clone(),
-                any_window(app)?,
+                Owner::phones(),
                 st(),
                 a!("connId"),
                 a!("namespace"),
@@ -261,8 +257,7 @@ pub async fn call(app: &AppHandle, client: &Arc<Client>, cmd: &str, args: &Value
         }
         "k8s_watch_start" => {
             let r = crate::infra::k8s::streams::k8s_watch_start(
-                app.clone(),
-                any_window(app)?,
+                Owner::phones(),
                 st(),
                 a!("connId"),
                 a!("kind"),

@@ -9,7 +9,7 @@ pub mod streams;
 
 use crate::error::{AppError, AppResult};
 use crate::models::ConnectionConfig;
-use crate::state::AppState;
+use crate::state::{AppState, St};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Event as CoreEvent, Namespace, Node, Pod};
 use kube::api::{Api, DeleteParams, DynamicObject, ListParams, Patch, PatchParams};
@@ -25,7 +25,6 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::State;
 use tokio::sync::RwLock;
 
 // ---------------------------------------------------------------------------
@@ -234,7 +233,7 @@ pub async fn test(cfg: &ConnectionConfig) -> AppResult<String> {
     Ok(format!("Kubernetes {} ({})", v.git_version, c.context))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_contexts(kubeconfig_path: Option<String>) -> AppResult<Vec<String>> {
     let kc = load_kubeconfig(kubeconfig_path.as_deref())?;
     Ok(kc.contexts.into_iter().map(|c| c.name).collect())
@@ -251,8 +250,8 @@ pub struct ConnectInfo {
 }
 
 /// (Re)connects: always builds a fresh client so this doubles as "retry".
-#[tauri::command]
-pub async fn k8s_connect(window: tauri::Window, state: State<'_, AppState>, conn_id: String) -> AppResult<ConnectInfo> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn k8s_connect(window: crate::events::Owner, state: St, conn_id: String) -> AppResult<ConnectInfo> {
     HOLDERS.lock().entry(conn_id.clone()).or_default().insert(window.label().to_string());
     let cfg = state.store.get(&conn_id)?;
     let c = build_conn(&cfg).await?;
@@ -261,8 +260,8 @@ pub async fn k8s_connect(window: tauri::Window, state: State<'_, AppState>, conn
     Ok(ConnectInfo { version: v.git_version, platform: v.platform, context: c.context, server: c.server, namespace: c.namespace })
 }
 
-#[tauri::command]
-pub async fn k8s_disconnect(window: tauri::Window, conn_id: String) -> AppResult<()> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn k8s_disconnect(window: crate::events::Owner, conn_id: String) -> AppResult<()> {
     let still_used = HOLDERS.lock().get_mut(&conn_id).is_some_and(|h| {
         h.remove(window.label());
         !h.is_empty()
@@ -443,8 +442,8 @@ pub(crate) fn clean(obj: DynamicObject, r: &Res, redact: bool) -> Value {
 // Basic CRUD commands
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
-pub async fn k8s_namespaces(state: State<'_, AppState>, conn_id: String) -> AppResult<Vec<String>> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn k8s_namespaces(state: St, conn_id: String) -> AppResult<Vec<String>> {
     let c = conn(&state, &conn_id).await?;
     let api: Api<Namespace> = Api::all(c.client.clone());
     match api.list(&ListParams::default()).await {
@@ -459,9 +458,9 @@ pub async fn k8s_namespaces(state: State<'_, AppState>, conn_id: String) -> AppR
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_list(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -479,9 +478,9 @@ pub async fn k8s_list(
 }
 
 /// Full object as JSON (secret data included — only on explicit request).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_get(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -493,9 +492,9 @@ pub async fn k8s_get(
     Ok(clean(obj, &r, false))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_get_yaml(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -508,8 +507,8 @@ pub async fn k8s_get_yaml(
 }
 
 /// Server-side apply of one or more YAML documents (field manager "devcat").
-#[tauri::command]
-pub async fn k8s_apply_yaml(state: State<'_, AppState>, conn_id: String, yaml: String) -> AppResult<String> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn k8s_apply_yaml(state: St, conn_id: String, yaml: String) -> AppResult<String> {
     apply_yaml(&conn(&state, &conn_id).await?, &yaml).await
 }
 
@@ -551,9 +550,9 @@ pub(crate) async fn apply_yaml(c: &Conn, yaml: &str) -> AppResult<String> {
     Ok(out.join("\n"))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_delete(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -574,9 +573,9 @@ pub(crate) async fn delete(c: &Conn, kind: &str, namespace: Option<&str>, name: 
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_scale(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -598,9 +597,9 @@ pub(crate) async fn scale(c: &Conn, kind: &str, namespace: Option<&str>, name: &
 }
 
 /// Rollout restart (same annotation `kubectl rollout restart` uses).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_restart(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -626,9 +625,9 @@ pub(crate) async fn restart(c: &Conn, kind: &str, namespace: Option<&str>, name:
 }
 
 /// Suspend / resume a CronJob.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_cronjob_suspend(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     namespace: String,
     name: String,
@@ -645,9 +644,9 @@ pub async fn k8s_cronjob_suspend(
 }
 
 /// Events whose involvedObject matches the given object.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_events_for(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -732,8 +731,8 @@ pub struct Overview {
     errors: Vec<String>,
 }
 
-#[tauri::command]
-pub async fn k8s_cluster_overview(state: State<'_, AppState>, conn_id: String) -> AppResult<Overview> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn k8s_cluster_overview(state: St, conn_id: String) -> AppResult<Overview> {
     overview(&conn(&state, &conn_id).await?).await
 }
 
@@ -981,9 +980,9 @@ async fn node_metrics(c: &Conn) -> Result<Vec<UsageItem>, kube::Error> {
 }
 
 /// metrics.k8s.io usage. Returns `available: false` when metrics-server is missing.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_metrics(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
@@ -1000,7 +999,7 @@ pub async fn k8s_metrics(
 
 /// Writes text to a user-chosen path (log download). The fs plugin's default capability
 /// does not allow arbitrary writes, so the save dialog result is written here.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_save_text(path: String, contents: String) -> AppResult<()> {
     tokio::fs::write(path, contents).await?;
     Ok(())

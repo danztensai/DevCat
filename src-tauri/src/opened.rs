@@ -43,7 +43,7 @@ pub fn accept(app: &AppHandle, paths: impl IntoIterator<Item = PathBuf>) {
 }
 
 /// Files waiting to be imported (each is handed out once).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub fn take_opened_files() -> Vec<String> {
     std::mem::take(&mut *PENDING.lock())
 }

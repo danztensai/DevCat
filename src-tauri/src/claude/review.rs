@@ -8,7 +8,7 @@
 //! result, schema retries exhausted) `structured_output` is absent — fall back to
 //! rendering `result.result` as markdown.
 use super::locate;
-use super::runner::{Sink, Spawn, app_sink, spawn_run, user_message, write_to};
+use super::runner::{Sink, Spawn, spawn_run, user_message, write_to};
 use super::*;
 use crate::error::{AppError, AppResult};
 use serde_json::{Value, json};
@@ -184,8 +184,8 @@ pub(super) fn build_prompt(t: &Target) -> String {
 
 /// Start a one-shot code review run (read-only tools) of `scope`: "uncommitted" | "staged" | "branch" (vs `base`).
 /// Streams like a chat run; the final `result` carries the review (structured findings when supported).
-#[tauri::command]
-pub async fn claude_review(app: tauri::AppHandle, window: tauri::Window, cwd: String, scope: String, base: Option<String>, model: Option<String>) -> AppResult<String> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn claude_review(window: crate::events::Owner, cwd: String, scope: String, base: Option<String>, model: Option<String>) -> AppResult<String> {
     let target = collect(&cwd, &scope, base.as_deref()).await?;
     let spec = Spawn {
         // dontAsk: anything not in --allowedTools is denied without prompting.
@@ -194,7 +194,7 @@ pub async fn claude_review(app: tauri::AppHandle, window: tauri::Window, cwd: St
         extra_args: review_args(),
         close_after_result: true,
     };
-    let run_id = start_with_prompt(app_sink(app), &cwd, spec, &build_prompt(&target)).await?;
+    let run_id = start_with_prompt(crate::events::sink(), &cwd, spec, &build_prompt(&target)).await?;
     super::runner::set_owner(&run_id, window.label());
     Ok(run_id)
 }

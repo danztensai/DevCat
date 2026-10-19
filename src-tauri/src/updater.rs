@@ -30,7 +30,7 @@ fn can_self_install() -> bool {
 }
 
 /// Ask the update server for a newer version. None = up to date.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn update_check(app: AppHandle) -> AppResult<Option<UpdateInfo>> {
     let updater = app.updater().map_err(|e| AppError::msg(format!("Updater unavailable: {e}")))?;
     let found = updater.check().await.map_err(|e| AppError::msg(format!("Could not check for updates: {e}")))?;
@@ -47,7 +47,7 @@ pub async fn update_check(app: AppHandle) -> AppResult<Option<UpdateInfo>> {
 
 /// Download + verify + install the update found by the last `update_check`, then restart.
 /// Progress: `update-progress` { downloaded, total? }.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn update_install(app: AppHandle) -> AppResult<()> {
     if !can_self_install() {
         return Err(AppError::msg("This installation can't update itself; download the new version instead"));

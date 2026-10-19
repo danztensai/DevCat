@@ -1,5 +1,5 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(not(debug_assertions), feature = "gui"), windows_subsystem = "windows")]
 
 fn main() {
     // Helper mode runs before (and instead of) anything Tauri: see network/helper.rs.
@@ -18,5 +18,13 @@ fn main() {
         eprintln!("{why}");
         std::process::exit(1);
     }
-    devcat_lib::run()
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = devcat_lib::cli_main(&args) {
+        std::process::exit(code);
+    }
+    #[cfg(feature = "gui")]
+    devcat_lib::run();
+    // The CLI build: no app to start.
+    #[cfg(not(feature = "gui"))]
+    std::process::exit(devcat_lib::cli_main(&["help".to_string()]).unwrap_or(2));
 }

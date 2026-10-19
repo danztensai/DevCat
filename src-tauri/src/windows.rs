@@ -40,7 +40,7 @@ fn next_label<R: Runtime>(app: &AppHandle<R>) -> String {
 
 /// Open another app window (same size / behavior as the main one), cascaded from the caller.
 /// Returns the new window's label. Async so the builder doesn't deadlock on Windows.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn open_window(
     app: AppHandle,
     window: tauri::Window,
@@ -87,7 +87,7 @@ pub fn on_destroyed(label: &str) {
     crate::infra::k8s::streams::stop_owned_by(label, None);
     crate::infra::k8s::release_window(label);
     let label = label.to_string();
-    tauri::async_runtime::spawn(async move { crate::claude::runner::stop_owned_by(&label).await });
+    crate::rt::spawn(async move { crate::claude::runner::stop_owned_by(&label).await });
 }
 
 /// macOS: add "New Window ⇧⌘N" to the File menu of the default app menu (Edit stays intact).

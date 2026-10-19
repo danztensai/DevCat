@@ -2,11 +2,10 @@
 //! Stored as `notes.json` next to `projects.json`.
 use crate::error::{AppError, AppResult};
 use crate::projects::ProjectStore;
-use crate::state::AppState;
+use crate::state::St;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::State;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -111,13 +110,13 @@ impl NoteStore {
     }
 }
 
-#[tauri::command]
-pub async fn notes_list(state: State<'_, AppState>) -> AppResult<Vec<Note>> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn notes_list(state: St) -> AppResult<Vec<Note>> {
     state.notes.list()
 }
 
-#[tauri::command]
-pub async fn note_save(state: State<'_, AppState>, note: Note) -> AppResult<Note> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn note_save(state: St, note: Note) -> AppResult<Note> {
     save_checked(&state.notes, &state.projects, note)
 }
 
@@ -131,8 +130,8 @@ pub(crate) fn save_checked(notes: &NoteStore, projects: &ProjectStore, note: Not
     notes.save(note)
 }
 
-#[tauri::command]
-pub async fn note_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn note_delete(state: St, id: String) -> AppResult<()> {
     state.notes.delete(&id)
 }
 

@@ -5,14 +5,13 @@
 //! base64(gzip(JSON)) on top of the Secret's own base64 encoding.
 use super::{conn, friendly};
 use crate::error::{AppError, AppResult};
-use crate::state::AppState;
+use crate::state::{AppState, St};
 use base64::Engine;
 use k8s_openapi::api::core::v1::Secret;
 use kube::api::{Api, ListParams};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::Read;
-use tauri::State;
 
 /// Decode the `release` payload of a Helm release Secret into JSON.
 pub(crate) fn decode_release(raw: &[u8]) -> AppResult<Value> {
@@ -81,8 +80,8 @@ async fn helm_secrets(state: &AppState, conn_id: &str, namespace: Option<&str>, 
 }
 
 /// Latest revision of every Helm release (optionally in one namespace).
-#[tauri::command]
-pub async fn k8s_helm_releases(state: State<'_, AppState>, conn_id: String, namespace: Option<String>) -> AppResult<Vec<Value>> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn k8s_helm_releases(state: St, conn_id: String, namespace: Option<String>) -> AppResult<Vec<Value>> {
     let secrets = helm_secrets(&state, &conn_id, namespace.as_deref(), None).await?;
     let mut latest: HashMap<(String, String), &Secret> = HashMap::new();
     for s in &secrets {
@@ -109,9 +108,9 @@ pub async fn k8s_helm_releases(state: State<'_, AppState>, conn_id: String, name
 }
 
 /// One release in detail: values, manifest, notes and revision history.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_helm_release(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     namespace: String,
     name: String,

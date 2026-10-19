@@ -263,7 +263,7 @@ pub async fn fs_list(t: &Target, show_ignored: bool) -> AppResult<Vec<FileEntry>
 
 /// Check a folder on an SSH host and return it as the host sees it (`~` and symlinks
 /// resolved): `ssh://devbox/~/app` → `ssh://devbox/home/me/app`.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_resolve_dir(uri: String) -> AppResult<String> {
     let t = Target::parse(&uri).ok_or_else(|| AppError::msg("Not an SSH folder (ssh://host/path)"))?;
     resolve_dir(&t).await
@@ -308,7 +308,7 @@ pub async fn fs_preview(t: &Target) -> AppResult<FilePreview> {
     let local = dir.join(&name);
     std::fs::write(&local, &data)?;
     let lp = local.to_string_lossy().into_owned();
-    let res = tauri::async_runtime::spawn_blocking(move || super::files::preview_sync(&lp)).await.map_err(|e| AppError::msg(e.to_string()));
+    let res = crate::rt::spawn_blocking(move || super::files::preview_sync(&lp)).await.map_err(|e| AppError::msg(e.to_string()));
     let _ = std::fs::remove_dir_all(&dir);
     let mut p = res??;
     p.path = t.uri(&t.path);

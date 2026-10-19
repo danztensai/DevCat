@@ -1,6 +1,7 @@
 # Publishes the hosted browser version of DevCat Mobile (mobile/, `--mode hosted`) on GitHub
 # Pages: https://devileya.github.io/DevCat/. DevCat's pairing QR code opens it when relays are on;
 # it reaches the computer through the relay with mobile/web-iroh (WebAssembly).
+# Also serves the install scripts (scripts/install.sh, install.ps1).
 # Runs on version tags and manually. Repository settings → Pages → Source: GitHub Actions.
 name: pages
 
@@ -45,6 +46,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: mobile/web-iroh/build.sh
       - run: pnpm mobile:hosted
+      # curl -fsSL https://devileya.github.io/DevCat/install.sh | sh (and install.ps1 for Windows)
+      - run: cp scripts/install.sh scripts/install.ps1 mobile/dist-hosted/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: mobile/dist-hosted

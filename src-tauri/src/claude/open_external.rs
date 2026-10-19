@@ -43,14 +43,17 @@ pub(crate) fn check(path: &Path) -> AppResult<()> {
 }
 
 /// Open a regular, non-executable file with the system's default application.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn fs_open_external(path: String) -> AppResult<()> {
     let p = Path::new(&path);
     if !p.is_absolute() {
         return Err(AppError::msg("Path must be absolute"));
     }
     check(p)?;
-    tauri_plugin_opener::open_path(p, None::<&str>).map_err(|e| AppError::msg(e.to_string()))
+    #[cfg(feature = "gui")]
+    return tauri_plugin_opener::open_path(p, None::<&str>).map_err(|e| AppError::msg(e.to_string()));
+    #[cfg(not(feature = "gui"))]
+    Err(AppError::msg("Opening files needs the DevCat app"))
 }
 
 #[cfg(test)]

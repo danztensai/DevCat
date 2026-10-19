@@ -15,7 +15,6 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::ChildStdin;
 use tokio::sync::{oneshot, watch};
@@ -269,13 +268,7 @@ fn push_stderr(run: &Run, line: String) {
 }
 
 /// Where run events go: the Tauri app in production, a channel in tests.
-pub(crate) type Sink = Arc<dyn Fn(&'static str, Value) + Send + Sync>;
-
-pub(crate) fn app_sink(app: tauri::AppHandle) -> Sink {
-    Arc::new(move |event, payload| {
-        let _ = app.emit(event, payload);
-    })
-}
+pub(crate) use crate::events::Sink;
 
 /// Spawn a run, wire up its reader / exit tasks and send `initialize`. Returns the run id.
 pub(super) async fn spawn_run(sink: Sink, cwd: &str, spec: Spawn) -> AppResult<String> {
@@ -446,7 +439,7 @@ async fn handshake(bin: &Path) -> AppResult<Value> {
     res.map_err(|_| AppError::msg("claude initialize timed out"))?
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_info() -> AppResult<ClaudeInfo> {
     let Some(bin) = locate::claude_path() else {
         return Ok(ClaudeInfo { path: None, version: None, account: None, models: None });
@@ -478,9 +471,9 @@ pub async fn claude_info() -> AppResult<ClaudeInfo> {
 // ---------------------------------------------------------------- runs
 
 /// Start a session in `cwd`; returns a run id. Messages arrive as `claude-msg` events.
-#[tauri::command]
-pub async fn claude_start(app: tauri::AppHandle, window: tauri::Window, cwd: String, opts: StartOptions) -> AppResult<String> {
-    let id = spawn_run(app_sink(app), &cwd, Spawn { opts, prompt_tool: true, ..Default::default() }).await?;
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn claude_start(window: crate::events::Owner, cwd: String, opts: StartOptions) -> AppResult<String> {
+    let id = spawn_run(crate::events::sink(), &cwd, Spawn { opts, prompt_tool: true, ..Default::default() }).await?;
     set_owner(&id, window.label());
     Ok(id)
 }
@@ -539,7 +532,7 @@ pub(super) async fn write_to(run_id: &str, user_msg: &Value) -> AppResult<()> {
 }
 
 /// Send a user message (text; optional image paths are attached as base64 image blocks).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_send(run_id: String, text: String, images: Option<Vec<String>>) -> AppResult<()> {
     let mut blocks = Vec::new();
     for p in images.unwrap_or_default() {
@@ -549,7 +542,7 @@ pub async fn claude_send(run_id: String, text: String, images: Option<Vec<String
 }
 
 /// Answer a can_use_tool request. `decision` = {behavior:"allow", updatedInput?, updatedPermissions?} | {behavior:"deny", message}.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_permission(run_id: String, request_id: String, decision: Value) -> AppResult<()> {
     let run = get_run(&run_id)?;
     let request = run
@@ -588,7 +581,7 @@ pub async fn claude_permission(run_id: String, request_id: String, decision: Val
 }
 
 /// Send a control request: subtype "interrupt" | "set_permission_mode" ({mode}) | "set_model" ({model}).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_control(run_id: String, subtype: String, payload: Option<Value>) -> AppResult<Value> {
     let run = get_run(&run_id)?;
     let res = run.control(&subtype, payload.as_ref(), CONTROL_TIMEOUT).await?;
@@ -615,7 +608,7 @@ async fn stop_run(run: Arc<Run>) {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_stop(run_id: String) -> AppResult<()> {
     let Some(run) = RUNS.lock().get(&run_id).cloned() else {
         return Ok(()); // already gone
@@ -637,7 +630,7 @@ pub struct RunInfo {
 }
 
 /// Snapshot of a live run (session id from system/init, current model / mode, busy).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn claude_run_info(run_id: String) -> AppResult<RunInfo> {
     let run = get_run(&run_id)?;
     let st = run.state.lock();

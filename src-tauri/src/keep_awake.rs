@@ -11,7 +11,6 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -68,18 +67,18 @@ static HOLDER: Lazy<Mutex<Holder>> = Lazy::new(|| {
     Mutex::new(Holder { tx, state: KeepAwakeState::default(), generation: 0 })
 });
 
-fn broadcast(app: &AppHandle, state: &KeepAwakeState) {
-    let _ = app.emit("keep-awake", state);
+fn broadcast(state: &KeepAwakeState) {
+    crate::events::emit("keep-awake", state);
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub fn keep_awake_status() -> KeepAwakeState {
     HOLDER.lock().state.clone()
 }
 
 /// Turn keep-awake on (for `minutes`, or until turned off) or off.
-#[tauri::command]
-pub async fn keep_awake_set(app: AppHandle, on: bool, minutes: Option<u32>) -> AppResult<KeepAwakeState> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn keep_awake_set(on: bool, minutes: Option<u32>) -> AppResult<KeepAwakeState> {
     let (state, generation) = {
         let mut h = HOLDER.lock();
         if on {
@@ -97,10 +96,9 @@ pub async fn keep_awake_set(app: AppHandle, on: bool, minutes: Option<u32>) -> A
         h.generation += 1;
         (h.state.clone(), h.generation)
     };
-    broadcast(&app, &state);
+    broadcast(&state);
     if let (true, Some(m)) = (on, minutes.filter(|m| *m > 0)) {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
+        crate::rt::spawn(async move {
             tokio::time::sleep(Duration::from_secs(u64::from(m) * 60)).await;
             let off = {
                 let mut h = HOLDER.lock();
@@ -112,7 +110,7 @@ pub async fn keep_awake_set(app: AppHandle, on: bool, minutes: Option<u32>) -> A
                 h.generation += 1;
                 h.state.clone()
             };
-            broadcast(&app, &off);
+            broadcast(&off);
         });
     }
     Ok(state)

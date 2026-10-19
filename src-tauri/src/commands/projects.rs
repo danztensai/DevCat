@@ -1,23 +1,22 @@
 use crate::error::{AppError, AppResult};
 use crate::models::Project;
-use crate::state::AppState;
-use tauri::State;
+use crate::state::St;
 
-#[tauri::command]
-pub async fn list_projects(state: State<'_, AppState>) -> AppResult<Vec<Project>> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn list_projects(state: St) -> AppResult<Vec<Project>> {
     state.projects.list()
 }
 
 /// Create (empty `id`) or rename / recolor a project.
-#[tauri::command]
-pub async fn save_project(state: State<'_, AppState>, project: Project) -> AppResult<Project> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn save_project(state: St, project: Project) -> AppResult<Project> {
     state.projects.save(project)
 }
 
 /// Delete a project. Its connections are moved out of the project, or deleted
 /// (including their keychain secrets) when `delete_connections` is true.
-#[tauri::command]
-pub async fn delete_project(state: State<'_, AppState>, id: String, delete_connections: Option<bool>) -> AppResult<()> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn delete_project(state: St, id: String, delete_connections: Option<bool>) -> AppResult<()> {
     let members: Vec<String> = state
         .store
         .load_all()?
@@ -45,8 +44,8 @@ pub async fn delete_project(state: State<'_, AppState>, id: String, delete_conne
 }
 
 /// Move connections into a project (`project_id = None` removes them from any project).
-#[tauri::command]
-pub async fn move_connections(state: State<'_, AppState>, ids: Vec<String>, project_id: Option<String>) -> AppResult<()> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn move_connections(state: St, ids: Vec<String>, project_id: Option<String>) -> AppResult<()> {
     if let Some(pid) = &project_id {
         if !state.projects.exists(pid)? {
             return Err(AppError::msg("Project not found"));
@@ -60,7 +59,7 @@ pub async fn move_connections(state: State<'_, AppState>, ids: Vec<String>, proj
 }
 
 /// Persist a new sidebar order; returns the reordered list.
-#[tauri::command]
-pub async fn reorder_projects(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<Vec<Project>> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn reorder_projects(state: St, ids: Vec<String>) -> AppResult<Vec<Project>> {
     state.projects.reorder(&ids)
 }

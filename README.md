@@ -21,7 +21,23 @@ and React + TypeScript; runs on macOS, Windows and Linux.
 ## Download
 
 Grab the latest installer for macOS, Windows or Linux from the
-[Releases page](https://github.com/devileya/DevCat/releases/latest).
+[Releases page](https://github.com/devileya/DevCat/releases/latest), or from a terminal:
+
+```sh
+# The app
+brew install --cask devileya/devcat/devcat                                     # macOS (Homebrew)
+curl -fsSL https://devileya.github.io/DevCat/install.sh | sh -s -- --app       # macOS, Linux (AppImage)
+& ([scriptblock]::Create((irm https://devileya.github.io/DevCat/install.ps1))) -App   # Windows (PowerShell)
+
+# Only the CLI (`devcat serve`, no window: servers, SSH; see below)
+brew install devileya/devcat/devcat-cli                                        # macOS, Linux (Homebrew)
+curl -fsSL https://devileya.github.io/DevCat/install.sh | sh                   # macOS, Linux → ~/.local/bin
+irm https://devileya.github.io/DevCat/install.ps1 | iex                        # Windows (PowerShell)
+```
+
+The script checks the download's SHA-256 and installs for your user only (no `sudo`); `--version v0.7.0`
+picks a version, `--dir` the CLI's folder. The CLI is also attached to each release as
+`devcat-cli-<platform>.tar.gz` / `.zip`.
 
 ## Tour
 
@@ -82,6 +98,30 @@ logs and deployments.
   for iPhone, build it with Xcode for now. See [mobile/README.md](mobile/README.md).
 
 <p align="center"><img src="assets/readme/mobile-desktop.png" width="720" alt="Pairing a phone in DevCat"></p>
+
+### Without a window: `devcat serve`
+
+The same remote access from a terminal, without opening the app: on a server or dev box, over SSH, or just with
+the window closed. The pairing QR code is drawn in the terminal and you allow phones there; everything the phone
+and the browser version do works the same (agents and terminals, files, databases, VPNs, Kubernetes), with the
+app's own data folder, connections and paired phones.
+
+```sh
+devcat serve        # the CLI on its own (see Download), or with the app installed:
+/Applications/DevCat.app/Contents/MacOS/devcat serve    # macOS
+devcat serve                                            # Linux .deb / .rpm
+```
+
+The CLI on its own has no window code at all (no WebKit / GTK), so it runs on a bare server; on Linux it only
+needs `libdbus` (installed almost everywhere).
+
+- While it runs, type `pair` (or press Enter) for a new QR code, `devices`, `access <n> full|readonly`,
+  `revoke <n>`, `log`, `status` or `quit`.
+- Options: `--port`, `--name`, `--relay public|off|<url>`, `--public-addr`, `--no-browser` (saved, the app uses
+  them too), and `--data-dir`. `devcat help` lists them.
+- With no terminal to answer in (systemd, `nohup`, the app's Windows binary), start it with `--approve full` or
+  `--approve readonly`: any phone with the current pairing code is then allowed. New codes are printed as links.
+- Don't run it while the app has **Remote access** on: they'd share one port and identity.
 
 ## Features
 
@@ -237,13 +277,21 @@ pnpm tauri build        # builds for the current OS
 - **macOS** → `src-tauri/target/release/bundle/dmg/DevCat_<version>_aarch64.dmg` (and `.app`)
 - **Windows** → `src-tauri/target/release/bundle/msi/*.msi` and `nsis/*-setup.exe`
 
+The CLI alone (`devcat serve` without any window code): build the phone web app first so it's embedded, then
+`pnpm mobile:web && cd src-tauri && cargo build --release --no-default-features --bin devcat`
+→ `src-tauri/target/release/devcat`.
+
 Release builds also produce signed update bundles, so they need the updater signing key
 (`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; CI reads them from repository secrets). Without it,
 build with `pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
 
 Each OS's installers must be built on that OS. CI does all of them: push a tag (`git tag v0.1.0 && git push --tags`)
 or run the **build** workflow manually. `.github/workflows/build.yml` builds macOS (Apple Silicon and Intel),
-Windows (`.exe`/`.msi`) and Linux (`.AppImage`/`.deb`/`.rpm`) installers and publishes them on the GitHub release.
+Windows (`.exe`/`.msi`) and Linux (`.AppImage`/`.deb`/`.rpm`) installers, the CLI for macOS, Linux (x64, arm64)
+and Windows, and `SHA256SUMS.txt`, and publishes them on the GitHub release. The install scripts
+(`scripts/install.sh`, `install.ps1`) are served from GitHub Pages; the Homebrew tap
+([devileya/homebrew-devcat](https://github.com/devileya/homebrew-devcat), source in `packaging/homebrew-tap/`)
+picks up each release by itself within the hour.
 
 macOS release builds are signed with DevCat's self-signed certificate (`.github/devcat-codesign.crt`, so the Keychain
 remembers "Always Allow" across updates; CI needs the `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` secrets, else it falls
@@ -284,6 +332,8 @@ src-tauri/src/
   commands/               Tauri command handlers
   store.rs                saved connections (JSON) + OS keychain secrets
   remote/                 remote access for DevCat Mobile: QUIC server, pairing, command allowlist, audit log
+  cli.rs                  `devcat serve`: remote access without a window
+  events.rs               backend events to windows and phones
   notify/                 agent status from Claude Code hooks, ntfy notifications
 crates/remote-proto/      wire protocol shared by the desktop app and DevCat Mobile
 mobile/                   DevCat Mobile (Tauri 2 for Android / iOS): src = React UI, src-tauri = client

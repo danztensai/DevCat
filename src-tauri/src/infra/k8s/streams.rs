@@ -3,7 +3,7 @@
 //! the frontend uses to filter events and to stop it.
 use super::{Conn, clean, conn, dyn_api, friendly, resolve};
 use crate::error::{AppError, AppResult};
-use crate::state::AppState;
+use crate::state::St;
 use base64::Engine;
 use futures::{AsyncBufReadExt, SinkExt, StreamExt};
 use k8s_openapi::api::core::v1::{Pod, Service};
@@ -17,7 +17,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State, Window};
+use crate::events::Owner;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::AbortHandle;
 
@@ -31,14 +31,8 @@ struct StreamEntry {
 /// Log and watch streams.
 static STREAMS: Lazy<Mutex<HashMap<String, StreamEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-/// Event sink; `AppHandle::emit` in the app, a channel in tests.
+/// Event sink; `events::sink()` in the app, a channel in tests.
 pub(crate) type Emit = Arc<dyn Fn(&'static str, Value) + Send + Sync>;
-
-fn app_emitter(app: AppHandle) -> Emit {
-    Arc::new(move |event, payload| {
-        let _ = app.emit(event, payload);
-    })
-}
 
 fn to_json(v: impl Serialize) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
@@ -103,7 +97,7 @@ pub fn stop_owned_by(label: &str, conn_id: Option<&str>) {
     });
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_stream_stop(stream_id: String) -> AppResult<()> {
     if let Some(s) = STREAMS.lock().remove(&stream_id) {
         s.abort.abort();
@@ -130,12 +124,11 @@ struct StreamEnd {
 }
 
 /// Starts streaming pod logs. Emits `k8s-log` batches (~100ms) and a final `k8s-log-end`.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn k8s_logs_start(
-    app: AppHandle,
-    window: Window,
-    state: State<'_, AppState>,
+    window: Owner,
+    state: St,
     conn_id: String,
     namespace: String,
     pod: String,
@@ -156,7 +149,7 @@ pub async fn k8s_logs_start(
         since_seconds,
         ..Default::default()
     };
-    let id = logs_start(&c, conn_id, app_emitter(app), &namespace, &pod, &lp).await?;
+    let id = logs_start(&c, conn_id, crate::events::sink(), &namespace, &pod, &lp).await?;
     set_owner(&id, window.label());
     Ok(id)
 }
@@ -230,18 +223,17 @@ struct WatchEvent {
 /// Watches a kind (optionally in one namespace). The first event is `Restarted` with the
 /// full list; afterwards individual Added/Modified/Deleted events follow. If the watch has
 /// to re-list (e.g. 410 Gone) another `Restarted` is emitted.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_watch_start(
-    app: AppHandle,
-    window: Window,
-    state: State<'_, AppState>,
+    window: Owner,
+    state: St,
     conn_id: String,
     kind: String,
     namespace: Option<String>,
     label_selector: Option<String>,
 ) -> AppResult<String> {
     let c = conn(&state, &conn_id).await?;
-    let id = watch_start(&c, conn_id, app_emitter(app), &kind, namespace.as_deref(), label_selector).await?;
+    let id = watch_start(&c, conn_id, crate::events::sink(), &kind, namespace.as_deref(), label_selector).await?;
     set_owner(&id, window.label());
     Ok(id)
 }
@@ -337,12 +329,11 @@ struct ExecExit {
 }
 
 /// Starts an interactive TTY exec session. Output arrives as base64 in `k8s-exec-output`.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn k8s_exec_start(
-    app: AppHandle,
-    window: Window,
-    state: State<'_, AppState>,
+    window: Owner,
+    state: St,
     conn_id: String,
     namespace: String,
     pod: String,
@@ -352,7 +343,7 @@ pub async fn k8s_exec_start(
     rows: u16,
 ) -> AppResult<String> {
     let c = conn(&state, &conn_id).await?;
-    let id = exec_start(&c, conn_id, app_emitter(app), &namespace, &pod, container, command, cols, rows).await?;
+    let id = exec_start(&c, conn_id, crate::events::sink(), &namespace, &pod, container, command, cols, rows).await?;
     set_owner(&id, window.label());
     Ok(id)
 }
@@ -429,7 +420,7 @@ pub(crate) async fn exec_start(
     Ok(id)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_exec_input(session_id: String, data: String) -> AppResult<()> {
     let tx = EXECS.lock().get(&session_id).map(|s| s.stdin.clone());
     match tx {
@@ -438,7 +429,7 @@ pub async fn k8s_exec_input(session_id: String, data: String) -> AppResult<()> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_exec_resize(session_id: String, cols: u16, rows: u16) -> AppResult<()> {
     let tx = EXECS.lock().get(&session_id).and_then(|s| s.resize.clone());
     if let Some(mut tx) = tx {
@@ -447,7 +438,7 @@ pub async fn k8s_exec_resize(session_id: String, cols: u16, rows: u16) -> AppRes
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_exec_stop(session_id: String) -> AppResult<()> {
     if let Some(s) = EXECS.lock().remove(&session_id) {
         s.abort.abort();
@@ -535,10 +526,10 @@ fn update_forward(id: &str, f: impl FnOnce(&mut PortForwardInfo)) {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 #[allow(clippy::too_many_arguments)]
 pub async fn k8s_port_forward_start(
-    state: State<'_, AppState>,
+    state: St,
     conn_id: String,
     namespace: String,
     pod_or_service: String,
@@ -637,7 +628,7 @@ pub(crate) async fn port_forward_start(
     Ok(info)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_port_forward_list(conn_id: Option<String>) -> AppResult<Vec<PortForwardInfo>> {
     let mut v: Vec<PortForwardInfo> = FORWARDS
         .lock()
@@ -649,7 +640,7 @@ pub async fn k8s_port_forward_list(conn_id: Option<String>) -> AppResult<Vec<Por
     Ok(v)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn k8s_port_forward_stop(id: String) -> AppResult<()> {
     if let Some(f) = FORWARDS.lock().remove(&id) {
         f.abort.abort();

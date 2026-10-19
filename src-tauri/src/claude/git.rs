@@ -387,7 +387,7 @@ pub(crate) fn invalidate_cache() {
 
 // ---------- commands ----------
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_status(cwd: String) -> AppResult<GitStatus> {
     if let Some(t) = super::remote::Target::parse(&cwd) {
         return super::remote::git_status(&t).await;
@@ -437,7 +437,7 @@ fn read_worktree(path: &Path) -> AppResult<Option<Vec<u8>>> {
 }
 
 /// original = HEAD (or index when `staged` is false and the file is staged), modified = index (staged) or worktree.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_file_versions(cwd: String, path: String, staged: bool) -> AppResult<FileVersions> {
     let root = require_root(&cwd).await?;
     let rel = resolve_rel(&root, &path)?;
@@ -463,7 +463,7 @@ pub async fn git_file_versions(cwd: String, path: String, staged: bool) -> AppRe
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_diff_text(cwd: String, staged: bool) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     let mut args = vec!["diff", "--no-color", "--no-ext-diff"];
@@ -506,7 +506,7 @@ fn with_paths<'a>(mut args: Vec<&'a str>, rels: &'a [String]) -> Vec<&'a str> {
     args
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_stage(cwd: String, paths: Vec<String>) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let rels = resolve_all(&root, &paths)?;
@@ -518,7 +518,7 @@ pub async fn git_stage(cwd: String, paths: Vec<String>) -> AppResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_unstage(cwd: String, paths: Vec<String>) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let rels = resolve_all(&root, &paths)?;
@@ -553,7 +553,7 @@ fn delete_worktree_file(root: &Path, rel: &str) -> AppResult<()> {
 /// - staged-only changes → reverted to HEAD (`restore --source=HEAD --staged --worktree`)
 ///
 /// `include_staged`: also drop staged changes of tracked files (back to HEAD), not just the worktree part.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_discard(cwd: String, paths: Vec<String>, include_staged: Option<bool>) -> AppResult<()> {
     let include_staged = include_staged.unwrap_or(false);
     let root = require_root(&cwd).await?;
@@ -599,7 +599,7 @@ pub async fn git_discard(cwd: String, paths: Vec<String>, include_staged: Option
 
 /// Discard every change: staged and unstaged edits go back to HEAD; with `include_untracked`
 /// untracked files and folders are deleted too (ignored files and nested repos are kept).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_discard_all(cwd: String, include_untracked: bool) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     if !has_head(&root).await? {
@@ -615,7 +615,7 @@ pub async fn git_discard_all(cwd: String, include_untracked: bool) -> AppResult<
 
 /// Commit the index, or with `paths` only those files (their current contents, staging
 /// untracked/deleted ones first); other staged changes stay staged.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_commit(cwd: String, message: String, paths: Option<Vec<String>>) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     if message.trim().is_empty() {

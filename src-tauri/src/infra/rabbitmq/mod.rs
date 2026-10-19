@@ -8,11 +8,10 @@ pub(crate) mod client;
 
 use crate::error::{AppError, AppResult};
 use crate::models::ConnectionConfig;
-use crate::state::AppState;
+use crate::state::St;
 use client::{client, enc, page_locally, Rmq};
 use reqwest::Method;
 use serde_json::{json, Value};
-use tauri::State;
 
 /// Sample window for charts: last 10 minutes at 10s resolution.
 fn sample_params() -> Vec<(&'static str, String)> {
@@ -352,27 +351,26 @@ fn version_string(o: &Value) -> String {
 // ---------------------------------------------------------------------------
 // Tauri commands
 
-type St<'a> = State<'a, AppState>;
 
-#[tauri::command]
-pub async fn rmq_overview(state: St<'_>, conn_id: String) -> AppResult<Value> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn rmq_overview(state: St, conn_id: String) -> AppResult<Value> {
     client(&state, &conn_id).await?.overview().await
 }
 
-#[tauri::command]
-pub async fn rmq_nodes(state: St<'_>, conn_id: String) -> AppResult<Value> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn rmq_nodes(state: St, conn_id: String) -> AppResult<Value> {
     client(&state, &conn_id).await?.get("/nodes", &[]).await
 }
 
-#[tauri::command]
-pub async fn rmq_list(state: St<'_>, conn_id: String, resource: String, vhost: Option<String>) -> AppResult<Value> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn rmq_list(state: St, conn_id: String, resource: String, vhost: Option<String>) -> AppResult<Value> {
     client(&state, &conn_id).await?.list(&resource, vhost.as_deref()).await
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_list_page(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     resource: String,
     vhost: Option<String>,
@@ -398,9 +396,9 @@ pub async fn rmq_list_page(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_get(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     resource: String,
     vhost: Option<String>,
@@ -410,14 +408,14 @@ pub async fn rmq_get(
 }
 
 /// Bindings of a queue (`kind` = "queue") or of an exchange as `source` / `destination`.
-#[tauri::command]
-pub async fn rmq_bindings(state: St<'_>, conn_id: String, vhost: String, kind: String, name: String) -> AppResult<Value> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn rmq_bindings(state: St, conn_id: String, vhost: String, kind: String, name: String) -> AppResult<Value> {
     client(&state, &conn_id).await?.bindings_of(&vhost, &kind, &name).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_declare_queue(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     name: String,
@@ -431,9 +429,9 @@ pub async fn rmq_declare_queue(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_delete_queue(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     name: String,
@@ -446,15 +444,15 @@ pub async fn rmq_delete_queue(
         .await
 }
 
-#[tauri::command]
-pub async fn rmq_purge_queue(state: St<'_>, conn_id: String, vhost: String, name: String) -> AppResult<()> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn rmq_purge_queue(state: St, conn_id: String, vhost: String, name: String) -> AppResult<()> {
     client(&state, &conn_id).await?.purge_queue(&vhost, &name).await
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_get_messages(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     queue: String,
@@ -470,9 +468,9 @@ pub async fn rmq_get_messages(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_declare_exchange(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     name: String,
@@ -488,9 +486,9 @@ pub async fn rmq_declare_exchange(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_delete_exchange(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     name: String,
@@ -500,9 +498,9 @@ pub async fn rmq_delete_exchange(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_publish(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     exchange: String,
@@ -525,9 +523,9 @@ pub async fn rmq_publish(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_create_binding(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     source: String,
@@ -542,9 +540,9 @@ pub async fn rmq_create_binding(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_delete_binding(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     vhost: String,
     source: String,
@@ -558,9 +556,9 @@ pub async fn rmq_delete_binding(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_close_connection(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     name: String,
     reason: Option<String>,
@@ -569,9 +567,9 @@ pub async fn rmq_close_connection(
 }
 
 /// Raw escape hatch: `path` is relative to `/api` (a leading `/api` is accepted too).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn rmq_request(
-    state: St<'_>,
+    state: St,
     conn_id: String,
     method: String,
     path: String,

@@ -23,7 +23,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use store::{AuditEntry, Device, RelayChoice, RemoteSettings, RemoteStore};
-use tauri::{AppHandle, Emitter, Listener};
 use tokio::sync::oneshot;
 
 const APPROVE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -35,7 +34,6 @@ const FORWARDED: &[&str] = &[
 ];
 
 struct Remote {
-    app: AppHandle,
     host: Arc<Host>,
     error: Mutex<Option<String>>,
     approvals: Mutex<HashMap<String, oneshot::Sender<Option<String>>>>,
@@ -50,12 +48,6 @@ fn remote() -> AppResult<&'static Remote> {
 
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
-}
-
-pub(crate) fn emit_desktop(event: &str, payload: Value) {
-    if let Some(r) = REMOTE.get() {
-        let _ = r.app.emit(event, payload);
-    }
 }
 
 /// This computer's id (public key) while remote access runs.
@@ -139,7 +131,7 @@ fn host_info_now() -> HostInfo {
         id: host_id().unwrap_or_default(),
         name: host_name(&s),
         os: std::env::consts::OS.to_string(),
-        app_version: REMOTE.get().map(|r| r.app.package_info().version.to_string()).unwrap_or_default(),
+        app_version: env!("DEVCAT_VERSION").to_string(),
         addrs: reachable_addrs(s.port, s.public_addr.as_deref()),
         relay: s.relay_value(),
     }
@@ -176,7 +168,7 @@ pub struct RemoteStatus {
     pub relay_connected: Option<String>,
 }
 
-fn status_now() -> AppResult<RemoteStatus> {
+pub(crate) fn status_now() -> AppResult<RemoteStatus> {
     let r = remote()?;
     let s = r.host.store.settings();
     Ok(RemoteStatus {
@@ -197,19 +189,25 @@ fn status_now() -> AppResult<RemoteStatus> {
 }
 
 fn push_status() {
-    if let (Some(r), Ok(s)) = (REMOTE.get(), status_now()) {
-        let _ = r.app.emit("remote-status", s);
+    if let Ok(s) = status_now() {
+        crate::events::emit("remote-status", s);
     }
 }
 
-struct TauriBackend {
-    app: AppHandle,
+/// Who answers pairing requests without a window (`devcat serve`): handed each request, it
+/// calls `remote_pair_answer` (or never does: the request times out = denied).
+static ASK: OnceCell<Box<dyn Fn(PairRequest) + Send + Sync>> = OnceCell::new();
+
+pub fn set_pair_asker(f: impl Fn(PairRequest) + Send + Sync + 'static) {
+    let _ = ASK.set(Box::new(f));
 }
 
+struct AppBackend;
+
 #[async_trait::async_trait]
-impl Backend for TauriBackend {
+impl Backend for AppBackend {
     async fn call(&self, client: &Arc<Client>, cmd: &str, args: Value) -> Result<Value, Value> {
-        let r = dispatch::call(&self.app, client, cmd, &args).await;
+        let r = dispatch::call(client, cmd, &args).await;
         if !dispatch::NOT_AUDITED.contains(&cmd) {
             if let Some(rm) = REMOTE.get() {
                 let reads = ["fs_list", "list_connections", "list_projects", "open_connection_ids", "host_info", "claude_projects", "claude_sessions", "ai_providers_list", "keep_awake_status", "net_list", "net_status", "db_children", "db_list_databases", "saved_queries_list", "history_list", "k8s_connect", "k8s_namespaces", "k8s_list", "k8s_cluster_overview", "k8s_metrics", "db_table_structure"];
@@ -240,16 +238,20 @@ impl Backend for TauriBackend {
         let (tx, rx) = oneshot::channel();
         rm.approvals.lock().insert(req.request_id.clone(), tx);
         rm.pending.lock().push(req.clone());
-        let _ = self.app.emit("remote-pair-request", &req);
+        crate::events::emit("remote-pair-request", &req);
         push_status();
         // Bring DevCat to the front so the question is seen.
-        if let Some(w) = tauri::Manager::webview_windows(&self.app).values().next() {
+        #[cfg(feature = "gui")]
+        if let Some(w) = crate::events::app().and_then(|a| tauri::Manager::webview_windows(a).into_values().next()) {
             let _ = w.request_user_attention(Some(tauri::UserAttentionType::Critical));
+        }
+        if let Some(ask) = ASK.get() {
+            ask(req.clone());
         }
         let answer = tokio::time::timeout(APPROVE_TIMEOUT, rx).await.ok().and_then(Result::ok).flatten();
         rm.approvals.lock().remove(&req.request_id);
         rm.pending.lock().retain(|p| p.request_id != req.request_id);
-        let _ = self.app.emit("remote-pair-resolved", json!({ "requestId": req.request_id }));
+        crate::events::emit("remote-pair-resolved", json!({ "requestId": req.request_id }));
         push_status();
         answer
     }
@@ -280,28 +282,26 @@ fn test_mode() -> Option<u16> {
     std::env::var("DEVCAT_REMOTE_TEST").ok().and_then(|p| p.parse().ok())
 }
 
-pub fn init(app: AppHandle, data_dir: std::path::PathBuf) {
+/// Set up remote access; starts the server if it's turned on (`devcat serve` starts it itself).
+pub fn init(data_dir: std::path::PathBuf) {
     paths::init(&data_dir);
     let store = Arc::new(RemoteStore::new(&data_dir));
-    let host = Host::new(store, Arc::new(TauriBackend { app: app.clone() }));
-    let _ = REMOTE.set(Remote { app: app.clone(), host, error: Mutex::new(None), approvals: Mutex::new(HashMap::new()), pending: Mutex::new(Vec::new()) });
-    for ev in FORWARDED {
-        let name = ev.to_string();
-        app.listen_any(*ev, move |e| {
-            let Some(r) = REMOTE.get() else { return };
-            if r.host.clients().is_empty() {
-                return;
-            }
-            if let Ok(payload) = serde_json::from_str::<Value>(e.payload()) {
-                r.host.broadcast(&name, &payload);
-            }
-        });
+    let host = Host::new(store, Arc::new(AppBackend));
+    let _ = REMOTE.set(Remote { host, error: Mutex::new(None), approvals: Mutex::new(HashMap::new()), pending: Mutex::new(Vec::new()) });
+    crate::events::add_tap(|event, payload| {
+        let Some(r) = REMOTE.get() else { return };
+        if FORWARDED.contains(&event) && !r.host.clients().is_empty() {
+            r.host.broadcast(event, payload);
+        }
+    });
+    if crate::events::headless() {
+        return;
     }
     if let Some(port) = test_mode() {
         let r = REMOTE.get().expect("just set");
         let _ = r.host.store.save_settings(&RemoteSettings { enabled: true, port, ..r.host.store.settings() });
         let dir = data_dir.join("remote");
-        tauri::async_runtime::spawn(async move {
+        crate::rt::spawn(async move {
             apply().await;
             loop {
                 if let Ok(p) = remote_pair_start(None).await {
@@ -313,7 +313,7 @@ pub fn init(app: AppHandle, data_dir: std::path::PathBuf) {
         return;
     }
     if settings().enabled {
-        tauri::async_runtime::spawn(async {
+        crate::rt::spawn(async {
             apply().await;
         });
     }
@@ -334,6 +334,27 @@ async fn apply() {
     push_status();
 }
 
+/// `devcat serve`: save the changed settings and start serving (whether or not remote access
+/// is turned on for the app).
+pub async fn start_headless(change: impl FnOnce(&mut RemoteSettings)) -> AppResult<RemoteStatus> {
+    let r = remote()?;
+    let old = r.host.store.settings();
+    let mut s = old.clone();
+    change(&mut s);
+    if s.port < 1024 {
+        return Err(AppError::msg("Use a port from 1024 to 65535"));
+    }
+    if s.relay == RelayChoice::Custom {
+        let url = s.relay_url.as_deref().unwrap_or_default();
+        url.parse::<iroh::RelayUrl>().map_err(|_| AppError::msg(format!("Not a relay address: {url} (it looks like https://relay.example.com)")))?;
+    }
+    if serde_json::to_value(&old)? != serde_json::to_value(&s)? {
+        r.host.store.save_settings(&s)?;
+    }
+    r.host.start(s.port, s.web, s.relay_value().as_deref()).await.map_err(AppError::msg)?;
+    status_now()
+}
+
 pub async fn shutdown() {
     if let Some(r) = REMOTE.get() {
         r.host.stop().await;
@@ -342,12 +363,12 @@ pub async fn shutdown() {
 
 // ---------------------------------------------------------------- commands
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_status() -> AppResult<RemoteStatus> {
     status_now()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_save(settings: RemoteSettings) -> AppResult<RemoteStatus> {
     let r = remote()?;
     let old = r.host.store.settings();
@@ -390,7 +411,7 @@ pub struct PairInfo {
 }
 
 /// A new one-time pairing code and its QR (remote access must be on).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 /// `addr`: the address the browser link points at (one of the status `addrs`); default the first.
 pub async fn remote_pair_start(addr: Option<String>) -> AppResult<PairInfo> {
     let r = remote()?;
@@ -425,12 +446,12 @@ fn qr_svg(text: &str) -> AppResult<String> {
 }
 
 /// A QR code (SVG) for any short text, e.g. the ntfy subscribe link.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_qr(text: String) -> AppResult<String> {
     qr_svg(&text)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_pair_cancel() -> AppResult<()> {
     remote()?.host.pair_cancel();
     push_status();
@@ -438,7 +459,7 @@ pub async fn remote_pair_cancel() -> AppResult<()> {
 }
 
 /// Answer a pairing request: `access` "full" | "readonly", or None to deny.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_pair_answer(request_id: String, access: Option<String>) -> AppResult<()> {
     let r = remote()?;
     let access = access.filter(|a| a == "full" || a == "readonly");
@@ -448,12 +469,12 @@ pub async fn remote_pair_answer(request_id: String, access: Option<String>) -> A
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_devices() -> AppResult<Vec<Device>> {
     Ok(remote()?.host.store.devices().into_iter().map(Device::public).collect())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_device_update(id: String, access: Option<String>, name: Option<String>) -> AppResult<Vec<Device>> {
     let r = remote()?;
     let changed_access = access.as_deref().is_some_and(|a| a == "full" || a == "readonly");
@@ -472,7 +493,7 @@ pub async fn remote_device_update(id: String, access: Option<String>, name: Opti
     Ok(r.host.store.devices().into_iter().map(Device::public).collect())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_device_revoke(id: String) -> AppResult<Vec<Device>> {
     let r = remote()?;
     if let Some(d) = r.host.store.devices().into_iter().find(|d| d.id == id) {
@@ -482,13 +503,13 @@ pub async fn remote_device_revoke(id: String) -> AppResult<Vec<Device>> {
     Ok(r.host.store.devices().into_iter().map(Device::public).collect())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_audit(limit: Option<usize>) -> AppResult<Vec<AuditEntry>> {
     Ok(remote()?.host.store.audit_tail(limit.unwrap_or(300).min(2000)))
 }
 
 /// New identity for this computer: every phone must pair again.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn remote_reset_identity() -> AppResult<RemoteStatus> {
     let r = remote()?;
     for d in r.host.store.devices() {

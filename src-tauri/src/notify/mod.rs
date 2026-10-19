@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -45,7 +44,6 @@ impl Default for NotifySettings {
     }
 }
 
-static APP: OnceCell<AppHandle> = OnceCell::new();
 static DIR: OnceCell<PathBuf> = OnceCell::new();
 
 fn path() -> AppResult<PathBuf> {
@@ -82,25 +80,30 @@ fn save(s: &NotifySettings) -> AppResult<()> {
     Ok(())
 }
 
-pub fn init(app: AppHandle, data_dir: PathBuf) {
-    let _ = APP.set(app);
+pub fn init(data_dir: PathBuf) {
     let _ = DIR.set(data_dir);
-    tauri::async_runtime::spawn(async {
+    crate::rt::spawn(async {
         if let Err(e) = hooks::start().await {
             eprintln!("agent hooks listener failed: {e}");
         }
     });
 }
 
-/// Emit to the desktop windows (the remote module mirrors it to phones).
+/// Emit to the desktop windows and phones.
 pub(crate) fn emit(event: &str, payload: Value) {
-    if let Some(app) = APP.get() {
-        let _ = app.emit(event, payload);
-    }
+    crate::events::emit(event, payload);
 }
 
+#[cfg(feature = "gui")]
 fn app_focused() -> bool {
-    APP.get().is_some_and(|a| a.webview_windows().values().any(|w| w.is_focused().unwrap_or(false)))
+    use tauri::Manager;
+    crate::events::app().is_some_and(|a| a.webview_windows().values().any(|w| w.is_focused().unwrap_or(false)))
+}
+
+/// No windows: nobody is looking at the computer.
+#[cfg(not(feature = "gui"))]
+fn app_focused() -> bool {
+    false
 }
 
 fn project_name(cwd: Option<&str>) -> String {
@@ -161,12 +164,12 @@ pub(crate) async fn on_change(status: &hooks::AgentStatus, change: hooks::Change
 
 // ---------------------------------------------------------------- commands
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn notify_settings() -> AppResult<NotifySettings> {
     Ok(load())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn notify_save(settings: NotifySettings) -> AppResult<NotifySettings> {
     let mut s = settings;
     s.server = s.server.trim().trim_end_matches('/').to_string();
@@ -183,14 +186,14 @@ pub async fn notify_save(settings: NotifySettings) -> AppResult<NotifySettings> 
 }
 
 /// A new private topic (the old one stops getting notifications).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn notify_new_topic() -> AppResult<NotifySettings> {
     let mut s = load();
     s.topic = new_topic();
     notify_save(s).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn notify_test() -> AppResult<()> {
     let s = load();
     let msg = json!({
@@ -203,7 +206,7 @@ pub async fn notify_test() -> AppResult<()> {
 }
 
 /// Status of every agent DevCat knows about (from hooks).
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn agents_status() -> AppResult<Vec<hooks::AgentStatus>> {
     Ok(hooks::all())
 }

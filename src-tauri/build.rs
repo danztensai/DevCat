@@ -2,7 +2,24 @@ use std::path::Path;
 
 fn main() {
     embed_mobile_web();
-    tauri_build::build()
+    app_version();
+    // The CLI build (`--no-default-features`) has no Tauri app to generate.
+    if std::env::var_os("CARGO_FEATURE_GUI").is_some() {
+        tauri_build::build()
+    }
+}
+
+/// `DEVCAT_VERSION`: the app version from tauri.conf.json (Cargo.toml's stays 0.1.0), for
+/// `devcat serve`, which runs without Tauri's app context.
+fn app_version() {
+    println!("cargo:rerun-if-changed=tauri.conf.json");
+    let conf = std::fs::read_to_string("tauri.conf.json").unwrap_or_default();
+    let v = conf
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("\"version\":"))
+        .map(|v| v.trim().trim_end_matches(',').trim_matches('"').to_string())
+        .unwrap_or_default();
+    println!("cargo:rustc-env=DEVCAT_VERSION={v}");
 }
 
 /// The browser version of DevCat Mobile (`pnpm mobile:web` → mobile/dist-web) is served by the

@@ -1,0 +1,21 @@
+# Follows DevCat's releases: rewrites the formula and cask when a new version is out.
+name: update
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./update.sh
+      - name: Commit
+        run: |
+          git add Formula Casks
+          git diff --cached --quiet && exit 0
+          v=$(sed -n 's/^  version "\(.*\)"/\1/p' Formula/devcat-cli.rb)
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "DevCat $v"
+          git push

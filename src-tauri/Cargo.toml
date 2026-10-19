@@ -14,12 +14,18 @@ edition = "2024"
 name = "devcat_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# The app with its windows. Without it (`cargo build --no-default-features`): the CLI alone
+# (`devcat serve`), with no Tauri / WebKit / GTK, for servers and terminal-only installs.
+default = ["gui"]
+gui = ["dep:tauri", "dep:tauri-plugin-opener", "dep:tauri-plugin-dialog", "dep:tauri-plugin-fs", "dep:tauri-plugin-updater", "dep:tauri-plugin-single-instance"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
-tauri-plugin-opener = "2"
+tauri = { version = "2", features = ["macos-private-api"], optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1.53.3", features = ["full"] }
@@ -47,8 +53,8 @@ redis = { version = "1.7.1", features = ["tokio-comp", "tokio-rustls-comp", "clu
 kube = { version = "4.2.0", default-features = false, features = ["runtime", "client", "ws", "rustls-tls"] }
 k8s-openapi = { version = "0.28.0", features = ["latest"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "http2", "query"] }
-tauri-plugin-dialog = "2.8.2"
-tauri-plugin-fs = "2.7.0"
+tauri-plugin-dialog = { version = "2.8.2", optional = true }
+tauri-plugin-fs = { version = "2.7.0", optional = true }
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 russh = "0.64.1"
 rust_xlsxwriter = { version = "0.99.1", features = ["constant_memory"] }
@@ -59,7 +65,7 @@ ignore = "0.4.33"
 calamine = { version = "0.36.1", features = ["dates"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2"] }
 portable-pty = "0.9.0"
-tauri-plugin-updater = "2.14.0"
+tauri-plugin-updater = { version = "2.14.0", optional = true }
 time = { version = "0.3", features = ["formatting"] }
 keepawake = "0.6.1"
 # remote access from the DevCat mobile app (direct QUIC, see src/remote)
@@ -90,4 +96,4 @@ panic = "unwind"
 strip = true
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
-tauri-plugin-single-instance = "2"
+tauri-plugin-single-instance = { version = "2", optional = true }

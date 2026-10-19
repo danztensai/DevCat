@@ -4,11 +4,10 @@
 //! generation they were started with; updates from a stale generation are ignored, so a
 //! task that finishes after the user already disconnected cannot resurrect the state.
 use super::NetStatus;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::{AppHandle, Emitter};
 
 pub const DISCONNECTED: &str = "disconnected";
 pub const CONNECTING: &str = "connecting";
@@ -42,7 +41,8 @@ impl Entry {
 static REG: Lazy<Mutex<HashMap<String, Entry>>> = Lazy::new(Default::default);
 static PENDING_LOGS: Lazy<Mutex<HashMap<String, Vec<String>>>> = Lazy::new(Default::default);
 static NEXT_GEN: AtomicU64 = AtomicU64::new(1);
-pub static APP: OnceCell<AppHandle> = OnceCell::new();
+/// The `net-log` flusher runs (not in unit tests).
+static FLUSHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn idle(id: &str) -> NetStatus {
     NetStatus { id: id.into(), state: DISCONNECTED.into(), since: None, detail: None, error: None, local_ports: vec![] }
@@ -53,9 +53,7 @@ fn now() -> String {
 }
 
 fn emit(status: &NetStatus) {
-    if let Some(app) = APP.get() {
-        let _ = app.emit("net-status", status);
-    }
+    crate::events::emit("net-status", status);
 }
 
 pub fn status(id: &str) -> NetStatus {
@@ -217,7 +215,7 @@ pub fn log(id: &str, line: &str) {
         }
         e.logs.push_back(line.clone());
     }
-    if APP.get().is_some() {
+    if FLUSHING.load(Ordering::Relaxed) {
         PENDING_LOGS.lock().entry(id.to_string()).or_default().push(line);
     }
 }
@@ -228,14 +226,13 @@ pub fn logs(id: &str) -> Vec<String> {
 
 /// Emit pending log lines as `net-log` events every ~100ms.
 pub fn spawn_log_flusher() {
-    tauri::async_runtime::spawn(async {
+    FLUSHING.store(true, Ordering::Relaxed);
+    crate::rt::spawn(async {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             let batch = std::mem::take(&mut *PENDING_LOGS.lock());
-            if let Some(app) = APP.get() {
-                for (id, lines) in batch {
-                    let _ = app.emit("net-log", serde_json::json!({ "id": id, "lines": lines }));
-                }
+            for (id, lines) in batch {
+                crate::events::emit("net-log", serde_json::json!({ "id": id, "lines": lines }));
             }
         }
     });

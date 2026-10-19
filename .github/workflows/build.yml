@@ -112,6 +112,8 @@ jobs:
             - **macOS (Intel):** `DevCat_*_x64.dmg`
             - **Windows:** `DevCat_*_x64-setup.exe` or `DevCat_*_x64_en-US.msi` (OpenVPN and WireGuard installers included; DevCat offers them the first time you connect)
             - **Linux:** `.AppImage`, `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL)
+            - **CLI only** (`devcat serve`: phones and browsers without the app; servers, SSH): `devcat-cli-<platform>.tar.gz` / `.zip`, or
+              `curl -fsSL https://devileya.github.io/DevCat/install.sh | sh` · `brew install devileya/devcat/devcat-cli`
 
             The builds are not notarized by Apple / signed for Windows yet.
             **macOS:** after dragging DevCat to Applications, open it once; when macOS says it can't verify
@@ -193,3 +195,113 @@ jobs:
             src-tauri/target/**/release/bundle/appimage/*.AppImage
             src-tauri/target/**/release/bundle/deb/*.deb
             src-tauri/target/**/release/bundle/rpm/*.rpm
+
+  # DevCat CLI: `devcat serve` without the app (no Tauri / WebKit / GTK), for servers and
+  # terminal installs (scripts/install.sh, Homebrew). Assets have no version in their names, so
+  # releases/latest/download/devcat-cli-<target>.tar.gz always gets the newest.
+  cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: macos-latest, target: aarch64-apple-darwin }
+          - { platform: macos-latest, target: x86_64-apple-darwin }
+          - { platform: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
+          - { platform: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
+          - { platform: windows-latest, target: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.platform }}
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: cli-${{ matrix.target }}
+      - run: pnpm install --frozen-lockfile
+      # The browser version phones open is served by `devcat serve` (embedded at build time).
+      - run: pnpm mobile:web
+      - name: Build
+        working-directory: src-tauri
+        run: cargo build --release --locked --no-default-features --bin devcat --target ${{ matrix.target }}
+
+      # Same self-signed identity as the app: the Keychain keeps "Always Allow" across updates.
+      - name: Sign (macOS)
+        if: runner.os == 'macOS' && env.HAS_SIGNING_CERT == 'true'
+        env:
+          CERT_P12: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain .github/devcat-codesign.crt
+          kc="$RUNNER_TEMP/devcat-signing.keychain-db"; kp=$(openssl rand -hex 16)
+          security create-keychain -p "$kp" "$kc"
+          security set-keychain-settings "$kc"
+          security unlock-keychain -p "$kp" "$kc"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/devcat.p12"
+          security import "$RUNNER_TEMP/devcat.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/devcat.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kp" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          bin=src-tauri/target/${{ matrix.target }}/release/devcat
+          codesign -f -s "DevCat Self-Signed" --identifier dev.devcat.cli "$bin"
+          codesign --verify --strict "$bin"
+
+      - name: Package
+        shell: bash
+        run: |
+          t=${{ matrix.target }}; out="$RUNNER_TEMP/out"; mkdir -p "$out"
+          dir="src-tauri/target/$t/release"
+          if [ "$RUNNER_OS" = Windows ]; then
+            "$dir/devcat.exe" version
+            (cd "$dir" && 7z a "$out/devcat-cli-$t.zip" devcat.exe > /dev/null)
+            f="devcat-cli-$t.zip"
+          else
+            [ "$t" = x86_64-apple-darwin ] || "$dir/devcat" version   # (Intel build on an Apple Silicon runner: Rosetta may be missing)
+            tar -czf "$out/devcat-cli-$t.tar.gz" -C "$dir" devcat
+            f="devcat-cli-$t.tar.gz"
+          fi
+          (cd "$out" && { sha256sum "$f" 2>/dev/null || shasum -a 256 "$f"; } > "$f.sha256" && cat "$f.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devcat-cli-${{ matrix.target }}
+          path: ${{ runner.temp }}/out/*
+
+  # Attach the CLI to the release (after the app jobs, which create it) and publish
+  # SHA256SUMS.txt for every asset (the Homebrew tap reads it).
+  publish-cli:
+    needs: [build, cli]
+    if: ${{ !cancelled() && needs.cli.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: devcat-cli-*
+          merge-multiple: true
+          path: cli
+      - name: Upload
+        run: |
+          for i in $(seq 1 30); do gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break; sleep 20; done
+          gh release upload "$TAG" cli/* --clobber -R "$GITHUB_REPOSITORY"
+          mkdir all && cd all
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" --skip-existing -p '*.dmg' -p '*.app.tar.gz' -p '*.AppImage' -p '*.deb' -p '*.rpm' -p '*.exe' -p '*.msi' -p 'devcat-cli-*' -p '*.apk'
+          sha256sum $(ls | grep -v '\.sha256$') > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber -R "$GITHUB_REPOSITORY"

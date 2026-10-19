@@ -1,5 +1,9 @@
+// The CLI build (no `gui` feature) leaves the window-only commands unused.
+#![cfg_attr(not(feature = "gui"), allow(dead_code, unused_imports))]
+
 mod ai;
 mod claude;
+mod cli;
 mod commands;
 mod crashlog;
 mod db;
@@ -7,6 +11,7 @@ mod db;
 #[doc(hidden)]
 pub mod devbridge;
 mod error;
+mod events;
 mod gitx;
 mod history;
 mod infra;
@@ -15,19 +20,21 @@ mod models;
 mod network;
 mod notes;
 mod notify;
+#[cfg(feature = "gui")]
 mod opened;
 mod projects;
 mod remote;
+mod rt;
 #[cfg(debug_assertions)]
 #[doc(hidden)]
 pub mod remotedemo;
 mod secrets;
 mod state;
 mod store;
+#[cfg(feature = "gui")]
 mod updater;
+#[cfg(feature = "gui")]
 mod windows;
-
-use tauri::Manager;
 
 /// `devcat --vpn-helper <command> …`: the passwordless VPN helper (no Tauri, no window).
 /// Returns the process exit code.
@@ -40,12 +47,43 @@ pub fn gui_refusal() -> Option<String> {
     network::helper::gui_refusal()
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+/// `devcat serve …` / `devcat help` …: DevCat without a window (see cli.rs), or None when the
+/// arguments aren't a CLI command (start the app).
+pub fn cli_main(args: &[String]) -> Option<i32> {
+    cli::main(args)
+}
+
+fn init_process() {
     crashlog::install();
     // Both the `ring` and `aws-lc-rs` rustls backends end up in the dependency tree,
     // so rustls can't pick one automatically; choose it once for every TLS client.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
+/// Everything behind the commands, the same with or without a window. Call `events::set_app`
+/// first when there is one.
+fn init_backend(dir: std::path::PathBuf) {
+    network::init(dir.clone());
+    ai::init(dir.clone());
+    state::init(dir.clone());
+    network::start();
+    notify::init(dir.clone());
+    remote::init(dir);
+}
+
+/// Stop what must not outlive DevCat (VPNs, the remote server, agent runs, keep-awake).
+fn shutdown_backend() {
+    network::shutdown();
+    crate::rt::block_on(remote::shutdown());
+    claude::runner::shutdown_all();
+    keep_awake::shutdown();
+}
+
+/// The app (windows). Not in the CLI build (`--no-default-features`).
+#[cfg(feature = "gui")]
+pub fn run() {
+    use tauri::Manager;
+    init_process();
 
     tauri::Builder::default()
         // First: a second launch (e.g. double-clicking a .ovpn) hands its arguments to this one.
@@ -58,12 +96,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let dir = app.path().app_data_dir().expect("no app data dir");
-            network::init(dir.clone());
-            ai::init(dir.clone());
-            network::start(app.handle().clone());
-            app.manage(state::AppState::new(dir.clone()));
-            notify::init(app.handle().clone(), dir.clone());
-            remote::init(app.handle().clone(), dir);
+            events::set_app(app.handle().clone());
+            init_backend(dir);
             #[cfg(target_os = "macos")]
             windows::install_menu(app.handle())?;
             // Windows / Linux: files DevCat was launched with.
@@ -285,10 +319,7 @@ pub fn run() {
             let _ = app;
             // Tear down VPNs / tunnels so no elevated openvpn or wg interface outlives the app.
             if let tauri::RunEvent::Exit = event {
-                network::shutdown();
-                tauri::async_runtime::block_on(remote::shutdown());
-                claude::runner::shutdown_all();
-                keep_awake::shutdown();
+                shutdown_backend();
             }
         });
 }

@@ -138,12 +138,13 @@ async fn obtain(file: &InstallerFile, bundled_dir: Option<PathBuf>, cache_dir: &
 }
 
 /// Install `tool` ("openvpn" | "wireguard"). Returns whether Windows wants a restart.
+#[cfg(feature = "gui")]
 pub async fn install(app: &tauri::AppHandle, tool: &str) -> AppResult<bool> {
     use tauri::Manager;
     if !cfg!(windows) {
         return Err(AppError::msg("Installing VPN tools from DevCat is only available on Windows"));
     }
-    let arch = tauri::async_runtime::spawn_blocking(os_arch).await.map_err(|e| AppError::msg(e.to_string()))?;
+    let arch = crate::rt::spawn_blocking(os_arch).await.map_err(|e| AppError::msg(e.to_string()))?;
     let (t, file) = pick(tool, &arch).ok_or_else(|| AppError::msg(format!("DevCat has no {tool} installer for Windows on {arch}")))?;
     let bundled = app.path().resource_dir().ok().map(|d| d.join("vpn-installers"));
     let cache = app.path().app_cache_dir().map_err(|e| AppError::msg(e.to_string()))?.join("vpn-installers");

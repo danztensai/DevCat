@@ -1,21 +1,20 @@
 use crate::error::AppResult;
 use crate::models::ConnectionConfig;
-use crate::state::AppState;
-use tauri::State;
+use crate::state::St;
 
-#[tauri::command]
-pub async fn list_connections(state: State<'_, AppState>) -> AppResult<Vec<ConnectionConfig>> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn list_connections(state: St) -> AppResult<Vec<ConnectionConfig>> {
     state.store.load_all()
 }
 
 /// Returns the profile including its password (for the edit dialog).
-#[tauri::command]
-pub async fn get_connection(state: State<'_, AppState>, id: String) -> AppResult<ConnectionConfig> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn get_connection(state: St, id: String) -> AppResult<ConnectionConfig> {
     state.store.get(&id)
 }
 
-#[tauri::command]
-pub async fn save_connection(state: State<'_, AppState>, config: ConnectionConfig) -> AppResult<ConnectionConfig> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn save_connection(state: St, config: ConnectionConfig) -> AppResult<ConnectionConfig> {
     // Drop any open session so the next use picks up the new settings.
     if let Some(d) = state.sessions.write().await.remove(&config.id) {
         d.close().await;
@@ -31,8 +30,8 @@ pub async fn save_connection(state: State<'_, AppState>, config: ConnectionConfi
     state.store.save(config)
 }
 
-#[tauri::command]
-pub async fn delete_connection(state: State<'_, AppState>, id: String) -> AppResult<()> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn delete_connection(state: St, id: String) -> AppResult<()> {
     if let Some(d) = state.sessions.write().await.remove(&id) {
         d.close().await;
     }
@@ -41,7 +40,7 @@ pub async fn delete_connection(state: State<'_, AppState>, id: String) -> AppRes
 }
 
 /// Test an unsaved profile. Database kinds return the server version.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn test_connection(config: ConnectionConfig) -> AppResult<String> {
     crate::network::ensure_for(&config).await?;
     match config.kind {
@@ -56,14 +55,14 @@ pub async fn test_connection(config: ConnectionConfig) -> AppResult<String> {
     }
 }
 
-#[tauri::command]
-pub async fn open_connection(state: State<'_, AppState>, id: String) -> AppResult<String> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn open_connection(state: St, id: String) -> AppResult<String> {
     let d = state.driver(&id).await?;
     d.server_version().await
 }
 
-#[tauri::command]
-pub async fn close_connection(state: State<'_, AppState>, id: String) -> AppResult<()> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn close_connection(state: St, id: String) -> AppResult<()> {
     if let Some(d) = state.sessions.write().await.remove(&id) {
         d.close().await;
     }
@@ -71,8 +70,8 @@ pub async fn close_connection(state: State<'_, AppState>, id: String) -> AppResu
     Ok(())
 }
 
-#[tauri::command]
-pub async fn open_connection_ids(state: State<'_, AppState>) -> AppResult<Vec<String>> {
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn open_connection_ids(state: St) -> AppResult<Vec<String>> {
     Ok(state.sessions.read().await.keys().cloned().collect())
 }
 

@@ -179,14 +179,14 @@ fn is_hex_prefix(s: &str) -> bool {
 
 // ---------- discovery ----------
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_repos(root: String, max_depth: Option<u32>) -> AppResult<Vec<GitRepo>> {
     scan::scan(Path::new(&root), max_depth.unwrap_or(scan::DEFAULT_DEPTH)).await
 }
 
 // ---------- history ----------
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_log(cwd: String, query: GitLogQuery) -> AppResult<Vec<GitCommit>> {
     let root = require_root(&cwd).await?;
     let limit = query.limit.unwrap_or(LOG_DEFAULT).clamp(1, LOG_MAX);
@@ -260,7 +260,7 @@ async fn commit_files(root: &Path, sha: &str, parents: &[String]) -> AppResult<V
     Ok(files)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_show(cwd: String, sha: String) -> AppResult<GitCommitDetail> {
     let root = require_root(&cwd).await?;
     let sha = resolve_commit(&root, &sha).await?;
@@ -277,7 +277,7 @@ fn to_versions(original: Vec<u8>, modified: Vec<u8>) -> FileVersions {
     FileVersions { original: text(&original), modified: text(&modified), binary: false }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_commit_file_versions(cwd: String, sha: String, path: String, old_path: Option<String>) -> AppResult<FileVersions> {
     let root = require_root(&cwd).await?;
     let sha = resolve_commit(&root, &sha).await?;
@@ -294,7 +294,7 @@ pub async fn git_commit_file_versions(cwd: String, sha: String, path: String, ol
     Ok(to_versions(original.unwrap_or_default(), modified.unwrap_or_default()))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_commit_diff(cwd: String, sha: String) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     let sha = resolve_commit(&root, &sha).await?;
@@ -310,7 +310,7 @@ pub async fn git_commit_diff(cwd: String, sha: String) -> AppResult<String> {
     Ok(text(&out))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_blame(cwd: String, path: String, rev: Option<String>) -> AppResult<GitBlame> {
     let root = require_root(&cwd).await?;
     let rel = resolve_rel(&root, &path)?;
@@ -349,7 +349,7 @@ pub async fn git_blame(cwd: String, path: String, rev: Option<String>) -> AppRes
 
 // ---------- refs ----------
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_refs(cwd: String) -> AppResult<GitRefs> {
     let root = require_root(&cwd).await?;
     let (refs, remotes, current, head, dir) = tokio::join!(
@@ -387,7 +387,7 @@ pub async fn git_refs(cwd: String) -> AppResult<GitRefs> {
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_checkout(cwd: String, target: String, create: bool, start_point: Option<String>) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     if create {
@@ -419,7 +419,7 @@ pub async fn git_checkout(cwd: String, target: String, create: bool, start_point
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_branch_delete(cwd: String, name: String, force: bool, remote: bool) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let name = check_arg("branch", &name)?;
@@ -435,7 +435,7 @@ pub async fn git_branch_delete(cwd: String, name: String, force: bool, remote: b
 }
 
 /// Create a branch at `start_point` (default HEAD) without switching to it.
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_branch_create(cwd: String, name: String, start_point: Option<String>) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let name = check_branch_name(&root, &name).await?;
@@ -447,7 +447,7 @@ pub async fn git_branch_create(cwd: String, name: String, start_point: Option<St
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_branch_rename(cwd: String, from: String, to: String) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let from = check_arg("branch", &from)?;
@@ -459,7 +459,7 @@ pub async fn git_branch_rename(cwd: String, from: String, to: String) -> AppResu
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_merge(cwd: String, branch: String, no_ff: bool) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     let branch = check_arg("branch", &branch)?;
@@ -472,7 +472,7 @@ pub async fn git_merge(cwd: String, branch: String, no_ff: bool) -> AppResult<St
     run_local(&root, args).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_abort(cwd: String) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let op = operation(&git_dir(&root).await?).ok_or_else(|| AppError::msg("No merge, rebase, cherry-pick or revert in progress"))?;
@@ -480,7 +480,7 @@ pub async fn git_abort(cwd: String) -> AppResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_tag_create(cwd: String, name: String, sha: Option<String>, message: Option<String>) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let name = check_tag_name(&root, &name).await?;
@@ -496,7 +496,7 @@ pub async fn git_tag_create(cwd: String, name: String, sha: Option<String>, mess
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_tag_delete(cwd: String, name: String) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let name = check_arg("tag", &name)?;
@@ -504,7 +504,7 @@ pub async fn git_tag_delete(cwd: String, name: String) -> AppResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_commit_action(cwd: String, sha: String, action: CommitAction) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     let sha = resolve_commit(&root, &sha).await?;
@@ -526,7 +526,7 @@ pub async fn git_commit_action(cwd: String, sha: String, action: CommitAction) -
 
 // ---------- stash ----------
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_stash_list(cwd: String) -> AppResult<Vec<GitStash>> {
     let root = require_root(&cwd).await?;
     if !ref_exists(&root, "refs/stash").await? {
@@ -535,7 +535,7 @@ pub async fn git_stash_list(cwd: String) -> AppResult<Vec<GitStash>> {
     Ok(parse_stash(&text(&git_ok(&root, ["stash", "list", STASH_FORMAT]).await?)))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_stash_save(cwd: String, message: Option<String>, include_untracked: bool) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     let before = git_raw(&root, ["rev-parse", "-q", "--verify", "refs/stash"]).await?;
@@ -554,13 +554,13 @@ pub async fn git_stash_save(cwd: String, message: Option<String>, include_untrac
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_stash_apply(cwd: String, index: u32, pop: bool) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     run_local(&root, ["stash", if pop { "pop" } else { "apply" }, &format!("stash@{{{index}}}")]).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_stash_drop(cwd: String, index: u32) -> AppResult<()> {
     let root = require_root(&cwd).await?;
     run_local(&root, ["stash", "drop", &format!("stash@{{{index}}}")]).await?;
@@ -569,7 +569,7 @@ pub async fn git_stash_drop(cwd: String, index: u32) -> AppResult<()> {
 
 // ---------- remotes ----------
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_fetch(cwd: String, opts: RemoteOpts) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     let mut args = vec!["fetch".to_string(), "--prune".into()];
@@ -580,7 +580,7 @@ pub async fn git_fetch(cwd: String, opts: RemoteOpts) -> AppResult<String> {
     run_network(&root, args).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_pull(cwd: String, opts: RemoteOpts) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     let mut args = vec!["pull".to_string(), if opts.rebase { "--rebase" } else { "--no-rebase" }.into()];
@@ -590,7 +590,7 @@ pub async fn git_pull(cwd: String, opts: RemoteOpts) -> AppResult<String> {
     run_network(&root, args).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "gui", tauri::command)]
 pub async fn git_push(cwd: String, opts: RemoteOpts) -> AppResult<String> {
     let root = require_root(&cwd).await?;
     let mut args = vec!["push".to_string()];

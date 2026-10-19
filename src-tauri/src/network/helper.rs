@@ -1227,7 +1227,7 @@ pub async fn install() -> crate::error::AppResult<HelperStatus> {
     if !out.success {
         return Err(AppError::msg(format!("Setting up passwordless VPN failed: {}", out.message())));
     }
-    tauri::async_runtime::spawn_blocking(status).await.map_err(|e| AppError::msg(e.to_string()))
+    crate::rt::spawn_blocking(status).await.map_err(|e| AppError::msg(e.to_string()))
 }
 
 pub async fn uninstall() -> crate::error::AppResult<HelperStatus> {
@@ -1237,7 +1237,7 @@ pub async fn uninstall() -> crate::error::AppResult<HelperStatus> {
     if !out.success {
         return Err(AppError::msg(format!("Removing passwordless VPN failed: {}", out.message())));
     }
-    tauri::async_runtime::spawn_blocking(status).await.map_err(|e| AppError::msg(e.to_string()))
+    crate::rt::spawn_blocking(status).await.map_err(|e| AppError::msg(e.to_string()))
 }
 
 #[cfg(all(test, unix))]
