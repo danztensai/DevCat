@@ -2,7 +2,7 @@
 // that need a database, VPN, cluster or agent with made-up data; everything else (git, files)
 // still goes to the Rust devbridge. Nothing here is real: names, hosts and rows are invented.
 import type {
-  ColumnInfo, ConnectionConfig, NetProfile, NetStatus, Note, Project, QueryResult, TableDataPage, TableStructure, TreeNode,
+  Bookmark, ColumnInfo, ConnectionConfig, NetProfile, NetStatus, Note, Project, QueryResult, TableDataPage, TableStructure, TreeNode,
 } from "../lib/types";
 
 type Emit = (event: string, payload: unknown) => void;
@@ -30,6 +30,11 @@ const connections: ConnectionConfig[] = [
   conn("c-mysql", "ledger", "mysql", "ledger.acme.internal", 3306, "p-pay", { database: "ledger" }),
   conn("c-mongo", "events-store", "mongodb", "mongo.acme.internal", 27017, "p-pay"),
   conn("c-mq", "payments-mq", "rabbitmq", "mq.acme.internal", 5672, "p-pay"),
+];
+
+let bookmarks: Bookmark[] = [
+  { id: "b-orders", connectionId: "c-pg", path: ["shop", "public", "tables", "orders"], label: "orders", kind: "table", table: { database: "shop", schema: "public", name: "orders" }, order: 0 },
+  { id: "b-analytics", connectionId: "c-pg", path: ["analytics"], label: "analytics", kind: "database", table: { database: "analytics", schema: null, name: "analytics" }, order: 1 },
 ];
 
 // ---------------------------------------------------------------- shop database
@@ -295,6 +300,22 @@ export function demoInvoke(cmd: string, args: Record<string, unknown>, emit: Emi
   switch (cmd) {
     case "list_projects": return projects;
     case "list_connections": return connections;
+    case "list_bookmarks": return bookmarks;
+    case "add_bookmark": {
+      const b = args.bookmark as Bookmark;
+      const existing = bookmarks.find((x) => x.connectionId === b.connectionId && x.path.join("/") === b.path.join("/"));
+      if (existing) return existing;
+      const saved = { ...b, id: `b-${Date.now()}`, order: bookmarks.length };
+      bookmarks = [...bookmarks, saved];
+      return saved;
+    }
+    case "remove_bookmark": bookmarks = bookmarks.filter((x) => x.id !== args.id); return null;
+    case "reorder_bookmarks": {
+      const ids = args.ids as string[];
+      const pos = (id: string) => (ids.includes(id) ? ids.indexOf(id) : ids.length);
+      bookmarks = [...bookmarks].sort((a, b) => pos(a.id) - pos(b.id)).map((b, order) => ({ ...b, order }));
+      return bookmarks;
+    }
     case "get_connection": return connections.find((x) => x.id === args.id);
     case "open_connection": return "connected";
     case "open_connection_ids": return ["c-pg", "c-k8s"];

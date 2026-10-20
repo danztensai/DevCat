@@ -82,6 +82,20 @@ export interface TreeNode {
   table?: TableRef | null;
 }
 
+/** Sidebar bookmark: one node of a connection's object tree. */
+export interface Bookmark {
+  id: string;
+  connectionId: string;
+  /** Tree path of the node, as passed to `children`. */
+  path: string[];
+  /** The node's label when it was bookmarked. */
+  label: string;
+  kind: NodeKind;
+  /** What to open (database / schema / name), copied from the node. */
+  table?: TableRef | null;
+  order: number;
+}
+
 export interface ColumnInfo { name: string; typeName: string }
 
 export type CellValue = string | number | boolean | null | object;

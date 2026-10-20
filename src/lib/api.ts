@@ -8,7 +8,7 @@ import type {
   AiDetect, AiProvider,
   ClaudeInfo, ClaudeProject, ClaudeStartOptions, FileEntry, FilePreview, FileVersions, GitStatus, SessionMeta,
   Note, ConnectionConfig, ExecOptions, NetKind, NetProfile, NetProfileFull, NetHelperStatus, NetStatus, NetTools, Project, SshConfigHost, TrafficSample, HistoryEntry, NodeKind, QueryResult, RowChange,
-  SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode,
+  SavedQuery, SchemaSnapshot, TableDataPage, TableDataRequest, TableRef, TableStructure, TreeNode, Bookmark,
 } from "./types";
 
 export const api = {
@@ -38,6 +38,12 @@ export const api = {
   deleteProject: (id: string, deleteConnections = false) => invoke<void>("delete_project", { id, deleteConnections }),
   moveConnections: (ids: string[], projectId: string | null) => invoke<void>("move_connections", { ids, projectId }),
   reorderProjects: (ids: string[]) => invoke<Project[]>("reorder_projects", { ids }),
+
+  // bookmarks
+  listBookmarks: () => invoke<Bookmark[]>("list_bookmarks"),
+  addBookmark: (bookmark: Bookmark) => invoke<Bookmark>("add_bookmark", { bookmark }),
+  removeBookmark: (id: string) => invoke<void>("remove_bookmark", { id }),
+  reorderBookmarks: (ids: string[]) => invoke<Bookmark[]>("reorder_bookmarks", { ids }),
 
   // database
   children: (connId: string, path: string[]) => invoke<TreeNode[]>("db_children", { connId, path }),
