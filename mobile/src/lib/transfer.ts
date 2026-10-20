@@ -108,3 +108,30 @@ export function relativePath(path: string, root?: string | null): string | null 
   const s = r.includes("\\") && !r.includes("/") ? "\\" : "/";
   return path.startsWith(r + s) ? path.slice(r.length + 1) : null;
 }
+
+/** Kinds of image agents read; others (HEIC from an iPhone, …) are turned into JPEG first. */
+const AGENT_IMAGES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+
+async function asAgentImage(file: Blob): Promise<{ blob: Blob; ext: string }> {
+  const ext = AGENT_IMAGES[file.type];
+  if (ext) return { blob: file, ext };
+  const img = await createImageBitmap(file).catch(() => { throw "This image type can't be read. Try a screenshot or a JPEG/PNG."; });
+  const c = document.createElement("canvas");
+  c.width = img.width;
+  c.height = img.height;
+  c.getContext("2d")!.drawImage(img, 0, 0);
+  const blob = await new Promise<Blob | null>((res) => c.toBlob(res, "image/jpeg", 0.9));
+  if (!blob) throw "Couldn't convert the image.";
+  return { blob, ext: "jpg" };
+}
+
+/** Send an image from the phone to a temp folder on the computer (paste_dir); returns its path
+ *  there, to paste into an agent like Claude Code's own image paste. */
+export async function uploadPasteImage(file: Blob): Promise<string> {
+  const { blob, ext } = await asAgentImage(file);
+  const dir = await host<string>("paste_dir");
+  const name = `phone-${new Date().toISOString().replace(/[:.]/g, "-")}.${ext}`;
+  await upload(dir, new File([blob], name, { type: blob.type }), false, () => {}, { stopped: false });
+  const sep = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
+  return dir.replace(/[\\/]+$/, "") + sep + name;
+}
