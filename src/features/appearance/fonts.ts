@@ -1,7 +1,8 @@
 // Font settings (per computer, localStorage; shared by all DevCat windows, not per project): the
 // code font used by terminals and editors, terminal size / line height, an optional editor size,
-// and the UI font. Applying sets `--font-mono` / `--font-sans`; terminals and editors follow
-// through `onFontsChange`.
+// the UI font and the UI zoom. Applying sets `--font-mono` / `--font-sans` and the webview zoom;
+// terminals and editors follow through `onFontsChange`.
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { create } from "zustand";
 
 export interface Fonts {
@@ -13,6 +14,8 @@ export interface Fonts {
   terminalLineHeight: number;
   /** Editor font size; 0 = each editor's own size. */
   editorSize: number;
+  /** Zoom of the whole window (1 = 100%). */
+  uiZoom: number;
 }
 
 /** The code font bundled with the app (@fontsource-variable/jetbrains-mono, OFL), so the default
@@ -26,7 +29,7 @@ export const BUNDLED_MONO = "JetBrains Mono Variable";
 const MONO_FALLBACK = '"JetBrains Mono", "JetBrains Mono Variable", "DejaVu Mono", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "DejaVu Sans Mono", monospace, "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2"';
 const SANS_FALLBACK = '"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 
-export const FONT_DEFAULTS: Fonts = { mono: "", sans: "", terminalSize: 13, terminalLineHeight: 1.15, editorSize: 0 };
+export const FONT_DEFAULTS: Fonts = { mono: "", sans: "", terminalSize: 13, terminalLineHeight: 1.15, editorSize: 0, uiZoom: 1 };
 const KEY = "devcat.fonts";
 
 /** Well-known fonts offered in the pickers (only the installed ones are listed). */
@@ -77,6 +80,16 @@ export function zoomTerminal(step: 1 | -1 | 0) {
   set({ terminalSize: Math.min(TERMINAL_SIZES.max, Math.max(TERMINAL_SIZES.min, next)) });
 }
 
+/** UI zoom steps (the same as Chrome and VS Code). */
+export const UI_ZOOMS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+/** UI zoom (⌘/Ctrl + = / - / 0 outside terminals): the next step up or down, or back to 100%. */
+export function zoomUi(step: 1 | -1 | 0) {
+  const { uiZoom, set } = useFonts.getState();
+  if (step === 0) return set({ uiZoom: 1 });
+  const next = step > 0 ? UI_ZOOMS.find((z) => z > uiZoom + 0.001) : [...UI_ZOOMS].reverse().find((z) => z < uiZoom - 0.001);
+  if (next) set({ uiZoom: next });
+}
+
 /** Monaco options for the current fonts (size only when the user set one). */
 export function editorFont(f: Fonts = fonts()): { fontFamily: string; fontSize?: number } {
   return f.editorSize > 0 ? { fontFamily: monoStack(f), fontSize: f.editorSize } : { fontFamily: monoStack(f) };
@@ -108,11 +121,16 @@ export function onFontsChange(f: (fonts: Fonts) => void): () => void {
 }
 
 let last = "";
+let lastZoom = 1;
 function apply() {
   const f = fonts();
   const root = document.documentElement;
   root.style.setProperty("--font-mono", monoStack(f));
   root.style.setProperty("--font-sans", sansStack(f));
+  if (f.uiZoom !== lastZoom) {
+    lastZoom = f.uiZoom;
+    void getCurrentWebviewWindow().setZoom(f.uiZoom).catch(() => {});
+  }
   const key = JSON.stringify(f);
   if (key !== last) {
     last = key;
