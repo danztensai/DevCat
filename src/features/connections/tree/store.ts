@@ -4,9 +4,9 @@ import { create } from "zustand";
 import { api, errMsg } from "../../../lib/api";
 import type { TreeNode } from "../../../lib/types";
 import { useConnections } from "../../../store/connections";
+import { nodeKey, SEP } from "./keys";
 
-export const SEP = "\u0001";
-export const nodeKey = (connId: string, path: string[]) => `${connId}|${path.join(SEP)}`;
+export { nodeKey, SEP };
 
 export interface NodeState {
   children?: TreeNode[];
