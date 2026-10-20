@@ -85,9 +85,6 @@ jobs:
 
       - uses: tauri-apps/tauri-action@v0
         env:
-          # The DMG without Finder scripting (bundle_dmg.sh --skip-jenkins), as on GitHub's
-          # runners, which set CI=true; the self-hosted Mac doesn't, and Finder times out there.
-          CI: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs the update bundles; the app verifies them with the public key in tauri.conf.json.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

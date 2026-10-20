@@ -25,10 +25,17 @@ tar xzf actions-runner-osx-arm64-<version>.tar.gz
 
 # 2. Trust DevCat's self-signed certificate for code signing (needs the admin password once).
 #    Without it codesign still signs, but the signature would name the certificate as the leaf
-#    instead of the root, unlike earlier releases, and the release check fails.
+#    instead of the root, unlike earlier releases, and the release check fails. Over SSH this
+#    fails ("no user interaction was possible"): run it in Terminal on the Mac's screen, or in
+#    Keychain Access → System → DevCat Self-Signed → Trust → Code Signing: Always Trust.
 curl -fsSLO https://raw.githubusercontent.com/devileya/DevCat/master/.github/devcat-codesign.crt
 sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain devcat-codesign.crt
 rm devcat-codesign.crt
+
+# 3. Let the runner script Finder: the DMG step (Tauri's bundle_dmg.sh) lays out the installer
+#    window with AppleScript. The first build shows "… wants to control Finder" on the Mac's
+#    screen: click OK (or System Settings → Privacy & Security → Automation → Finder: on).
+#    Unanswered, the AppleScript times out after two minutes ("AppleEvent timed out (-1712)").
 ```
 
 The signing step (`scripts/ci-macos-signing.sh`) checks the trust before each build. It imports
