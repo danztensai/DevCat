@@ -1,10 +1,10 @@
 import clsx from "clsx";
-import { AlertTriangle, ChevronRight, Folder, FolderOpen, Loader2, Lock, Plus } from "lucide-react";
+import { AlertTriangle, ChevronRight, Folder, FolderOpen, Loader2, Lock, Plus, Star } from "lucide-react";
 import { memo, type MouseEvent } from "react";
 import { KindIcon } from "../../../components/ui/KindIcon";
 import { NetBadge } from "../../network/NetBadge";
 import { isNoteNode, NodeIcon } from "./icons";
-import type { Row } from "./rows";
+import { bookmarkHint, type Row } from "./rows";
 
 export const ROW_H = 24;
 const INDENT = 14;
@@ -94,6 +94,30 @@ export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, c
     );
   }
 
+  if (row.type === "bookmarks") {
+    return (
+      <div {...common} className={clsx(common.className, "font-medium")}>
+        <Chevron expanded={!row.collapsed} visible onClick={() => onToggle(row)} />
+        <Star className="size-3.5 shrink-0 fill-warn text-warn" />
+        <span className="min-w-0 flex-1 truncate">Bookmarks</span>
+        <span className="min-w-4 text-right text-[11px] font-normal text-faint">{row.count}</span>
+      </div>
+    );
+  }
+
+  if (row.type === "bookmark") {
+    const b = row.bookmark;
+    const hint = bookmarkHint(b, row.conn);
+    return (
+      <div {...common} title={`${b.label} — ${hint}`}>
+        <span className="size-4 shrink-0" />
+        <NodeIcon node={{ path: b.path, label: b.label, kind: b.kind, hasChildren: false, table: b.table }} expanded={false} />
+        <span className="min-w-0 shrink truncate">{b.label}</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-faint">{hint}</span>
+      </div>
+    );
+  }
+
   if (row.type === "conn") {
     const c = row.conn;
     const infra = c.kind === "kubernetes" || c.kind === "rabbitmq";
@@ -118,6 +142,7 @@ export const TreeRow = memo(function TreeRow({ row, selected, focused, isOpen, c
       <Chevron expanded={row.expanded} visible={n.hasChildren} loading={row.loading} onClick={() => onToggle(row)} />
       <NodeIcon node={n} expanded={row.expanded} />
       <span className={clsx("min-w-0 flex-1 truncate", isNoteNode(n) ? "text-muted italic" : n.kind === "folder" && "text-fg/85")}>{n.label}</span>
+      {row.bookmarked && <Star className="size-3 shrink-0 fill-warn text-warn" aria-label="Bookmarked" />}
       {n.detail && <span className="max-w-[45%] shrink-0 truncate pl-2 font-mono text-[11px] text-faint">{n.detail}</span>}
     </div>
   );
