@@ -136,6 +136,11 @@ pub fn run() {
             commands::projects::delete_project,
             commands::projects::move_connections,
             commands::projects::reorder_projects,
+            // bookmarks
+            commands::bookmarks::list_bookmarks,
+            commands::bookmarks::add_bookmark,
+            commands::bookmarks::remove_bookmark,
+            commands::bookmarks::reorder_bookmarks,
             // database
             commands::db::db_children,
             commands::db::db_list_databases,

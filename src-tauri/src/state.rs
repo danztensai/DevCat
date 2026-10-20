@@ -1,3 +1,4 @@
+use crate::bookmarks::BookmarkStore;
 use crate::db::DynDriver;
 use crate::error::{AppError, AppResult};
 use crate::history::HistoryStore;
@@ -11,6 +12,7 @@ pub struct AppState {
     pub store: ConnectionStore,
     pub history: HistoryStore,
     pub projects: ProjectStore,
+    pub bookmarks: BookmarkStore,
     pub notes: NoteStore,
     /// Open database sessions keyed by connection id.
     pub sessions: RwLock<HashMap<String, DynDriver>>,
@@ -26,6 +28,7 @@ impl AppState {
         Self {
             store,
             history: HistoryStore::new(data_dir.clone()),
+            bookmarks: BookmarkStore::new(data_dir.clone()),
             notes: NoteStore::new(data_dir),
             projects,
             sessions: RwLock::new(HashMap::new()),

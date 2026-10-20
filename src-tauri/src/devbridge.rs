@@ -76,8 +76,22 @@ async fn call(cmd: &str, args: &Value) -> Result<Value, Value> {
         "note_delete" => out(arg::<String>(args, "id").map(|id| bridge_stores().0.delete(&id))?),
         "list_projects" => out(bridge_stores().1.list()),
         "save_project" => out(arg(args, "project").map(|p| bridge_stores().1.save(p))?),
+        "list_bookmarks" => out(bridge_bookmarks().list()),
+        "add_bookmark" => out(arg(args, "bookmark").map(|b| bridge_bookmarks().add(b))?),
+        "remove_bookmark" => out(arg::<String>(args, "id").map(|id| bridge_bookmarks().remove(&id))?),
+        "reorder_bookmarks" => out(arg::<Vec<String>>(args, "ids").map(|ids| bridge_bookmarks().reorder(&ids))?),
         other => Err(json!(format!("devbridge: unsupported command {other}"))),
     }
+}
+
+/// Bookmarks for the bridge, in the same throwaway folder as `bridge_stores`.
+fn bridge_bookmarks() -> &'static crate::bookmarks::BookmarkStore {
+    static S: std::sync::OnceLock<crate::bookmarks::BookmarkStore> = std::sync::OnceLock::new();
+    S.get_or_init(|| {
+        let d = std::env::temp_dir().join(format!("devcat-bridge-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&d);
+        crate::bookmarks::BookmarkStore::new(d)
+    })
 }
 
 /// Notes / projects for the bridge, in a temp folder that lives as long as the process.

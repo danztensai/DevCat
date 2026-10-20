@@ -31,6 +31,7 @@ pub async fn delete_project(state: St, id: String, delete_connections: Option<bo
             }
             super::connections::drop_infra_clients(cid).await;
             state.store.delete(cid)?;
+            state.bookmarks.remove_for_connection(cid)?;
         }
     } else {
         state.store.update_all(|c| {
