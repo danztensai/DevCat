@@ -45,7 +45,7 @@ export function openBookmark(b: Bookmark, conn: ConnectionConfig) {
   void revealBookmark(b, conn);
 }
 
-/** Children of a node once loaded (loading them if needed); null if loading failed. */
+/** Children of a node once loaded (loading them if needed); null if loading failed or the node was cleared/reset meanwhile. */
 function loadedChildren(connId: string, path: string[]): Promise<TreeNode[] | null> {
   const key = nodeKey(connId, path);
   const st = tree().nodes[key];
@@ -53,8 +53,9 @@ function loadedChildren(connId: string, path: string[]): Promise<TreeNode[] | nu
   return new Promise((resolve) => {
     const check = () => {
       const n = tree().nodes[key];
-      if (!n || n.loading || (!n.children && !n.error)) return false;
-      resolve(n.error ? null : n.children ?? null);
+      if (n?.loading) return false;
+      // Missing (clearConn) or not loading with no result (refresh reset it): give up.
+      resolve(!n || n.error ? null : n.children ?? null);
       return true;
     };
     if (check()) return;
