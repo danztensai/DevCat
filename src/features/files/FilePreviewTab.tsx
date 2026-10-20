@@ -1,7 +1,7 @@
 // File preview tab: toolbar (path, size, kind, actions) + a viewer per FilePreview kind,
 // or git blame for text files inside a repository. Plain text files (code, config, …) open in an
 // editor (.html also gets a rendered Preview); markdown, pdf, images, sheets, csv and docx stay preview-only.
-import { Copy, ExternalLink, FolderSearch, History, RefreshCw, UserSearch } from "lucide-react";
+import { Copy, ExternalLink, Files, FolderSearch, History, RefreshCw, UserSearch } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Badge, ErrorBox, IconButton, Spinner, Toolbar } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -12,7 +12,7 @@ import { BlameView } from "../git/BlameView";
 import { openGitRepo } from "../git/open";
 import { useRepoRoot } from "../git/repoOf";
 import { FileIcon } from "./FileIcon";
-import { copyText, fmtSize, openExternally, relPath, revealPath } from "./format";
+import { copyFile, copyText, fmtSize, openExternally, relPath, revealPath } from "./format";
 import { CsvViewer, SheetViewer } from "./viewers/SheetViewer";
 import { BinaryCard, DocxViewer, ImageViewer, MarkdownViewer } from "./viewers/simple";
 import { TextEditor } from "./viewers/TextEditor";
@@ -92,6 +92,7 @@ export default function FilePreviewTab({ tab }: { tab: Extract<Tab, { type: "fil
         <IconButton title="Copy path" onClick={() => void copyText(tab.path)}><Copy className="size-3.5" /></IconButton>
         {!isRemote(tab.path) && (
           <>
+            <IconButton title="Copy file (paste in Slack, Explorer, Finder)" onClick={() => void copyFile(tab.path)}><Files className="size-3.5" /></IconButton>
             <IconButton title="Open with default app" onClick={() => void openExternally(tab.path)}><ExternalLink className="size-3.5" /></IconButton>
             <IconButton title="Reveal in Finder" onClick={() => void revealPath(tab.path)}><FolderSearch className="size-3.5" /></IconButton>
           </>
