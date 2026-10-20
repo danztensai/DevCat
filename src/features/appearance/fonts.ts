@@ -19,9 +19,11 @@ export interface Fonts {
  *  looks the same on every computer; an installed JetBrains Mono still comes first. */
 export const BUNDLED_MONO = "JetBrains Mono Variable";
 
-/** Fallbacks after the chosen font. Cascadia Mono ships with Windows 11; the symbol fonts cover
- *  block, box-drawing and status-line glyphs that Consolas and friends lack. */
-const MONO_FALLBACK = '"JetBrains Mono", "JetBrains Mono Variable", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "DejaVu Sans Mono", monospace, "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2"';
+/** Fallbacks after the chosen font. DejaVu Mono (bundled, @fontsource/dejavu-mono) comes right after
+ *  JetBrains Mono: it has the symbols status lines use (↻ ▰ ▱ …) at the same cell width, where
+ *  system symbol fonts draw them wider and overlap the next character. Cascadia Mono ships with
+ *  Windows 11; the symbol fonts cover what is left. */
+const MONO_FALLBACK = '"JetBrains Mono", "JetBrains Mono Variable", "DejaVu Mono", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "DejaVu Sans Mono", monospace, "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2"';
 const SANS_FALLBACK = '"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 
 export const FONT_DEFAULTS: Fonts = { mono: "", sans: "", terminalSize: 13, terminalLineHeight: 1.15, editorSize: 0 };
