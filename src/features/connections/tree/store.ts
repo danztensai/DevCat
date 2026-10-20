@@ -37,12 +37,27 @@ interface TreeState {
   /** Forget everything cached for a connection (disconnect / delete / edit). */
   clearConn: (connId: string) => void;
   collapseAll: () => void;
+  /** Bookmarks section collapsed */
+  bookmarksCollapsed: boolean;
+  toggleBookmarks: () => void;
+  /** "Show only bookmarked" filter */
+  bookmarksOnly: boolean;
+  setBookmarksOnly: (on: boolean) => void;
+  /** Row to scroll into view once it's rendered (set by `reveal`, cleared by the tree). */
+  revealId: string | null;
+  /** Select a row and scroll it into view. */
+  reveal: (rowId: string) => void;
 }
 
 const PROJECTS_KEY = "devcat.tree.collapsedProjects";
 const loadCollapsed = (): Record<string, boolean> => {
   try { return JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? "{}"); } catch { return {}; }
 };
+
+const BOOKMARKS_COLLAPSED_KEY = "devcat.tree.bookmarksCollapsed";
+const BOOKMARKS_ONLY_KEY = "devcat.tree.bookmarksOnly";
+const loadFlag = (key: string) => localStorage.getItem(key) === "1";
+const saveFlag = (key: string, on: boolean) => (on ? localStorage.setItem(key, "1") : localStorage.removeItem(key));
 
 const isUnder = (k: string, key: string, path: string[]) => k === key || k.startsWith(path.length ? key + SEP : key);
 
@@ -55,6 +70,19 @@ export const useTree = create<TreeState>((set, get) => {
     connecting: {},
     collapsedProjects: loadCollapsed(),
     selected: null,
+    bookmarksCollapsed: loadFlag(BOOKMARKS_COLLAPSED_KEY),
+    toggleBookmarks: () => {
+      const bookmarksCollapsed = !get().bookmarksCollapsed;
+      saveFlag(BOOKMARKS_COLLAPSED_KEY, bookmarksCollapsed);
+      set({ bookmarksCollapsed });
+    },
+    bookmarksOnly: loadFlag(BOOKMARKS_ONLY_KEY),
+    setBookmarksOnly: (bookmarksOnly) => {
+      saveFlag(BOOKMARKS_ONLY_KEY, bookmarksOnly);
+      set({ bookmarksOnly });
+    },
+    revealId: null,
+    reveal: (rowId) => set({ selected: rowId, revealId: rowId }),
     setSelected: (selected) => set({ selected }),
     toggleProject: (id) => get().setProjectCollapsed(id, !get().collapsedProjects[id]),
     setProjectCollapsed: (id, collapsed) =>
