@@ -2,7 +2,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
-  AlertTriangle, AtSign, ChevronRight, ChevronsDownUp, ClipboardCopy, Copy, Eye, EyeOff, FolderGit2, FolderSearch, GitBranch, History, Loader2, RefreshCw, Search,
+  AlertTriangle, AtSign, ChevronRight, ChevronsDownUp, ClipboardCopy, Copy, Eye, Files, EyeOff, FolderGit2, FolderSearch, GitBranch, History, Loader2, RefreshCw, Search,
   SquareArrowOutUpRight, UserSearch, X,
 } from "lucide-react";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
@@ -13,11 +13,12 @@ import type { FileEntry, GitStatus } from "../../../lib/types";
 import { useTabs } from "../../../store/tabs";
 import { useContextMenu, type MenuItem } from "../../connections/ContextMenu";
 import { FileIcon } from "../../files/FileIcon";
-import { copyText, dirname, openFilePreview, relPath, revealPath } from "../../files/format";
+import { copyFile, copyText, dirname, openFilePreview, relPath, revealPath } from "../../files/format";
 import { openBlame, openGitRepo } from "../../git/open";
 import { repoRootOf } from "../../git/repoOf";
 import { useWorkspace } from "./workspace";
 import { isRemote } from "../../../lib/remotePath";
+import { IS_MAC } from "../../../lib/windows";
 
 const ROW_H = 22;
 const INDENT = 12;
@@ -195,6 +196,10 @@ const FileTree = forwardRef<FileTreeHandle, { cwd: string; git: GitStatus | null
     if (ev.key === "ArrowDown") { ev.preventDefault(); move(selIndex + 1); }
     else if (ev.key === "ArrowUp") { ev.preventDefault(); move(Math.max(0, selIndex - 1)); }
     else if (cur?.type === "entry" && ev.key === "Enter") { ev.preventDefault(); activate(cur.entry); }
+    else if (cur?.type === "entry" && ev.code === "KeyC" && (IS_MAC ? ev.metaKey : ev.ctrlKey) && !ev.shiftKey && !ev.altKey && !isRemote(cur.entry.path)) {
+      ev.preventDefault();
+      void copyFile(cur.entry.path);
+    }
     else if (cur?.type === "entry" && ev.key === "ArrowRight" && cur.entry.isDir) {
       ev.preventDefault();
       if (!cur.expanded) toggle(cur.entry.path, true); else move(selIndex + 1);
@@ -222,6 +227,7 @@ const FileTree = forwardRef<FileTreeHandle, { cwd: string; git: GitStatus | null
           { label: "File history", icon: <History className="size-3.5" />, onClick: () => void showFileHistory(e.path) },
         ]),
       "separator",
+      ...(isRemote(e.path) ? [] : [{ label: "Copy", shortcut: IS_MAC ? "⌘C" : "Ctrl+C", icon: <Files className="size-3.5" />, onClick: () => void copyFile(e.path) }]),
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(e.path) },
       { label: "Copy relative path", icon: <ClipboardCopy className="size-3.5" />, onClick: () => void copyText(rel) },
       { label: "Mention in chat", icon: <AtSign className="size-3.5" />, onClick: () => void copyText(`@${rel}${e.isDir ? "/" : ""}`, `Copied @${rel} — paste it in the chat`) },

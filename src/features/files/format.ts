@@ -60,6 +60,16 @@ export async function copyText(text: string, what?: string) {
   }
 }
 
+/** Put a local file or folder itself on the clipboard (paste attaches it in Slack, copies it in Explorer / Finder). */
+export async function copyFile(path: string) {
+  try {
+    await api.fsCopyFiles([path]);
+    toast.success(`Copied ${basename(path)}`, { description: "Paste it in Slack, a mail or Explorer / Finder" });
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
 export async function revealPath(path: string) {
   try {
     await revealItemInDir(path);

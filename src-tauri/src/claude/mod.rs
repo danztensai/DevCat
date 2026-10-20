@@ -158,6 +158,7 @@ pub mod review;
 pub mod sessions;
 pub mod files;
 pub mod open_external;
+pub mod clipboard;
 pub mod git;
 pub(crate) mod locate;
 pub mod pty;
