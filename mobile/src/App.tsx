@@ -11,7 +11,7 @@ import { FileView, Files, FilesHome } from "./screens/files";
 import { Cluster, NetLog, Network, Pod } from "./screens/ops";
 import { IS_WEB, isPairLink } from "./lib/env";
 import { Computers, Pairing, Paste, Scan, WebLanding, Welcome, prefersApp } from "./screens/setup";
-import { appLink, pairedHostId, parseLink } from "./web/client";
+import { adoptCarried, appLink, carryPairing, pairedHostId, parseLink } from "./web/client";
 import { Loading, Toasts } from "./ui";
 
 function screen(r: Route) {
@@ -75,7 +75,9 @@ async function watchDeepLinks() {
 async function boot() {
   await startEvents();
   startStateEvents();
+  if (IS_WEB) adoptCarried();
   const webLink = takeWebLink();
+  if (IS_WEB) carryPairing();
   const [info, machines] = await Promise.all([phone.info(), loadMachines()]);
   useApp.setState({ info });
   if (webLink) {
