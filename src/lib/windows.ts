@@ -64,6 +64,7 @@ const SYNC_EVENT = "devcat://window-sync";
 export type SyncMessage =
   | { kind: "connections" }
   | { kind: "notes" }
+  | { kind: "bookmarks" }
   | { kind: "conn-open"; id: string; open: boolean };
 
 /** Tell the other windows that shared data changed. */

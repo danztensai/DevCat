@@ -2,6 +2,7 @@
 #![cfg_attr(not(feature = "gui"), allow(dead_code, unused_imports))]
 
 mod ai;
+mod bookmarks;
 mod claude;
 mod cli;
 mod commands;
@@ -135,6 +136,11 @@ pub fn run() {
             commands::projects::delete_project,
             commands::projects::move_connections,
             commands::projects::reorder_projects,
+            // bookmarks
+            commands::bookmarks::list_bookmarks,
+            commands::bookmarks::add_bookmark,
+            commands::bookmarks::remove_bookmark,
+            commands::bookmarks::reorder_bookmarks,
             // database
             commands::db::db_children,
             commands::db::db_list_databases,

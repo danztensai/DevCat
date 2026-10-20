@@ -36,7 +36,11 @@ pub async fn delete_connection(state: St, id: String) -> AppResult<()> {
         d.close().await;
     }
     drop_infra_clients(&id).await;
-    state.store.delete(&id)
+    state.store.delete(&id)?;
+    if let Err(e) = state.bookmarks.remove_for_connection(&id) {
+        eprintln!("bookmark cleanup for {id} failed: {e}");
+    }
+    Ok(())
 }
 
 /// Test an unsaved profile. Database kinds return the server version.

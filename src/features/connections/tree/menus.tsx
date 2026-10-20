@@ -2,9 +2,11 @@
 import {
   AppWindow, ArrowDown, ArrowLeftRight, Crosshair, LogOut, ArrowUp, Check, Code, Copy, CopyPlus, Eraser, ExternalLink, FilePlus, Folder, FolderInput,
   FolderMinus, FolderPlus, GitCompare, Network, Palette, Pencil, PencilRuler, Play, Plug, Plus, RefreshCw, SquareTerminal,
-  Table2, Trash2, Unplug,
+  Star, StarOff, Table2, Trash2, Unplug,
 } from "lucide-react";
 import type { Project } from "../../../lib/types";
+import { openBookmark, opensInTab, revealBookmark } from "../bookmarks/actions";
+import { findBookmark, useBookmarks } from "../bookmarks/store";
 import { COLOR_PRESETS } from "../dialog/sections";
 import {
   createProject, deleteProject, focusProject, moveConnections, moveProject, moveToNewProject, newConnectionIn, openProjectInNewWindow, renameProject,
@@ -23,7 +25,7 @@ import {
   activateConnection, copyText, deleteConnection, deleteRedisKey, disconnect, dropCollection, dropObject,
   duplicateConnection, refreshAll, truncateTable,
 } from "./actions";
-import { isInfra, isTablesFolder, redisKeyOf, refOf, type Row } from "./rows";
+import { isBookmarkable, isInfra, isTablesFolder, redisKeyOf, refOf, type Row } from "./rows";
 import { useTree } from "./store";
 
 const ic = (I: typeof Play) => <I className="size-3.5" />;
@@ -209,11 +211,49 @@ function nodeMenu(row: Extract<Row, { type: "node" }>): MenuItem[] {
   }
 }
 
+/** "Add bookmark" / "Remove bookmark" for bookmarkable nodes (empty otherwise). */
+function bookmarkToggle(row: Extract<Row, { type: "node" }>): MenuItem[] {
+  if (!isBookmarkable(row.node)) return [];
+  const existing = findBookmark(row.conn.id, row.node.path);
+  const store = useBookmarks.getState();
+  return [
+    existing
+      ? { label: "Remove bookmark", icon: ic(StarOff), onClick: () => void store.remove(existing.id) }
+      : { label: "Add bookmark", icon: ic(Star), onClick: () => void store.add(row.conn, row.node, row.ctx) },
+    "separator",
+  ];
+}
+
+function bookmarkMenu(row: Extract<Row, { type: "bookmark" }>): MenuItem[] {
+  const { bookmark: b, conn } = row;
+  const store = useBookmarks.getState();
+  const idx = store.bookmarks.findIndex((x) => x.id === b.id);
+  return [
+    ...(opensInTab(b, conn) ? [{ label: "Open", icon: ic(ExternalLink), shortcut: "↵", onClick: () => openBookmark(b, conn) } as MenuItem] : []),
+    { label: "Reveal in tree", icon: ic(Crosshair), onClick: () => void revealBookmark(b, conn) },
+    "separator",
+    { label: "Move up", icon: ic(ArrowUp), disabled: idx <= 0, onClick: () => void store.move(b.id, -1) },
+    { label: "Move down", icon: ic(ArrowDown), disabled: idx < 0 || idx >= store.bookmarks.length - 1, onClick: () => void store.move(b.id, 1) },
+    "separator",
+    { label: "Remove bookmark", icon: ic(StarOff), onClick: () => void store.remove(b.id) },
+  ];
+}
+
+function bookmarksHeaderMenu(row: Extract<Row, { type: "bookmarks" }>): MenuItem[] {
+  const t = useTree.getState();
+  return [
+    { label: row.collapsed ? "Expand" : "Collapse", onClick: () => t.toggleBookmarks() },
+    { label: "Show only bookmarked", icon: ic(t.bookmarksOnly ? Check : Star), onClick: () => t.setBookmarksOnly(!t.bookmarksOnly) },
+  ];
+}
+
 export function rowMenu(row: Row): MenuItem[] | null {
   switch (row.type) {
     case "conn": return connectionMenu(row.conn);
-    case "node": return nodeMenu(row);
+    case "node": return [...bookmarkToggle(row), ...nodeMenu(row)];
     case "project": return projectMenu(row);
+    case "bookmark": return bookmarkMenu(row);
+    case "bookmarks": return bookmarksHeaderMenu(row);
     default: return null;
   }
 }

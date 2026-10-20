@@ -1,8 +1,11 @@
 // Flattens connections + cached tree nodes into the visible row list rendered by the
-// virtualized tree. Also derives database/schema context for every node.
-import type { ConnectionConfig, Project, TableRef, TreeNode } from "../../../lib/types";
-import { INFRA_KINDS } from "../../../lib/types";
-import { nodeKey, type NodeState } from "./store";
+// virtualized tree. Also derives database/schema context for every node, and adds the
+// Bookmarks section and the "show only bookmarked" filter.
+// Only dependency-free .ts imports, so rows.check.ts (`pnpm check:tree`) runs under plain Node.
+import type { Bookmark, ConnectionConfig, NodeKind, Project, TableRef, TreeNode } from "../../../lib/types.ts";
+import { INFRA_KINDS } from "../../../lib/types.ts";
+import { nodeKey } from "./keys.ts";
+import type { NodeState } from "./store";
 
 /** Database / schema / folder a node lives in (inclusive of the node itself). */
 export interface NodeCtx {
@@ -12,19 +15,24 @@ export interface NodeCtx {
   folder: string | null;
 }
 
+export const BOOKMARKS_ROW = "b:";
+
 export type Row =
+  | { type: "bookmarks"; id: typeof BOOKMARKS_ROW; count: number; collapsed: boolean; depth: 0; parentId: null }
+  | { type: "bookmark"; id: string; bookmark: Bookmark; conn: ConnectionConfig; depth: 1; parentId: typeof BOOKMARKS_ROW }
   | { type: "project"; id: string; project: Project; count: number; collapsed: boolean; depth: 0; parentId: null }
   | { type: "conn"; id: string; conn: ConnectionConfig; depth: number; expanded: boolean; parentId: string | null }
-  | { type: "node"; id: string; conn: ConnectionConfig; node: TreeNode; ctx: NodeCtx; parentPath: string[]; depth: number; expanded: boolean; loading: boolean; parentId: string }
+  | { type: "node"; id: string; conn: ConnectionConfig; node: TreeNode; ctx: NodeCtx; parentPath: string[]; depth: number; expanded: boolean; loading: boolean; bookmarked: boolean; parentId: string }
   | { type: "error"; id: string; conn: ConnectionConfig; path: string[]; message: string; depth: number; parentId: string }
   | { type: "empty"; id: string; depth: number; parentId: string; text?: string };
 
-export type SelectableRow = Extract<Row, { type: "project" | "conn" | "node" }>;
+export type SelectableRow = Extract<Row, { type: "bookmarks" | "bookmark" | "project" | "conn" | "node" }>;
 
 export const isInfra = (c: ConnectionConfig) => INFRA_KINDS.includes(c.kind);
 export const connRowId = (id: string) => `c:${id}`;
 export const projectRowId = (id: string) => `p:${id}`;
 export const nodeRowId = (connId: string, path: string[]) => `n:${nodeKey(connId, path)}`;
+export const bookmarkRowId = (id: string) => `${BOOKMARKS_ROW}${id}`;
 
 const lastSeg = (n: TreeNode) => n.path[n.path.length - 1] ?? n.label;
 
@@ -50,6 +58,38 @@ export function isTablesFolder(n: TreeNode): boolean {
   return n.kind === "folder" && (lastSeg(n).toLowerCase() === "tables" || n.label.toLowerCase() === "tables");
 }
 
+const BOOKMARK_KINDS: NodeKind[] = [
+  "database", "schema", "table", "view", "materializedView", "collection", "key",
+  "function", "procedure", "trigger", "sequence", "event",
+];
+
+/** Databases, schemas and objects that open in a tab can be bookmarked. */
+export const isBookmarkable = (n: TreeNode) => BOOKMARK_KINDS.includes(n.kind);
+
+/** Secondary text of a bookmark row: "<connection> · <database>" (just the connection for databases). */
+export function bookmarkHint(b: Bookmark, conn: ConnectionConfig): string {
+  const db = b.kind === "database" ? null : b.table?.database;
+  return db ? `${conn.name} · ${db}` : conn.name;
+}
+
+/** Rows that have a chevron. */
+export function isExpandable(r: Row): boolean {
+  switch (r.type) {
+    case "project": case "bookmarks": return true;
+    case "conn": return !isInfra(r.conn);
+    case "node": return r.node.hasChildren;
+    default: return false;
+  }
+}
+
+export function isExpanded(r: Row): boolean {
+  switch (r.type) {
+    case "project": case "bookmarks": return !r.collapsed;
+    case "conn": case "node": return r.expanded;
+    default: return false;
+  }
+}
+
 interface BuildArgs {
   connections: ConnectionConfig[];
   projects: Project[];
@@ -57,26 +97,47 @@ interface BuildArgs {
   /** collapsed state keyed by project id */
   collapsedProjects: Record<string, boolean>;
   query: string;
+  bookmarks: Bookmark[];
+  bookmarksCollapsed: boolean;
+  /** "Show only bookmarked": in connections that have bookmarks, hide everything else */
+  bookmarksOnly: boolean;
 }
 
-export function buildRows({ connections, projects, nodes, collapsedProjects, query }: BuildArgs): Row[] {
+export function buildRows({ connections, projects, nodes, collapsedProjects, query, bookmarks, bookmarksCollapsed, bookmarksOnly }: BuildArgs): Row[] {
   const q = query.trim().toLowerCase();
   const rows: Row[] = [];
   const matchMemo = new Map<string, boolean>();
 
-  // Does any loaded descendant of (connId, path) match the query?
-  const descMatches = (connId: string, path: string[]): boolean => {
+  const marked = new Set(bookmarks.map((b) => nodeKey(b.connectionId, b.path)));
+  // Filter: per connection with bookmarks, keep bookmarks and their ancestors; bookmarked
+  // databases / schemas ("containers") keep their whole subtree.
+  const filtered = new Set<string>();
+  const keep = new Set<string>();
+  const containers = new Set<string>();
+  if (bookmarksOnly) {
+    for (const b of bookmarks) {
+      filtered.add(b.connectionId);
+      for (let i = 1; i <= b.path.length; i++) keep.add(nodeKey(b.connectionId, b.path.slice(0, i)));
+      if (b.kind === "database" || b.kind === "schema") containers.add(nodeKey(b.connectionId, b.path));
+    }
+  }
+  /** `open`: the node's parent is (inside) a bookmarked container, so nothing is filtered. */
+  const visible = (connId: string, n: TreeNode, open: boolean) => open || !filtered.has(connId) || keep.has(nodeKey(connId, n.path));
+  const opens = (connId: string, n: TreeNode, open: boolean) => open || containers.has(nodeKey(connId, n.path));
+
+  // Does any visible loaded descendant of (connId, path) match the query?
+  const descMatches = (connId: string, path: string[], open: boolean): boolean => {
     const key = nodeKey(connId, path);
     const memo = matchMemo.get(key);
     if (memo !== undefined) return memo;
     matchMemo.set(key, false); // cycle guard
     const kids = nodes[key]?.children ?? [];
-    const res = kids.some((k) => k.label.toLowerCase().includes(q) || descMatches(connId, k.path));
+    const res = kids.some((k) => visible(connId, k, open) && (k.label.toLowerCase().includes(q) || descMatches(connId, k.path, opens(connId, k, open))));
     matchMemo.set(key, res);
     return res;
   };
 
-  const emitChildren = (conn: ConnectionConfig, path: string[], ctx: NodeCtx, depth: number, parentId: string, filter: boolean) => {
+  const emitChildren = (conn: ConnectionConfig, path: string[], ctx: NodeCtx, depth: number, parentId: string, filter: boolean, open: boolean) => {
     const st = nodes[nodeKey(conn.id, path)];
     if (st?.error) {
       rows.push({ type: "error", id: `e:${nodeKey(conn.id, path)}`, conn, path, message: st.error, depth, parentId });
@@ -89,29 +150,51 @@ export function buildRows({ connections, projects, nodes, collapsedProjects, que
       return;
     }
     for (const n of kids) {
+      if (!visible(conn.id, n, open)) continue;
+      const kidOpen = opens(conn.id, n, open);
       const selfMatch = filter && n.label.toLowerCase().includes(q);
-      const below = filter && !selfMatch && descMatches(conn.id, n.path);
+      const below = filter && !selfMatch && descMatches(conn.id, n.path, kidOpen);
       if (filter && !selfMatch && !below) continue;
-      const ns = nodes[nodeKey(conn.id, n.path)];
+      const key = nodeKey(conn.id, n.path);
+      const ns = nodes[key];
       const nctx = childCtx(ctx, n);
       // While searching, ancestors of matches are shown expanded.
       const expanded = n.hasChildren && (below || !!ns?.expanded);
       const id = nodeRowId(conn.id, n.path);
-      rows.push({ type: "node", id, conn, node: n, ctx: nctx, parentPath: path, depth, expanded, loading: !!ns?.loading, parentId });
-      if (expanded || (ns?.error && ns.expanded)) emitChildren(conn, n.path, nctx, depth + 1, id, below);
+      rows.push({ type: "node", id, conn, node: n, ctx: nctx, parentPath: path, depth, expanded, loading: !!ns?.loading, bookmarked: marked.has(key), parentId });
+      if (expanded || (ns?.error && ns.expanded)) emitChildren(conn, n.path, nctx, depth + 1, id, below, kidOpen);
     }
   };
 
+  const rootCtx: NodeCtx = { database: null, schema: null, folder: null };
+
   const emitConn = (conn: ConnectionConfig, depth: number, parentId: string | null) => {
     const nameMatch = !q || conn.name.toLowerCase().includes(q);
-    const below = !!q && !nameMatch && !isInfra(conn) && descMatches(conn.id, []);
+    const below = !!q && !nameMatch && !isInfra(conn) && descMatches(conn.id, [], false);
     if (!nameMatch && !below) return;
     const root = nodes[nodeKey(conn.id, [])];
     const expanded = !isInfra(conn) && (below || !!root?.expanded);
     const id = connRowId(conn.id);
     rows.push({ type: "conn", id, conn, depth, expanded, parentId });
-    if (expanded) emitChildren(conn, [], { database: null, schema: null, folder: null }, depth + 1, id, below);
+    if (expanded) emitChildren(conn, [], rootCtx, depth + 1, id, below, false);
   };
+
+  // Bookmarks first, for connections that are visible (focus mode) and still exist.
+  const byId = new Map(connections.map((c) => [c.id, c]));
+  const shown: { bookmark: Bookmark; conn: ConnectionConfig }[] = [];
+  for (const bookmark of bookmarks) {
+    const conn = byId.get(bookmark.connectionId);
+    if (conn && (!q || bookmark.label.toLowerCase().includes(q) || conn.name.toLowerCase().includes(q))) shown.push({ bookmark, conn });
+  }
+  if (shown.length) {
+    const collapsed = !q && bookmarksCollapsed;
+    rows.push({ type: "bookmarks", id: BOOKMARKS_ROW, count: shown.length, collapsed, depth: 0, parentId: null });
+    if (!collapsed) {
+      for (const { bookmark, conn } of shown) {
+        rows.push({ type: "bookmark", id: bookmarkRowId(bookmark.id), bookmark, conn, depth: 1, parentId: BOOKMARKS_ROW });
+      }
+    }
+  }
 
   const byName = (a: ConnectionConfig, b: ConnectionConfig) => a.name.localeCompare(b.name);
   const known = new Set(projects.map((p) => p.id));
@@ -133,12 +216,12 @@ export function buildRows({ connections, projects, nodes, collapsedProjects, que
       if (list.length === 0) {
         if (!q) rows.push({ type: "empty", id: `x:${pid}`, depth: 1, parentId: pid, text: "Empty — drag a connection here or right-click to add one" });
       } else if (projectMatch && q) {
-        // project name matched: show all members unfiltered
+        // project name matched: show all members unfiltered by the search
         for (const c of list) {
           const id = connRowId(c.id);
           const expanded = !isInfra(c) && !!nodes[nodeKey(c.id, [])]?.expanded;
           rows.push({ type: "conn", id, conn: c, depth: 1, expanded, parentId: pid });
-          if (expanded) emitChildren(c, [], { database: null, schema: null, folder: null }, 2, id, false);
+          if (expanded) emitChildren(c, [], rootCtx, 2, id, false, false);
         }
       } else {
         for (const c of list) emitConn(c, 1, pid);

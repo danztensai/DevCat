@@ -2,25 +2,29 @@
 // State lives in tree/store.ts; rows are flattened in tree/rows.ts and virtualized here.
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
-import { ChevronsDownUp, FolderMinus, FolderPlus, Plus, RefreshCw, Search, X } from "lucide-react";
+import { ChevronsDownUp, FolderMinus, FolderPlus, Plus, RefreshCw, Search, Star, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { Button, Empty, IconButton } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useConnections } from "../../store/connections";
 import { useUi } from "../../store/ui";
+import { openBookmark } from "./bookmarks/actions";
+import { useBookmarks } from "./bookmarks/store";
+import { useAutoExpandBookmarks } from "./bookmarks/useAutoExpand";
 import { useContextMenu } from "./ContextMenu";
 import { activateConnection, activateNode, refreshAll, toggleConnection, toggleNode } from "./tree/actions";
 import { backgroundMenu, rowMenu } from "./tree/menus";
 import { createProject, DRAG_MIME, moveConnections, newConnectionIn } from "./tree/projectActions";
-import { buildRows, isInfra, type Row, type SelectableRow } from "./tree/rows";
+import { buildRows, isExpandable, isExpanded, isInfra, type Row, type SelectableRow } from "./tree/rows";
 import { nodeKey, useTree } from "./tree/store";
 import { ROW_H, TreeRow } from "./tree/TreeRow";
 
-const selectable = (r: Row): r is SelectableRow => r.type === "project" || r.type === "conn" || r.type === "node";
+const selectable = (r: Row): r is SelectableRow => r.type !== "error" && r.type !== "empty";
 
-/** Project a dragged connection lands in when dropped on `row` (null = no project). */
-function dropProjectOf(row: Row | undefined): string | null {
+/** Project a dragged connection lands in when dropped on `row` (null = no project, undefined = not a drop target). */
+function dropProjectOf(row: Row | undefined): string | null | undefined {
   if (!row) return null;
+  if (row.type === "bookmarks" || row.type === "bookmark") return undefined;
   if (row.type === "project") return row.project.id;
   if (row.type === "empty" && row.parentId.startsWith("p:")) return row.parentId.slice(2);
   return "conn" in row ? row.conn.projectId ?? null : null;
@@ -42,6 +46,10 @@ export default function ConnectionTree() {
   );
   const collapsedProjects = useTree((s) => s.collapsedProjects);
   const selected = useTree((s) => s.selected);
+  const bookmarks = useBookmarks((s) => s.bookmarks);
+  const bookmarksOnly = useTree((s) => s.bookmarksOnly);
+  const bookmarksCollapsed = useTree((s) => s.bookmarksCollapsed);
+  const revealId = useTree((s) => s.revealId);
   const setSelected = useTree((s) => s.setSelected);
   const openDialog = useUi((s) => s.openConnectionDialog);
   const [query, setQuery] = useState("");
@@ -65,9 +73,16 @@ export default function ConnectionTree() {
     }
   }, [open, connections]);
 
+  // Bookmarks: load, and reload when connections change (deleting one deletes its bookmarks).
+  useEffect(() => {
+    void useBookmarks.getState().load();
+  }, [allConnections]);
+
+  useAutoExpandBookmarks(bookmarks, bookmarksOnly, nodes);
+
   const rows = useMemo(
-    () => buildRows({ connections, projects, nodes, collapsedProjects, query }),
-    [connections, projects, nodes, collapsedProjects, query],
+    () => buildRows({ connections, projects, nodes, collapsedProjects, query, bookmarks, bookmarksCollapsed, bookmarksOnly }),
+    [connections, projects, nodes, collapsedProjects, query, bookmarks, bookmarksCollapsed, bookmarksOnly],
   );
 
   // Lazily (re)load expanded nodes that have no cached children (e.g. after a refresh).
@@ -94,14 +109,27 @@ export default function ConnectionTree() {
 
   const indexOf = useCallback((id: string | null) => (id ? rows.findIndex((r) => r.id === id) : -1), [rows]);
 
+  // A bookmark was revealed: scroll to its row once it's rendered.
+  useEffect(() => {
+    if (!revealId) return;
+    const i = indexOf(revealId);
+    if (i < 0) return;
+    virt.scrollToIndex(i, { align: "center" });
+    useTree.setState({ revealId: null });
+    scrollRef.current?.focus();
+  }, [revealId, indexOf, virt]);
+
   const toggle = useCallback((row: Row) => {
     if (row.type === "project") useTree.getState().toggleProject(row.project.id);
+    else if (row.type === "bookmarks") useTree.getState().toggleBookmarks();
     else if (row.type === "conn") toggleConnection(row.conn);
     else if (row.type === "node") toggleNode(row.conn, row.node, row.expanded);
   }, []);
 
   const activate = useCallback((row: Row) => {
     if (row.type === "project") useTree.getState().toggleProject(row.project.id);
+    else if (row.type === "bookmarks") useTree.getState().toggleBookmarks();
+    else if (row.type === "bookmark") openBookmark(row.bookmark, row.conn);
     else if (row.type === "conn") activateConnection(row.conn);
     else if (row.type === "node") activateNode(row.conn, row.node, row.ctx, row.expanded);
   }, []);
@@ -160,7 +188,7 @@ export default function ConnectionTree() {
       const zone = (e.target as HTMLElement).closest("[data-drop-none]");
       const target = zone ? null : dropProjectOf(rowAt(e));
       endDrag();
-      if (conn) void moveConnections([conn], target);
+      if (conn && target !== undefined) void moveConnections([conn], target);
     },
     onDragEnd: endDrag,
   };
@@ -193,17 +221,15 @@ export default function ConnectionTree() {
       case "ArrowRight": {
         e.preventDefault();
         if (!row) return;
-        const expandable = row.type === "project" || (row.type === "conn" && !isInfra(row.conn)) || (row.type === "node" && row.node.hasChildren);
-        const expanded = row.type === "project" ? !row.collapsed : row.type !== "error" && row.type !== "empty" && row.expanded;
-        if (expandable && !expanded) toggle(row);
+        const expanded = isExpanded(row);
+        if (isExpandable(row) && !expanded) toggle(row);
         else if (expanded && rows[idx + 1]?.parentId === row.id && selectable(rows[idx + 1])) moveTo(idx + 1);
         break;
       }
       case "ArrowLeft": {
         e.preventDefault();
         if (!row) return;
-        const expanded = row.type === "project" ? !row.collapsed : row.type !== "error" && row.type !== "empty" && row.expanded;
-        if (expanded) toggle(row);
+        if (isExpanded(row)) toggle(row);
         else if (row.parentId) moveTo(indexOf(row.parentId));
         break;
       }
@@ -275,6 +301,9 @@ export default function ConnectionTree() {
           )}
         </div>
         <IconButton title="New project" onClick={() => void createProject()}><FolderPlus className="size-3.5" /></IconButton>
+        <IconButton title="Show only bookmarked" active={bookmarksOnly} onClick={() => useTree.getState().setBookmarksOnly(!bookmarksOnly)}>
+          <Star className={clsx("size-3.5", bookmarksOnly && "fill-current")} />
+        </IconButton>
         <IconButton title="Refresh all" onClick={() => void refreshAll()}><RefreshCw className="size-3.5" /></IconButton>
         <IconButton title="Collapse all" onClick={() => useTree.getState().collapseAll()}><ChevronsDownUp className="size-3.5" /></IconButton>
       </div>
