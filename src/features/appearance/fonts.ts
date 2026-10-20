@@ -15,9 +15,15 @@ export interface Fonts {
   editorSize: number;
 }
 
-/** Fallbacks after the chosen font. Cascadia Mono ships with Windows 11; the symbol fonts cover
- *  block, box-drawing and status-line glyphs that Consolas and friends lack. */
-const MONO_FALLBACK = '"JetBrains Mono", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "DejaVu Sans Mono", monospace, "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2"';
+/** The code font bundled with the app (@fontsource-variable/jetbrains-mono, OFL), so the default
+ *  looks the same on every computer; an installed JetBrains Mono still comes first. */
+export const BUNDLED_MONO = "JetBrains Mono Variable";
+
+/** Fallbacks after the chosen font. DejaVu Mono (bundled, @fontsource/dejavu-mono) comes right after
+ *  JetBrains Mono: it has the symbols status lines use (↻ ▰ ▱ …) at the same cell width, where
+ *  system symbol fonts draw them wider and overlap the next character. Cascadia Mono ships with
+ *  Windows 11; the symbol fonts cover what is left. */
+const MONO_FALLBACK = '"JetBrains Mono", "JetBrains Mono Variable", "DejaVu Mono", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "DejaVu Sans Mono", monospace, "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2"';
 const SANS_FALLBACK = '"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 
 export const FONT_DEFAULTS: Fonts = { mono: "", sans: "", terminalSize: 13, terminalLineHeight: 1.15, editorSize: 0 };
@@ -61,6 +67,14 @@ export const sansStack = (f: Fonts = fonts()) => stack(f.sans, SANS_FALLBACK);
 /** xterm options for the current fonts. */
 export function terminalFont(f: Fonts = fonts()) {
   return { fontFamily: monoStack(f), fontSize: f.terminalSize, lineHeight: f.terminalLineHeight };
+}
+
+const TERMINAL_SIZES = { min: 8, max: 32 };
+/** Terminal zoom (⌘/Ctrl + = / - / 0): one point bigger or smaller, or back to the default. */
+export function zoomTerminal(step: 1 | -1 | 0) {
+  const { terminalSize, set } = useFonts.getState();
+  const next = step === 0 ? FONT_DEFAULTS.terminalSize : Math.round(terminalSize) + step;
+  set({ terminalSize: Math.min(TERMINAL_SIZES.max, Math.max(TERMINAL_SIZES.min, next)) });
 }
 
 /** Monaco options for the current fonts (size only when the user set one). */

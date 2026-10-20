@@ -316,6 +316,10 @@ The Windows build ships the unmodified official installers of
 [git.zx2c4.com/wireguard-windows](https://git.zx2c4.com/wireguard-windows)). They are installed only when you
 choose to, under their own licenses.
 
+The app bundles two code fonts: [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (SIL Open Font
+License 1.1) and [DejaVu Sans Mono](https://dejavu-fonts.github.io) (Bitstream Vera license, public domain changes),
+packaged by [Fontsource](https://fontsource.org).
+
 ## Project layout
 
 ```
