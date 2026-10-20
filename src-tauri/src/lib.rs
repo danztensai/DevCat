@@ -2,6 +2,7 @@
 #![cfg_attr(not(feature = "gui"), allow(dead_code, unused_imports))]
 
 mod ai;
+mod bookmarks;
 mod claude;
 mod cli;
 mod commands;

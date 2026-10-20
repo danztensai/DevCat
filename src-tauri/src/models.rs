@@ -90,3 +90,22 @@ pub struct Project {
     #[serde(default)]
     pub order: i64,
 }
+
+/// A sidebar bookmark: one node of a connection's object tree.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Bookmark {
+    pub id: String,
+    pub connection_id: String,
+    /// Tree path of the node, as passed to `db_children`.
+    pub path: Vec<String>,
+    /// The node's label when it was bookmarked.
+    pub label: String,
+    pub kind: crate::db::NodeKind,
+    /// What to open (database / schema / name), copied from the node.
+    #[serde(default)]
+    pub table: Option<crate::db::TableRef>,
+    /// Sort position in the Bookmarks section (ascending).
+    #[serde(default)]
+    pub order: i64,
+}
