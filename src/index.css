@@ -54,6 +54,13 @@ html.glass .solid, html.glass .sticky, html.glass [class*="shadow-lg"], html.gla
   --color-app: var(--solid-app); --color-panel: var(--solid-panel); --color-raised: var(--solid-raised); --color-hover: var(--solid-hover);
 }
 ::-webkit-scrollbar-corner { background: transparent; }
+
+/* Native <select> popups: WebView2 (Windows) draws the options on white, in the field's light text
+   color, unless told otherwise; inside glass regions the field itself is transparent. Solid theme
+   colors keep them readable everywhere. */
+:root { color-scheme: dark; }
+html.light { color-scheme: light; }
+select option, select optgroup { background-color: var(--solid-panel, var(--color-panel)); color: var(--color-fg); }
 *:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }
 
 /* Git blame gutter (src/features/git/BlameView.tsx): the line-number column holds "sha author age  n". */

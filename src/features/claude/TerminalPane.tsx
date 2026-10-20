@@ -13,6 +13,7 @@ import { api, errMsg } from "../../lib/api";
 import { ptyEventsReady, subscribePty } from "./pty";
 import { openFile } from "./util";
 import { glassOn, onPaletteChange, palette } from "../appearance/store";
+import { onFontsChange, terminalFont } from "../appearance/fonts";
 import { terminalTheme } from "../appearance/themes";
 import { enableGpu } from "../../lib/xtermGpu";
 
@@ -63,13 +64,17 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
 
   // Colors follow the Appearance theme.
   useEffect(() => onPaletteChange((p, glass) => { if (termRef.current) termRef.current.term.options.theme = terminalTheme(p, glass); }), []);
+  // Fonts follow the Appearance font settings.
+  useEffect(() => onFontsChange((f) => {
+    if (!termRef.current) return;
+    Object.assign(termRef.current.term.options, terminalFont(f));
+    try { termRef.current.fit.fit(); } catch { /* not attached yet */ }
+  }), []);
 
   // Terminal instance lives for the component's lifetime.
   useEffect(() => {
     const term = new Terminal({
-      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace',
-      fontSize: 13,
-      lineHeight: 1.15,
+      ...terminalFont(),
       cursorBlink: true,
       cursorStyle: "block",
       scrollback: 10000,

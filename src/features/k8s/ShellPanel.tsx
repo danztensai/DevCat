@@ -8,6 +8,7 @@ import { errMsg } from "../../lib/api";
 import { events, eventsReady, k8s } from "./api";
 import PodSwitcher from "./PodSwitcher";
 import { glassOn, onPaletteChange, palette } from "../appearance/store";
+import { onFontsChange, terminalFont } from "../appearance/fonts";
 import { terminalTheme } from "../appearance/themes";
 import { enableGpu } from "../../lib/xtermGpu";
 
@@ -22,8 +23,6 @@ function b64ToBytes(s: string): Uint8Array {
   return out;
 }
 
-const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-
 export default function ShellPanel({ connId, target, visible, onPodChange }: { connId: string; target: ShellTarget; visible: boolean; onPodChange?: (pod: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   const termRef = useRef<{ term: Terminal; fit: FitAddon } | null>(null);
@@ -33,12 +32,16 @@ export default function ShellPanel({ connId, target, visible, onPodChange }: { c
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => onPaletteChange((p, glass) => { if (termRef.current) termRef.current.term.options.theme = terminalTheme(p, glass); }), []);
+  useEffect(() => onFontsChange((f) => {
+    if (!termRef.current) return;
+    Object.assign(termRef.current.term.options, terminalFont(f));
+    try { termRef.current.fit.fit(); } catch { /* not attached yet */ }
+  }), []);
 
   // Terminal instance lives for the panel's lifetime.
   useEffect(() => {
     const term = new Terminal({
-      fontFamily: css("--font-mono") || "Menlo, monospace",
-      fontSize: 12.5,
+      ...terminalFont(),
       cursorBlink: true,
       scrollback: 10000,
       allowProposedApi: true,
