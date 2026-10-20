@@ -1,0 +1,9 @@
+[
+  { "title": "Getting started", "pages": ["introduction", "install", "first-steps", "shortcuts"] },
+  { "title": "AI workspace", "pages": ["ai-workspace", "ai-connections", "review-and-commit", "files", "ssh-folders"] },
+  { "title": "Git", "pages": ["git"] },
+  { "title": "Databases", "pages": ["connections", "sql-editor", "data-grid", "schema-tools", "mongodb", "redis"] },
+  { "title": "Infrastructure", "pages": ["kubernetes", "rabbitmq", "vpn-tunnels"] },
+  { "title": "Phone and remote", "pages": ["mobile", "devcat-serve"] },
+  { "title": "More", "pages": ["notes", "appearance", "updates-and-more", "troubleshooting"] }
+]

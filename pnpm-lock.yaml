@@ -290,6 +290,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.2
         version: 6.1.2(vite@8.3.4(jiti@2.7.0)(yaml@2.9.1))
+      marked:
+        specifier: ^16.4.2
+        version: 16.4.2
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -1271,6 +1274,11 @@ packages:
   marked@14.0.0:
     resolution: {integrity: sha512-uIj4+faQ+MgHgwUW1l2PsPglZLOLOT1uErt06dAPtx2kjteLAkbsd/0FiYg/MGS+i7ZKLb7w2WClxHkzOOuryQ==}
     engines: {node: '>= 18'}
+    hasBin: true
+
+  marked@16.4.2:
+    resolution: {integrity: sha512-TI3V8YYWvkVf3KJe1dRkpnjs68JUPyEa5vjKrp1XEEJUAOaQc+Qj+L1qWbPd0SJuAdQkFU0h73sXXqwDYxsiDA==}
+    engines: {node: '>= 20'}
     hasBin: true
 
   mdast-util-find-and-replace@3.0.3:
@@ -2449,6 +2457,8 @@ snapshots:
   markdown-table@3.0.4: {}
 
   marked@14.0.0: {}
+
+  marked@16.4.2: {}
 
   mdast-util-find-and-replace@3.0.3:
     dependencies:

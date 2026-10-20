@@ -1,10 +1,31 @@
-<p align="center"><img src="assets/icon.png" width="128" alt="DevCat"></p>
+<p align="center"><img src="assets/icon.png" width="112" alt="DevCat logo"></p>
 
-# DevCat
+<h1 align="center">DevCat</h1>
 
-An all-in-one, cross-platform developer workbench: AI coding agents in a real terminal, Git, databases,
-Kubernetes, RabbitMQ and VPN / SSH tunnels in one app. Built with [Tauri 2](https://tauri.app) (Rust)
-and React + TypeScript; runs on macOS, Windows and Linux.
+<p align="center">
+  <b>Your coding agents, Git, databases, clusters and VPNs in one desktop app.</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/devileya/DevCat/releases/latest"><img src="https://img.shields.io/github/v/release/devileya/DevCat?label=release&color=f5a524" alt="Latest release"></a>
+  <a href="https://github.com/devileya/DevCat/releases"><img src="https://img.shields.io/github/downloads/devileya/DevCat/total?color=3b82f6" alt="Downloads"></a>
+  <a href="https://github.com/devileya/DevCat/actions/workflows/build.yml"><img src="https://github.com/devileya/DevCat/actions/workflows/build.yml/badge.svg" alt="Build"></a>
+  <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Android-555" alt="Platforms: macOS, Windows, Linux, Android">
+  <a href="https://tauri.app"><img src="https://img.shields.io/badge/built%20with-Tauri%202-24c8db" alt="Built with Tauri 2"></a>
+</p>
+
+<p align="center">
+  <a href="https://devileya.github.io/DevCat/home/"><b>Website</b></a> ·
+  <a href="https://devileya.github.io/DevCat/home/docs/"><b>Docs</b></a> ·
+  <a href="https://github.com/devileya/DevCat/releases/latest"><b>Download</b></a> ·
+  <a href="https://devileya.github.io/DevCat/home/docs/shortcuts.html"><b>Shortcuts</b></a> ·
+  <a href="https://github.com/devileya/DevCat/issues"><b>Report a bug</b></a>
+</p>
+
+DevCat is a cross-platform developer workbench. It runs your AI coding agent (Claude Code, Codex, Gemini CLI and
+others) in a real terminal next to the diff and the commit graph, and puts your databases, Kubernetes clusters,
+RabbitMQ brokers and VPN / SSH tunnels in the same window, grouped by project. It is built with
+[Tauri 2](https://tauri.app) (Rust) and React + TypeScript, and needs no account.
 
 <p align="center"><img src="assets/readme/demo.gif" width="960" alt="DevCat tour: AI workspace, diff review, databases, SQL editor, Git, Kubernetes, VPN and notes"></p>
 
@@ -17,6 +38,10 @@ and React + TypeScript; runs on macOS, Windows and Linux.
 | Infrastructure | Kubernetes (any kubeconfig context), RabbitMQ (management API) |
 | Networking | OpenVPN, WireGuard, SSH tunnels (local forwards + SOCKS proxy) |
 | Mobile | DevCat Mobile (Android, iPhone): agent notifications and control, databases, Redis, VPNs and Kubernetes through DevCat on your computer |
+
+**Contents:** [Download](#download) · [Tour](#tour) · [Mobile app](#mobile-app) · [Features](#features) ·
+[Development](#development) · [Building installers](#building-installers) · [Contributing](#contributing) ·
+[Third-party software](#third-party-software) · [Project layout](#project-layout)
 
 ## Download
 
@@ -124,6 +149,10 @@ needs `libdbus` (installed almost everywhere).
 - Don't run it while the app has **Remote access** on: they'd share one port and identity.
 
 ## Features
+
+Below is the short list. The [docs](https://devileya.github.io/DevCat/home/docs/) explain how to use each
+of these step by step, with every keyboard shortcut on
+[one page](https://devileya.github.io/DevCat/home/docs/shortcuts.html).
 
 - **Projects**: group connections into projects and focus on one project at a time.
 - **Hide the sidebar**: click the active icon in the left bar, the toggle at its bottom, or press ⌘B (Ctrl+B).
@@ -272,6 +301,22 @@ Backend integration tests (need the services above):
 cd src-tauri && cargo test -- --ignored
 ```
 
+### Website and docs
+
+The landing page and the docs live in `site/` and are published with GitHub Pages at
+`/home/` (the root stays the hosted DevCat Mobile web app, so pairing links keep working). Docs pages are
+Markdown in `site/docs/pages/`, listed in order in `site/docs/nav.json`; `site/docs/build.mjs` turns them into
+HTML with a sidebar, search and an "On this page" list. To preview locally:
+
+```bash
+pnpm install
+sh site/build.sh /tmp/devcat-site       # landing page + docs + screenshots
+cd /tmp/devcat-site && python -m http.server 8765   # http://127.0.0.1:8765, docs at /docs/
+```
+
+To add a page, create `site/docs/pages/<name>.md` starting with `# Title` and a one-line summary, and add
+`<name>` to `nav.json`. Link to other pages as `other-page.md`; the build fails on a link to a missing page.
+
 ## Building installers
 
 ```bash
@@ -303,6 +348,17 @@ back to ad-hoc signing) but not notarized, so allow DevCat once via *System Sett
 Open Anyway* (or run `xattr -dr com.apple.quarantine /Applications/DevCat.app`). If macOS says the app "is damaged"
 (builds before v0.2.1), run `codesign --force --deep --sign - /Applications/DevCat.app` and the `xattr` command above. For distribution, configure code signing and
 notarization ([macOS](https://tauri.app/distribute/sign/macos/), [Windows](https://tauri.app/distribute/sign/windows/)).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome.
+
+- **Found a bug?** [Open an issue](https://github.com/devileya/DevCat/issues/new) with your OS, the DevCat version
+  (shown in the status bar) and the steps to reproduce it.
+- **Changing code?** See [Development](#development) to run the app locally. Keep pull requests focused on one
+  change and describe how you tested it.
+- **Improving the docs?** Every docs page has an *Edit this page on GitHub* link; the pages are Markdown in
+  `site/docs/pages/` (see [Website and docs](#website-and-docs)).
 
 ## Third-party software
 
@@ -346,4 +402,5 @@ src-tauri/src/
 crates/remote-proto/      wire protocol shared by the desktop app and DevCat Mobile
 mobile/                   DevCat Mobile (Tauri 2 for Android / iOS): src = React UI, src-tauri = client
 promo/                    README screenshots + demo video (demo mode capture, Remotion)
+site/                     landing page; site/docs = docs (Markdown → HTML), both on GitHub Pages
 ```

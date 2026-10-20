@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevCat: AI agents, Git, databases and clusters in one window</title>
+  <meta name="description" content="DevCat is a free desktop app for developers: run Claude Code, Codex or Gemini in a real terminal, review the diff, commit, and work with your databases, Kubernetes clusters, RabbitMQ and VPNs in the same window.">
+  <meta name="theme-color" content="#0f1114">
+  <meta property="og:title" content="DevCat">
+  <meta property="og:description" content="AI coding agents, Git, databases, Kubernetes, RabbitMQ and VPN / SSH tunnels in one desktop app.">
+  <meta property="og:image" content="img/ai.png">
+  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="nav wrap">
+  <a class="brand" href="./"><img src="img/icon.svg" width="28" height="28" alt="">DevCat</a>
+  <nav aria-label="Main">
+    <a href="#tour">Tour</a>
+    <a href="docs/">Docs</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/devileya/DevCat">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <h1>Your agents, repos, databases and clusters. One window.</h1>
+    <p class="lede">DevCat runs Claude Code, Codex or Gemini in a real terminal next to the diff, the commit graph, your SQL editor and your Kubernetes pods. A free download for macOS, Windows and Linux.</p>
+    <div class="cta">
+      <a class="btn primary" id="dl-main" href="https://github.com/devileya/DevCat/releases/latest">Download DevCat</a>
+      <a class="btn" href="#install">Other platforms and the CLI</a>
+    </div>
+    <p class="fine" id="dl-note">Latest release on GitHub. No account needed.</p>
+  </section>
+
+  <!-- A live mock of the app, not a screenshot: the agent works, the diff appears, it gets committed. -->
+  <div class="stage wrap" aria-hidden="true">
+    <div class="win">
+      <div class="win-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-project">orders-api</span>
+      </div>
+      <div class="win-body">
+        <div class="activity"><b class="on"></b><b></b><b></b><b></b><b></b></div>
+        <aside class="side">
+          <p class="side-h">Sessions</p>
+          <p class="sess on">Cache order lookups</p>
+          <p class="sess">Fix flaky payment test</p>
+          <p class="side-h">Files</p>
+          <p class="file">src/</p>
+          <p class="file in">orders.ts <em class="m">M</em></p>
+          <p class="file in">cache.ts <em class="a">A</em></p>
+          <p class="file">package.json</p>
+        </aside>
+        <div class="main">
+          <div class="tabs"><span class="t-chat">Chat</span><span class="t-diff">Diff</span><span>Code Review</span></div>
+          <div class="pane chat">
+            <p class="l l1"><span class="pr">&gt;</span> cache order lookups in Redis for 60 s</p>
+            <p class="l l2"><span class="dot">●</span> Reading <u>src/orders.ts</u></p>
+            <p class="l l3"><span class="dot">●</span> Writing <u>src/cache.ts</u> (38 lines)</p>
+            <p class="l l4"><span class="dot">●</span> Updating getOrder() to read through the cache</p>
+            <p class="l l5"><span class="dot ok">●</span> Tests pass: 42 passed, 0 failed</p>
+            <p class="l l6 status">claude · opus · <span class="bar">▰▰▰▱▱</span> 31%</p>
+          </div>
+          <div class="pane diff">
+            <p class="dh">src/orders.ts</p>
+            <p class="d">  export async function getOrder(id: string) {</p>
+            <p class="d del">-   return db.orders.find(id);</p>
+            <p class="d add">+   return cached(`order:${id}`, 60, () =&gt; db.orders.find(id));</p>
+            <p class="d">  }</p>
+            <p class="dh">src/cache.ts</p>
+            <p class="d add">+ export async function cached&lt;T&gt;(key: string, ttl: number, load: () =&gt; Promise&lt;T&gt;) {</p>
+            <p class="d add">+   const hit = await redis.get(key);</p>
+            <p class="d add">+   if (hit) return JSON.parse(hit) as T;</p>
+          </div>
+          <div class="toast">Committed 2 files to <b>main</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="tour wrap" id="tour">
+    <h2>What's in the window</h2>
+    <p class="sub">Everything a project needs is a tab away, and DevCat keeps each project's connections, chats and repos together. The <a href="docs/">docs</a> explain each part step by step.</p>
+
+    <div class="tabset">
+      <input type="radio" name="tour" id="t-ai" checked>
+      <input type="radio" name="tour" id="t-review">
+      <input type="radio" name="tour" id="t-git">
+      <input type="radio" name="tour" id="t-db">
+      <input type="radio" name="tour" id="t-k8s">
+      <input type="radio" name="tour" id="t-net">
+      <input type="radio" name="tour" id="t-mobile">
+      <div class="tablist" role="presentation">
+        <label for="t-ai">AI workspace</label>
+        <label for="t-review">Diff and review</label>
+        <label for="t-git">Git</label>
+        <label for="t-db">Databases</label>
+        <label for="t-k8s">Kubernetes and RabbitMQ</label>
+        <label for="t-net">VPN and tunnels</label>
+        <label for="t-mobile">Mobile</label>
+      </div>
+
+      <article class="panel p-ai">
+        <div class="txt">
+          <h3>Any coding agent, in a real terminal</h3>
+          <p>Claude Code by default, or OpenAI Codex, Gemini CLI, GitHub Copilot, Aider, opencode or your own CLI. DevCat runs the one you installed, with your own login.</p>
+          <p>Sessions are listed per project, so you can pick up yesterday's conversation in a click.</p>
+        </div>
+        <img src="img/ai.png" width="1600" height="1000" alt="The AI workspace: a Claude Code session in a terminal, with sessions and the file tree on the left" loading="lazy">
+      </article>
+      <article class="panel p-review">
+        <div class="txt">
+          <h3>See what the agent changed</h3>
+          <p>The Diff tab shows every change as it happens. Tick the files to commit and discard the rest.</p>
+          <p>Ask for a code review before you commit.</p>
+        </div>
+        <img src="img/diff.png" width="1600" height="1000" alt="The Diff tab with changed files and a side-by-side diff" loading="lazy">
+      </article>
+      <article class="panel p-git">
+        <div class="txt">
+          <h3>Every repo in a folder</h3>
+          <p>DevCat finds nested repositories and shows the commit graph, blame, branches, tags and stashes.</p>
+          <p>Fetch, pull and push from the same window.</p>
+        </div>
+        <img src="img/git.png" width="1600" height="1000" alt="The Git view with a commit graph and branch list" loading="lazy">
+      </article>
+      <article class="panel p-db">
+        <div class="txt">
+          <h3>Your databases, with a proper SQL editor</h3>
+          <p>PostgreSQL, MySQL and MariaDB, SQLite, SQL Server, MongoDB and Redis. Browse and edit tables, compare schemas and move data between them.</p>
+          <p>Connections go through SSH tunnels when they need to, and passwords stay in your system keychain.</p>
+        </div>
+        <img src="img/query.png" width="1600" height="1000" alt="The SQL editor with a query and its results" loading="lazy">
+      </article>
+      <article class="panel p-k8s">
+        <div class="txt">
+          <h3>Clusters and queues</h3>
+          <p>Kubernetes with any kubeconfig context: workloads, logs, a shell in any pod, port forwards and Helm releases. RabbitMQ through its management API.</p>
+        </div>
+        <img src="img/k8s.png" width="1600" height="1000" alt="The Kubernetes view with pods and their status" loading="lazy">
+      </article>
+      <article class="panel p-net">
+        <div class="txt">
+          <h3>VPNs and SSH tunnels</h3>
+          <p>OpenVPN, WireGuard and SSH forwards, including a SOCKS proxy, with live traffic for each.</p>
+        </div>
+        <img src="img/network.png" width="1600" height="1000" alt="The network view with VPN connections and SSH tunnels" loading="lazy">
+      </article>
+      <article class="panel p-mobile">
+        <div class="txt">
+          <h3>Answer your agent from your phone</h3>
+          <p>DevCat Mobile for Android and iPhone gets a notification when an agent needs you, and lets you reply, run a query or check a pod.</p>
+          <p>It reaches your computer directly or through a relay that only passes encrypted traffic. There's no account to create.</p>
+        </div>
+        <img class="phone" src="img/mobile-agents.png" width="585" height="1266" alt="DevCat Mobile listing the running agents" loading="lazy">
+      </article>
+    </div>
+  </section>
+
+  <section class="install wrap" id="install">
+    <h2>Install</h2>
+    <p class="sub">Pick an installer from the <a href="https://github.com/devileya/DevCat/releases/latest">latest release</a>, or use a terminal. The scripts check the download's SHA-256 and install for your user only. New to DevCat? Start with <a href="docs/first-steps.html">First steps</a>.</p>
+    <div class="downloads" id="downloads">
+      <a class="dl" data-asset="_x64-setup.exe" href="https://github.com/devileya/DevCat/releases/latest">Windows<small>Installer (.exe)</small></a>
+      <a class="dl" data-asset="_aarch64.dmg" href="https://github.com/devileya/DevCat/releases/latest">macOS<small>Apple silicon (.dmg)</small></a>
+      <a class="dl" data-asset="_x64.dmg" href="https://github.com/devileya/DevCat/releases/latest">macOS<small>Intel (.dmg)</small></a>
+      <a class="dl" data-asset="_amd64.AppImage" href="https://github.com/devileya/DevCat/releases/latest">Linux<small>AppImage</small></a>
+      <a class="dl" data-asset="_amd64.deb" href="https://github.com/devileya/DevCat/releases/latest">Linux<small>Debian, Ubuntu (.deb)</small></a>
+      <a class="dl" data-asset=".x86_64.rpm" href="https://github.com/devileya/DevCat/releases/latest">Linux<small>Fedora (.rpm)</small></a>
+      <a class="dl" href="https://github.com/devileya/DevCat/releases/latest/download/DevCat-Mobile.apk">Android<small>DevCat Mobile (.apk)</small></a>
+    </div>
+
+    <div class="cmds">
+      <div>
+        <h3>The app</h3>
+        <figure class="cmd"><figcaption>macOS, with Homebrew</figcaption><pre><code>brew install --cask devileya/devcat/devcat</code></pre></figure>
+        <figure class="cmd"><figcaption>macOS, Linux</figcaption><pre><code>curl -fsSL https://devileya.github.io/DevCat/install.sh | sh -s -- --app</code></pre></figure>
+        <figure class="cmd"><figcaption>Windows PowerShell</figcaption><pre><code>&amp; ([scriptblock]::Create((irm https://devileya.github.io/DevCat/install.ps1))) -App</code></pre></figure>
+      </div>
+      <div>
+        <h3>Only the CLI</h3>
+        <p class="note">For servers and SSH sessions: <code>devcat serve</code> shares your agents and connections with DevCat Mobile or a browser, without a window.</p>
+        <figure class="cmd"><figcaption>macOS, Linux</figcaption><pre><code>curl -fsSL https://devileya.github.io/DevCat/install.sh | sh</code></pre></figure>
+        <figure class="cmd"><figcaption>Windows PowerShell</figcaption><pre><code>irm https://devileya.github.io/DevCat/install.ps1 | iex</code></pre></figure>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot wrap">
+  <p><img src="img/icon.svg" width="20" height="20" alt="">DevCat is built in the open on GitHub. It needs no account and talks only to the tools and connections you set up.</p>
+  <p><a href="docs/">Docs</a><a href="https://github.com/devileya/DevCat">Source code</a><a href="https://github.com/devileya/DevCat/releases">Releases</a><a href="https://github.com/devileya/DevCat/issues">Issues</a></p>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
