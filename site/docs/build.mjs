@@ -1,4 +1,4 @@
-// Builds the user manual: site/docs/pages/*.md → <out>/<slug>.html, in the order of nav.json.
+// Builds the docs: site/docs/pages/*.md → <out>/<slug>.html, in the order of nav.json.
 // Each page starts with `# Title` and a one-line summary. Links to other pages use `name.md`;
 // images use `../img/name.png` (site/build.sh copies the README screenshots there).
 // Usage: node site/docs/build.mjs <out-dir>
@@ -81,7 +81,7 @@ function layout(page, { html, toc }) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${esc(page.title)} · DevCat manual</title>
+  <title>${esc(page.title)} · DevCat docs</title>
   <meta name="description" content="${esc(page.summary)}">
   <meta name="theme-color" content="#0f1114">
   <link rel="icon" href="../img/icon.svg" type="image/svg+xml">
@@ -93,16 +93,16 @@ function layout(page, { html, toc }) {
 <header class="nav docs-nav">
   <a class="brand" href="../"><img src="../img/icon.svg" width="28" height="28" alt="">DevCat</a>
   <nav aria-label="Main">
-    <a href="index.html" aria-current="true">Manual</a>
+    <a href="index.html" aria-current="true">Docs</a>
     <a href="../#install">Download</a>
     <a href="${REPO}">GitHub</a>
   </nav>
 </header>
 <div class="docs-grid">
   <details class="doc-side" open>
-    <summary>Manual contents</summary>
-    <div class="search" hidden><input type="search" id="q" placeholder="Search the manual" aria-label="Search the manual" autocomplete="off"><ol id="hits"></ol></div>
-    <nav aria-label="Manual">${sidebar(page.slug)}</nav>
+    <summary>Docs contents</summary>
+    <div class="search" hidden><input type="search" id="q" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off"><ol id="hits"></ol></div>
+    <nav aria-label="Docs">${sidebar(page.slug)}</nav>
   </details>
   <main class="doc">
     <p class="crumb">${esc(group)}</p>
@@ -135,4 +135,4 @@ for (const slug of order) {
 fs.copyFileSync(path.join(here, "docs.css"), path.join(out, "docs.css"));
 fs.copyFileSync(path.join(here, "docs.js"), path.join(out, "docs.js"));
 fs.writeFileSync(path.join(out, "search.json"), JSON.stringify(index));
-console.log(`manual: ${order.length} pages → ${out}`);
+console.log(`docs: ${order.length} pages → ${out}`);

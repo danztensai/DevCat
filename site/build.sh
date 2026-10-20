@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# Assemble the landing page and the manual into $1 (GitHub Pages serves it at /home/): the page itself,
-# the manual (site/docs, built into $1/docs), the README screenshots and the app icon, and the bundled
-# JetBrains Mono (OFL) for the headings. Needs `pnpm install` first (the manual uses `marked`).
+# Assemble the landing page and the docs into $1 (GitHub Pages serves it at /home/): the page itself,
+# the docs (site/docs, built into $1/docs), the README screenshots and the app icon, and the bundled
+# JetBrains Mono (OFL) for the headings. Needs `pnpm install` first (the docs use `marked`).
 set -eu
 out=${1:?usage: site/build.sh <out-dir>}
 root=$(cd "$(dirname "$0")/.." && pwd)

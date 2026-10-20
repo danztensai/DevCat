@@ -19,13 +19,13 @@ and needs no account.
 | Network | OpenVPN, WireGuard, SSH tunnels and Kubernetes port-forwards | [VPN and tunnels](vpn-tunnels.md) |
 | Phone | DevCat Mobile and the browser version: answer your agent, run a query or check a pod from your phone | [DevCat Mobile](mobile.md) |
 
-## How this manual is organized
+## How the docs are organized
 
 - **Getting started** covers installing, the parts of the window, and the keyboard shortcuts.
 - Each area of the app then has its own pages, in the order of the icons in the left bar.
 - **Troubleshooting** at the end lists the problems people run into most.
 
-> **Tip:** Press <kbd>/</kbd> on any page to search the whole manual.
+> **Tip:** Press <kbd>/</kbd> on any page to search all the docs.
 
 ## Getting help
 

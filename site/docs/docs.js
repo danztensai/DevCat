@@ -1,4 +1,4 @@
-// Manual extras (the pages work without them): search over every page, and the contents list
+// Docs extras (the pages work without them): search over every page, and the contents list
 // folded on small screens.
 const box = document.querySelector(".search");
 const input = document.getElementById("q");

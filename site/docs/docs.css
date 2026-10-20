@@ -1,4 +1,4 @@
-/* The manual: contents on the left, the page in the middle, "On this page" on the right. Uses the
+/* The docs: contents on the left, the page in the middle, "On this page" on the right. Uses the
    landing page's colors and fonts (../style.css). */
 body.docs { font-size: 16px; }
 .docs-nav { width: auto; max-width: none; padding-inline: 28px; border-bottom: 1px solid var(--line); padding-block: 14px; position: sticky; top: 0; z-index: 5; background: var(--app); }
