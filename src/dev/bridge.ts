@@ -44,7 +44,7 @@ export enum UserAttentionType { Critical = 1, Informational = 2 }
 export enum Effect { Sidebar = "sidebar", Acrylic = "acrylic" }
 export enum EffectState { Active = "active" }
 export function getCurrentWindow() {
-  return { setTitle: async (t: string) => { document.title = t; }, setBadgeCount: async (n?: number) => { console.log("[bridge] badge", n ?? 0); }, requestUserAttention: async (t: number) => { console.log("[bridge] attention", t); }, label: "main", onFocusChanged: async () => () => {}, listen: async () => () => {}, setTheme: async () => {}, setEffects: async () => {}, clearEffects: async () => {} };
+  return { setTitle: async (t: string) => { document.title = t; }, setBadgeCount: async (n?: number) => { console.log("[bridge] badge", n ?? 0); }, requestUserAttention: async (t: number) => { console.log("[bridge] attention", t); }, label: "main", onFocusChanged: async () => () => {}, listen: async () => () => {}, setTheme: async () => {}, setEffects: async () => {}, clearEffects: async () => {}, setZoom: async (z: number) => { document.documentElement.style.zoom = String(z); } };
 }
 export const getCurrentWebviewWindow = getCurrentWindow;
 

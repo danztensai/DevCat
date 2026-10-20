@@ -5,8 +5,9 @@ import { Check, Palette as PaletteIcon, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 import { useConnections } from "../../store/connections";
-import { Button, Dialog, Input } from "../../components/ui";
-import { FONT_DEFAULTS, MONO_CHOICES, SANS_CHOICES, fontInstalled, monoStack, useFonts, type Fonts } from "./fonts";
+import { Button, Dialog, Input, Select } from "../../components/ui";
+import { IS_MAC } from "../../lib/windows";
+import { FONT_DEFAULTS, MONO_CHOICES, SANS_CHOICES, UI_ZOOMS, fontInstalled, monoStack, useFonts, type Fonts } from "./fonts";
 import { Segmented } from "../connections/dialog/formBits";
 import { GLASS_SUPPORTED, effectiveOf, useAppearance, type Appearance, type Glass, type GlassStyle, type Mode } from "./store";
 import { DARK_PRESETS, LIGHT_PRESETS, type Palette } from "./themes";
@@ -189,6 +190,13 @@ function FontsSection() {
         <NumberField label="Line height" value={f.terminalLineHeight} min={1} max={2} step={0.05} onChange={(terminalLineHeight) => f.set({ terminalLineHeight: terminalLineHeight || FONT_DEFAULTS.terminalLineHeight })} />
         <NumberField label="Editor size" value={f.editorSize || ""} min={0} max={32} step={0.5} placeholder="Default" onChange={(editorSize) => f.set({ editorSize })} />
         <FontPicker label="UI font" value={f.sans} choices={SANS_CHOICES} placeholder="Default (Inter, system)" onChange={(sans) => f.set({ sans })} />
+        <label className="flex items-center gap-3 text-[12px]">
+          <span className="w-28 text-muted">UI zoom</span>
+          <Select value={f.uiZoom} onChange={(e) => f.set({ uiZoom: Number(e.target.value) })} className="w-24">
+            {UI_ZOOMS.map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
+          </Select>
+          <span className="text-muted">{IS_MAC ? "⌘" : "Ctrl"} + / − / 0</span>
+        </label>
       </div>
     </Section>
   );

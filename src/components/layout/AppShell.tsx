@@ -25,6 +25,7 @@ import { UpdateDialog } from "../../features/update/UpdateDialog";
 import { MobileButton, MobileDialog } from "../../features/mobile/MobileDialog";
 import { AppearanceButton, AppearanceDialog } from "../../features/appearance/AppearanceDialog";
 import { useAppearance, useIsDark } from "../../features/appearance/store";
+import { zoomUi } from "../../features/appearance/fonts";
 import { PairPrompt } from "../../features/mobile/PairPrompt";
 import { startMobileStatus } from "../../features/mobile/store";
 import { startUpdateChecks, useUpdate } from "../../features/update/store";
@@ -93,6 +94,20 @@ export default function AppShell() {
       e.preventDefault();
       const ui = useUi.getState();
       ui.setSidebarCollapsed(!ui.sidebarCollapsed);
+    };
+    window.addEventListener("keydown", h, true);
+    return () => window.removeEventListener("keydown", h, true);
+  }, []);
+
+  // ⌘/Ctrl + = / - / 0: UI zoom. Inside a terminal the same keys change the terminal font size instead.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (!mod || e.altKey) return;
+      const step = e.code === "Equal" || e.code === "NumpadAdd" ? 1 : e.code === "Minus" || e.code === "NumpadSubtract" ? -1 : e.code === "Digit0" || e.code === "Numpad0" ? 0 : null;
+      if (step === null || (e.target as HTMLElement | null)?.closest?.(".xterm")) return;
+      e.preventDefault();
+      zoomUi(step);
     };
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
