@@ -14,11 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          # macOS builds run on our own Mac (a self-hosted runner; packaging/self-hosted-runner.md).
+          - platform: [self-hosted, macOS, ARM64, mac-server]
             args: --target aarch64-apple-darwin
             rust_targets: aarch64-apple-darwin
             label: macos-arm64
-          - platform: macos-latest
+          - platform: [self-hosted, macOS, ARM64, mac-server]
             args: --target x86_64-apple-darwin
             rust_targets: x86_64-apple-darwin
             label: macos-x64
@@ -79,21 +80,7 @@ jobs:
           CERT_P12: ${{ secrets.APPLE_CERTIFICATE }}
           CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
-          # codesign only uses identities the system trusts; trust the cert on this throwaway runner.
-          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain .github/devcat-codesign.crt
-          # Import it into a keychain on the search list ourselves: Tauri's own APPLE_CERTIFICATE
-          # import only accepts Apple-issued names ("Developer ID Application: …"). With just
-          # APPLE_SIGNING_IDENTITY set, Tauri runs `codesign -s "DevCat Self-Signed"`.
-          kc="$RUNNER_TEMP/devcat-signing.keychain-db"; kp=$(openssl rand -hex 16)
-          security create-keychain -p "$kp" "$kc"
-          security set-keychain-settings "$kc"
-          security unlock-keychain -p "$kp" "$kc"
-          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/devcat.p12"
-          security import "$RUNNER_TEMP/devcat.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
-          rm "$RUNNER_TEMP/devcat.p12"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kp" "$kc" > /dev/null
-          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
-          security find-identity -v -p codesigning "$kc"
+          scripts/ci-macos-signing.sh setup
           echo "APPLE_SIGNING_IDENTITY=DevCat Self-Signed" >> "$GITHUB_ENV"
 
       - uses: tauri-apps/tauri-action@v0
@@ -136,6 +123,10 @@ jobs:
           echo "$req"
           # self-signed: the certificate is its own root; check it's ours by fingerprint
           echo "$req" | grep -qi 'certificate root = H"ae681e9b28c61cdcce19d63e05a6aac8a67f637d"' || { echo "::error::DevCat.app is not signed with the release certificate"; exit 1; }
+
+      - name: Remove the signing keychain (macOS)
+        if: always() && runner.os == 'macOS' && env.HAS_SIGNING_CERT == 'true'
+        run: scripts/ci-macos-signing.sh cleanup
 
       # The bundled OpenVPN: inside the app, right architecture, only system libraries linked
       # (the passwordless helper runs it as root), and on Apple Silicon a loopback connection
@@ -204,8 +195,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: macos-latest, target: aarch64-apple-darwin }
-          - { platform: macos-latest, target: x86_64-apple-darwin }
+          - { platform: [self-hosted, macOS, ARM64, mac-server], target: aarch64-apple-darwin }
+          - { platform: [self-hosted, macOS, ARM64, mac-server], target: x86_64-apple-darwin }
           - { platform: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
           - { platform: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
           - { platform: windows-latest, target: x86_64-pc-windows-msvc }
@@ -245,19 +236,14 @@ jobs:
           CERT_P12: ${{ secrets.APPLE_CERTIFICATE }}
           CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
-          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain .github/devcat-codesign.crt
-          kc="$RUNNER_TEMP/devcat-signing.keychain-db"; kp=$(openssl rand -hex 16)
-          security create-keychain -p "$kp" "$kc"
-          security set-keychain-settings "$kc"
-          security unlock-keychain -p "$kp" "$kc"
-          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/devcat.p12"
-          security import "$RUNNER_TEMP/devcat.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
-          rm "$RUNNER_TEMP/devcat.p12"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kp" "$kc" > /dev/null
-          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          scripts/ci-macos-signing.sh setup
           bin=src-tauri/target/${{ matrix.target }}/release/devcat
           codesign -f -s "DevCat Self-Signed" --identifier dev.devcat.cli "$bin"
           codesign --verify --strict "$bin"
+
+      - name: Remove the signing keychain (macOS)
+        if: always() && runner.os == 'macOS' && env.HAS_SIGNING_CERT == 'true'
+        run: scripts/ci-macos-signing.sh cleanup
 
       - name: Package
         shell: bash

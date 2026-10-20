@@ -64,7 +64,7 @@ pnpm tauri android dev         # on a connected phone or emulator
 pnpm tauri android build --apk # release APK (sign it; see .github/workflows/mobile.yml)
 ```
 
-CI (`.github/workflows/mobile.yml`) builds an APK for every release. To install it: download `DevCat-Mobile.apk` from the release on the phone, open it, and allow "install unknown apps" for your browser once.
+CI (`.github/workflows/mobile.yml`) builds an APK when it's run by hand from the Actions tab (releases don't build it for now; run it on a tag to attach the APK to that release). To install it: download `DevCat-Mobile.apk` (the workflow artifact, or the release asset) on the phone, open it, and allow "install unknown apps" for your browser once.
 
 ### iPhone
 

@@ -119,8 +119,9 @@ logs and deployments.
 - **Notifications** ("finished", "needs you") come through the free [ntfy](https://ntfy.sh) app, so they arrive
   even when DevCat Mobile is closed. DevCat learns an agent's state from Claude Code hooks it adds to the
   terminals it starts (macOS and Linux).
-- **Get it**: the Android APK is attached to each [release](https://github.com/devileya/DevCat/releases/latest);
-  for iPhone, build it with Xcode for now. See [mobile/README.md](mobile/README.md).
+- **Get it**: releases don't include the Android APK for now. Build it yourself, or run the `mobile`
+  workflow from the Actions tab. For iPhone, build it with Xcode. Until then, the browser version
+  (scan the pairing QR) works on any phone. See [mobile/README.md](mobile/README.md).
 
 <p align="center"><img src="assets/readme/mobile-desktop.png" width="720" alt="Pairing a phone in DevCat"></p>
 
@@ -337,7 +338,10 @@ build with `pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false
 Each OS's installers must be built on that OS. CI does all of them: push a tag (`git tag v0.1.0 && git push --tags`)
 or run the **build** workflow manually. `.github/workflows/build.yml` builds macOS (Apple Silicon and Intel),
 Windows (`.exe`/`.msi`) and Linux (`.AppImage`/`.deb`/`.rpm`) installers, the CLI for macOS, Linux (x64, arm64)
-and Windows, and `SHA256SUMS.txt`, and publishes them on the GitHub release. The install scripts
+and Windows, and `SHA256SUMS.txt`, and publishes them on the GitHub release. The macOS jobs run on our own Mac
+(a self-hosted runner, see [packaging/self-hosted-runner.md](packaging/self-hosted-runner.md)); Windows and Linux
+build on GitHub's runners. The mobile apps (`.github/workflows/mobile.yml`) aren't part of releases for now:
+run that workflow by hand to get the APK. The install scripts
 (`scripts/install.sh`, `install.ps1`) are served from GitHub Pages; the Homebrew tap
 ([devileya/homebrew-devcat](https://github.com/devileya/homebrew-devcat), source in `packaging/homebrew-tap/`)
 picks up each release by itself within the hour.

@@ -1,5 +1,6 @@
 # Builds DevCat Mobile (mobile/): an Android APK, and an iOS compile check.
-# Runs on version tags (the APK is attached to the release) and manually from the Actions tab.
+# Manual only for now (Actions tab → mobile → Run workflow): releases don't ship the APK / iOS build.
+# Run it on a tag to attach the APK to that release.
 #
 # Android signing: with the ANDROID_KEYSTORE (base64 .jks), ANDROID_KEYSTORE_PASSWORD and
 # ANDROID_KEY_ALIAS secrets the release APK is signed with that key (updates install over each
@@ -9,8 +10,6 @@ name: mobile
 
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
 
 jobs:
   android:
