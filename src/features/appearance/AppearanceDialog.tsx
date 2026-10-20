@@ -178,7 +178,7 @@ function FontsSection() {
   const custom = (Object.keys(FONT_DEFAULTS) as (keyof Fonts)[]).some((k) => f[k] !== FONT_DEFAULTS[k]);
   return (
     <Section title="Fonts"
-      hint={<>For every project. Type any installed font; the list shows the common ones found on this computer.{" "}
+      hint={<>For every project. Type any installed font; the list shows the common ones found on this computer. An empty size uses the default.{" "}
         {custom && <button className="text-accent hover:underline" onClick={f.reset}>Default fonts</button>}</>}>
       <div className="space-y-2">
         <FontPicker label="Code font" value={f.mono} choices={MONO_CHOICES} placeholder="Default (JetBrains Mono, Cascadia Mono, …)" onChange={(mono) => f.set({ mono })} />

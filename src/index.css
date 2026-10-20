@@ -57,9 +57,10 @@ html.glass .solid, html.glass .sticky, html.glass [class*="shadow-lg"], html.gla
 
 /* Native <select> popups: WebView2 (Windows) draws the options on white, in the field's light text
    color, unless told otherwise; inside glass regions the field itself is transparent. Solid theme
-   colors keep them readable everywhere. */
-:root { color-scheme: dark; }
-html.light { color-scheme: light; }
+   colors keep them readable everywhere. The popup takes its color scheme from the <select>, so it
+   is set there only (on the root it could paint a backdrop behind window glass). */
+select { color-scheme: dark; }
+html.light select { color-scheme: light; }
 select option, select optgroup { background-color: var(--solid-panel, var(--color-panel)); color: var(--color-fg); }
 *:focus-visible { outline: 1px solid var(--color-accent); outline-offset: -1px; }
 

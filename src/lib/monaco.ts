@@ -22,7 +22,8 @@ onPaletteChange((p, glass) => {
 });
 
 // Every editor uses the Fonts setting: it wins over the per-view options (which the React wrapper
-// re-applies on each render), and changes reach open editors.
+// re-applies on each render), and changes reach open editors. This monkeypatches `updateOptions`:
+// a view's own fontFamily is always replaced, and its fontSize too whenever an editor size is set.
 monaco.editor.onDidCreateEditor((e) => {
   const update = e.updateOptions.bind(e);
   e.updateOptions = (o) => update({ ...o, ...editorFont() });

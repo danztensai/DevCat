@@ -68,17 +68,22 @@ export function editorFont(f: Fonts = fonts()): { fontFamily: string; fontSize?:
   return f.editorSize > 0 ? { fontFamily: monoStack(f), fontSize: f.editorSize } : { fontFamily: monoStack(f) };
 }
 
-/** Whether `family` is installed: text measures differently than with the generic fallbacks alone. */
+const installed = new Map<string, boolean>();
+/** Whether `family` is installed: text measures differently than with the generic fallbacks alone. Cached. */
 export function fontInstalled(family: string): boolean {
+  const known = installed.get(family);
+  if (known !== undefined) return known;
   const ctx = document.createElement("canvas").getContext("2d");
   if (!ctx) return true;
   const sample = "mmmmmmmmmlli10OO@#";
-  return ["monospace", "serif", "sans-serif"].some((g) => {
+  const found = ["monospace", "serif", "sans-serif"].some((g) => {
     ctx.font = `16px ${g}`;
     const base = ctx.measureText(sample).width;
     ctx.font = `16px ${quote(family)}, ${g}`;
     return ctx.measureText(sample).width !== base;
   });
+  installed.set(family, found);
+  return found;
 }
 
 const listeners = new Set<(f: Fonts) => void>();
