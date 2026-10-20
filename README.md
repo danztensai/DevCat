@@ -6,6 +6,9 @@ An all-in-one, cross-platform developer workbench: AI coding agents in a real te
 Kubernetes, RabbitMQ and VPN / SSH tunnels in one app. Built with [Tauri 2](https://tauri.app) (Rust)
 and React + TypeScript; runs on macOS, Windows and Linux.
 
+**[Website](https://devileya.github.io/DevCat/home/)** · **[User manual](https://devileya.github.io/DevCat/home/docs/)**
+(step-by-step guides for every feature) · **[Download](https://github.com/devileya/DevCat/releases/latest)**
+
 <p align="center"><img src="assets/readme/demo.gif" width="960" alt="DevCat tour: AI workspace, diff review, databases, SQL editor, Git, Kubernetes, VPN and notes"></p>
 
 | Area | Supported |
@@ -124,6 +127,10 @@ needs `libdbus` (installed almost everywhere).
 - Don't run it while the app has **Remote access** on: they'd share one port and identity.
 
 ## Features
+
+Below is the short list. The [user manual](https://devileya.github.io/DevCat/home/docs/) explains how to use each
+of these step by step, with every keyboard shortcut on
+[one page](https://devileya.github.io/DevCat/home/docs/shortcuts.html).
 
 - **Projects**: group connections into projects and focus on one project at a time.
 - **Hide the sidebar**: click the active icon in the left bar, the toggle at its bottom, or press ⌘B (Ctrl+B).
@@ -272,6 +279,22 @@ Backend integration tests (need the services above):
 cd src-tauri && cargo test -- --ignored
 ```
 
+### Website and manual
+
+The landing page and the user manual live in `site/` and are published with GitHub Pages at
+`/home/` (the root stays the hosted DevCat Mobile web app, so pairing links keep working). Manual pages are
+Markdown in `site/docs/pages/`, listed in order in `site/docs/nav.json`; `site/docs/build.mjs` turns them into
+HTML with a sidebar, search and an "On this page" list. To preview locally:
+
+```bash
+pnpm install
+sh site/build.sh /tmp/devcat-site       # landing page + manual + screenshots
+cd /tmp/devcat-site && python -m http.server 8765   # http://127.0.0.1:8765, manual at /docs/
+```
+
+To add a page, create `site/docs/pages/<name>.md` starting with `# Title` and a one-line summary, and add
+`<name>` to `nav.json`. Link to other pages as `other-page.md`; the build fails on a link to a missing page.
+
 ## Building installers
 
 ```bash
@@ -346,4 +369,5 @@ src-tauri/src/
 crates/remote-proto/      wire protocol shared by the desktop app and DevCat Mobile
 mobile/                   DevCat Mobile (Tauri 2 for Android / iOS): src = React UI, src-tauri = client
 promo/                    README screenshots + demo video (demo mode capture, Remotion)
+site/                     landing page; site/docs = user manual (Markdown → HTML), both on GitHub Pages
 ```

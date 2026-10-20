@@ -1,0 +1,95 @@
+/* The manual: contents on the left, the page in the middle, "On this page" on the right. Uses the
+   landing page's colors and fonts (../style.css). */
+body.docs { font-size: 16px; }
+.docs-nav { width: auto; max-width: none; padding-inline: 28px; border-bottom: 1px solid var(--line); padding-block: 14px; position: sticky; top: 0; z-index: 5; background: var(--app); }
+.docs-nav nav a[aria-current] { color: var(--fg); }
+
+.docs-grid {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 760px) 220px;
+  justify-content: center;
+  gap: 48px;
+  padding: 0 28px;
+}
+
+/* contents */
+.doc-side { position: sticky; top: 61px; align-self: start; max-height: calc(100vh - 61px); overflow-y: auto; scrollbar-width: thin; padding: 24px 4px 40px 0; }
+.doc-side summary { display: none; }
+.doc-side .group { color: var(--fg); font-weight: 600; font-size: 14px; margin: 22px 0 6px; padding: 0 10px; }
+.doc-side ul { list-style: none; margin: 0; padding: 0; }
+.doc-side li a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; font-size: 14.5px; }
+.doc-side li a:hover { color: var(--fg); background: var(--raised); }
+.doc-side li a[aria-current="page"] { color: var(--fg); background: var(--raised); box-shadow: inset 2px 0 0 var(--accent); }
+
+.search input {
+  width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); font: 14px var(--sans);
+}
+.search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.search ol { list-style: none; margin: 6px 0 0; padding: 0; }
+.search li a { display: block; padding: 7px 10px; border-radius: 6px; text-decoration: none; }
+.search li a:hover, .search li a:focus { background: var(--raised); }
+.search li strong { display: block; font-size: 13.5px; font-weight: 600; }
+.search li span { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.search li.none { color: var(--muted); font-size: 13px; padding: 6px 10px; }
+
+/* page */
+.doc { padding: 36px 0 80px; min-width: 0; }
+.crumb { color: var(--accent); font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.doc h1 { font: 700 clamp(30px, 3.6vw, 42px)/1.1 var(--mono); letter-spacing: -.035em; margin: 0; }
+.summary { color: var(--muted); font-size: 18px; margin: 14px 0 32px; max-width: 62ch; }
+.doc h2 { font: 700 26px/1.2 var(--mono); letter-spacing: -.03em; margin: 52px 0 14px; scroll-margin-top: 80px; }
+.doc h3 { font: 650 19px/1.3 var(--sans); margin: 34px 0 10px; scroll-margin-top: 80px; }
+.doc h2, .doc h3 { position: relative; }
+.doc h2 .anchor, .doc h3 .anchor { position: absolute; left: -1em; color: var(--faint); text-decoration: none; opacity: 0; }
+.doc h2:hover .anchor, .doc h3:hover .anchor, .doc .anchor:focus { opacity: 1; }
+.doc p, .doc li { max-width: 72ch; }
+.doc p { margin: 0 0 14px; }
+.doc ul, .doc ol { padding-left: 1.4em; margin: 0 0 16px; }
+.doc li { margin: 4px 0; }
+.doc li::marker { color: var(--faint); }
+.doc ol > li::marker { color: var(--accent); font-weight: 600; }
+.doc a { color: #9cc7ff; text-underline-offset: 2px; }
+.doc a:hover { color: var(--fg); }
+.doc strong { color: var(--fg); font-weight: 650; }
+.doc :not(pre) > code { background: var(--raised); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+.doc pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font: 13.5px/1.55 var(--mono); margin: 0 0 18px; }
+.doc kbd {
+  font: 12.5px var(--sans); padding: 1px 6px; border-radius: 5px; white-space: nowrap;
+  border: 1px solid var(--line); border-bottom-width: 2px; background: var(--raised); color: var(--fg);
+}
+.doc img { border: 1px solid var(--line); border-radius: 10px; margin: 8px 0 22px; }
+.doc table { border-collapse: collapse; width: 100%; margin: 0 0 20px; font-size: 15px; }
+.doc th, .doc td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.doc th { color: var(--muted); font-weight: 600; font-size: 14px; }
+.callout { border: 1px solid var(--line); border-left: 3px solid var(--info, #60a5fa); background: var(--panel); border-radius: 8px; padding: 12px 16px 2px; margin: 0 0 18px; }
+.callout.tip { border-left-color: var(--ok); }
+.callout.warning { border-left-color: var(--accent); }
+
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 64px; }
+.pager a { display: flex; flex-direction: column; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: var(--fg); font-weight: 600; }
+.pager a:hover { background: var(--raised); }
+.pager small { color: var(--muted); font-weight: 400; font-size: 13px; }
+.pager .next { text-align: right; grid-column: 2; }
+.edit { margin-top: 22px; font-size: 14px; }
+.edit a { color: var(--muted); display: inline-block; padding: 8px 0; }
+
+/* on this page */
+.toc { position: sticky; top: 61px; align-self: start; padding: 40px 0; font-size: 13.5px; max-height: calc(100vh - 61px); overflow-y: auto; }
+.toc p { color: var(--fg); font-weight: 600; margin: 0 0 8px; }
+.toc ul { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+.toc li a { display: block; padding: 4px 12px; color: var(--muted); text-decoration: none; }
+.toc li.d3 a { padding-left: 24px; }
+.toc li a:hover { color: var(--fg); }
+
+@media (max-width: 1200px) {
+  .docs-grid { grid-template-columns: 240px minmax(0, 1fr); }
+  .toc { display: none; }
+}
+@media (max-width: 960px) {
+  .docs-grid { grid-template-columns: 1fr; gap: 0; padding: 0 20px; }
+  .docs-nav { padding-inline: 20px; }
+  .doc-side { position: static; max-height: none; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .doc-side summary { display: block; cursor: pointer; font-weight: 600; padding: 6px 0; }
+  .doc h2 .anchor, .doc h3 .anchor { display: none; }
+}
