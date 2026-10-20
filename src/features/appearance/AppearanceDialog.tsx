@@ -1,11 +1,12 @@
 // "🎨 Appearance": dark / light / system, theme presets, and window glass, for all projects or
-// just the one this window is focused on.
+// just the one this window is focused on; fonts, for all of them.
 import clsx from "clsx";
 import { Check, Palette as PaletteIcon, RotateCcw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 import { useConnections } from "../../store/connections";
-import { Button, Dialog } from "../../components/ui";
+import { Button, Dialog, Input } from "../../components/ui";
+import { FONT_DEFAULTS, MONO_CHOICES, SANS_CHOICES, fontInstalled, monoStack, useFonts, type Fonts } from "./fonts";
 import { Segmented } from "../connections/dialog/formBits";
 import { GLASS_SUPPORTED, effectiveOf, useAppearance, type Appearance, type Glass, type GlassStyle, type Mode } from "./store";
 import { DARK_PRESETS, LIGHT_PRESETS, type Palette } from "./themes";
@@ -134,7 +135,61 @@ export function AppearanceDialog() {
             </>
           )}
         </Section>
+        <FontsSection />
       </div>
     </Dialog>
+  );
+}
+
+/** A number setting: typing is free ("1" on the way to "16"); valid values apply at once, blur shows the applied one. */
+function NumberField({ label, value, min, max, step, onChange, placeholder }: { label: string; value: number | ""; min: number; max: number; step: number; onChange: (v: number) => void; placeholder?: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <label className="flex items-center gap-3 text-[12px]">
+      <span className="w-28 text-muted">{label}</span>
+      <Input type="number" min={min} max={max} step={step} value={draft ?? value} placeholder={placeholder} className="w-24"
+        onChange={(e) => {
+          const s = e.target.value;
+          setDraft(s);
+          const v = Number(s);
+          if (s === "") onChange(0);
+          else if (v >= min && v <= max) onChange(v);
+        }}
+        onBlur={() => setDraft(null)} />
+    </label>
+  );
+}
+
+function FontPicker({ label, value, choices, placeholder, onChange }: { label: string; value: string; choices: string[]; placeholder: string; onChange: (v: string) => void }) {
+  const installed = useMemo(() => choices.filter(fontInstalled), [choices]);
+  const id = `fonts-${label.replace(/\W/g, "")}`;
+  return (
+    <label className="flex items-center gap-3 text-[12px]">
+      <span className="w-28 text-muted">{label}</span>
+      <Input list={id} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className="flex-1" />
+      <datalist id={id}>{installed.map((f) => <option key={f} value={f} />)}</datalist>
+    </label>
+  );
+}
+
+/** Fonts (global: every window and project). */
+function FontsSection() {
+  const f = useFonts();
+  const custom = (Object.keys(FONT_DEFAULTS) as (keyof Fonts)[]).some((k) => f[k] !== FONT_DEFAULTS[k]);
+  return (
+    <Section title="Fonts"
+      hint={<>For every project. Type any installed font; the list shows the common ones found on this computer. An empty size uses the default.{" "}
+        {custom && <button className="text-accent hover:underline" onClick={f.reset}>Default fonts</button>}</>}>
+      <div className="space-y-2">
+        <FontPicker label="Code font" value={f.mono} choices={MONO_CHOICES} placeholder="Default (JetBrains Mono, Cascadia Mono, …)" onChange={(mono) => f.set({ mono })} />
+        <div className="rounded-md border border-line bg-app px-2.5 py-1.5 text-fg" style={{ fontFamily: monoStack(f), fontSize: f.terminalSize, lineHeight: f.terminalLineHeight }}>
+          {"const x = 0; // 0O 1lI {} => ▁▂▃▅▇ ━┃╭╮ ◐ ✓ ⏵"}
+        </div>
+        <NumberField label="Terminal size" value={f.terminalSize} min={8} max={32} step={0.5} onChange={(terminalSize) => f.set({ terminalSize: terminalSize || FONT_DEFAULTS.terminalSize })} />
+        <NumberField label="Line height" value={f.terminalLineHeight} min={1} max={2} step={0.05} onChange={(terminalLineHeight) => f.set({ terminalLineHeight: terminalLineHeight || FONT_DEFAULTS.terminalLineHeight })} />
+        <NumberField label="Editor size" value={f.editorSize || ""} min={0} max={32} step={0.5} placeholder="Default" onChange={(editorSize) => f.set({ editorSize })} />
+        <FontPicker label="UI font" value={f.sans} choices={SANS_CHOICES} placeholder="Default (Inter, system)" onChange={(sans) => f.set({ sans })} />
+      </div>
+    </Section>
   );
 }

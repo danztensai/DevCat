@@ -3,9 +3,11 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { startAppearance } from "./features/appearance/store";
+import { startFonts } from "./features/appearance/fonts";
 import "./lib/monaco";
 
 startAppearance();
+startFonts();
 
 // `vite --mode demo`: lets promo/capture.mjs open screens directly (not in real builds).
 if (import.meta.env.MODE === "demo") void import("./dev/demoHooks");
