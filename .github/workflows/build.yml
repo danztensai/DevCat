@@ -16,11 +16,11 @@ jobs:
         include:
           # macOS builds run on our own Mac (a self-hosted runner; packaging/self-hosted-runner.md).
           - platform: [self-hosted, macOS, ARM64, mac-server]
-            args: --target aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --verbose
             rust_targets: aarch64-apple-darwin
             label: macos-arm64
           - platform: [self-hosted, macOS, ARM64, mac-server]
-            args: --target x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --verbose
             rust_targets: x86_64-apple-darwin
             label: macos-x64
           - platform: windows-latest
