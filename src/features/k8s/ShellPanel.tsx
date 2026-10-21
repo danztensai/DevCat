@@ -8,7 +8,7 @@ import { errMsg } from "../../lib/api";
 import { events, eventsReady, k8s } from "./api";
 import PodSwitcher from "./PodSwitcher";
 import { glassOn, onPaletteChange, palette } from "../appearance/store";
-import { onFontsChange, terminalFont } from "../appearance/fonts";
+import { onFontsChange, terminalFont, terminalZoomKey } from "../appearance/fonts";
 import { terminalTheme } from "../appearance/themes";
 import { enableGpu } from "../../lib/xtermGpu";
 
@@ -53,6 +53,8 @@ export default function ShellPanel({ connId, target, visible, onPodChange }: { c
     term.open(host.current!);
     enableGpu(term);
     termRef.current = { term, fit };
+    // ⌘/Ctrl + = / - / 0: terminal font size, the same setting as the AI workspace terminals.
+    term.attachCustomKeyEventHandler((e) => e.type !== "keydown" || !terminalZoomKey(e));
     const input = term.onData((d) => {
       if (sessionRef.current) k8s.execInput(sessionRef.current, d).catch(() => {});
     });

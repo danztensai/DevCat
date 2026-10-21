@@ -131,6 +131,8 @@ export const api = {
     invoke<string>("fs_write_text", { path, content, expectedVersion, lineEnding: lineEnding ?? null }),
   /** Open a regular, non-executable file in its default app (scripts/executables are refused). */
   fsOpenExternal: (path: string) => invoke<void>("fs_open_external", { path }),
+  /** Installed font families (Appearance → Fonts pickers). */
+  fontsList: () => invoke<{ name: string; mono: boolean }[]>("fonts_list"),
   /** Put local files / folders on the OS clipboard (paste attaches them in Slack, copies them in Explorer / Finder). */
   fsCopyFiles: (paths: string[]) => invoke<void>("fs_copy_files", { paths }),
   gitStatus: (cwd: string) => invoke<GitStatus>("git_status", { cwd }),
