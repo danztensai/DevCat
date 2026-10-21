@@ -14,6 +14,43 @@ use std::time::Duration;
 pub use fs::{Edit, Glob, Grep, Read, Write};
 pub use shell::Shell;
 
+/// Name of the tool the agent handles itself: it asks the user through the [`crate::Approver`].
+pub const ASK_USER: &str = "ask_user";
+
+/// `ask_user`: the model asks the user a question, with suggested answers (human in the loop).
+pub struct AskUser;
+
+#[async_trait]
+impl Tool for AskUser {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: ASK_USER.into(),
+            description: "Ask the user a question and wait for the answer. Use it when a decision is theirs to make (which option, naming, scope, a risky step), not for things you can find out yourself. Offer 2-4 short options when you can; the user may also answer in their own words.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "question": { "type": "string" },
+                    "options": { "type": "array", "items": { "type": "string" }, "maxItems": 6 }
+                },
+                "required": ["question"]
+            }),
+        }
+    }
+    fn kind(&self, _: &Value, _: &ToolCtx) -> Kind {
+        Kind::Read
+    }
+    fn summary(&self, input: &Value) -> String {
+        input.get("question").and_then(Value::as_str).unwrap_or("?").to_string()
+    }
+    fn timeout(&self, _: &Value) -> Duration {
+        // the user may be away: the agent waits as long as the turn runs
+        Duration::from_secs(60 * 60 * 24)
+    }
+    async fn run(&self, _: Value, _: &ToolCtx) -> ToolOutput {
+        ToolOutput::err("ask_user is answered by the agent, not run.")
+    }
+}
+
 /// Output kept from one tool call; longer output keeps its start and end.
 pub const MAX_OUTPUT: usize = 30_000;
 
@@ -57,7 +94,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// read, write, edit, glob, grep and shell.
+    /// read, write, edit, glob, grep, shell and ask_user.
     pub fn standard() -> Registry {
         let mut r = Registry::default();
         r.add(Read);
@@ -66,6 +103,7 @@ impl Registry {
         r.add(Glob);
         r.add(Grep);
         r.add(Shell);
+        r.add(AskUser);
         r
     }
 

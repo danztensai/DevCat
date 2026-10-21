@@ -1,11 +1,11 @@
 //! The agent loop. One user message is a *turn*: the model takes steps, each step may ask for
 //! tool calls, the calls go through the pipeline (approval → timeout → truncation → event) and
 //! their results go back to the model, until it answers without a tool call.
-use crate::approval::{ApprovalRequest, Approver, Decision, Policy};
+use crate::approval::{ApprovalRequest, Approver, Decision, Policy, Question};
 use crate::llm::{Delta, Llm, Reply, Request};
 use crate::message::{Block, ToolSpec, Usage};
 use crate::session::{Session, SessionEvent};
-use crate::tools::{Registry, ToolCtx, ToolOutput, truncate};
+use crate::tools::{ASK_USER, Registry, ToolCtx, ToolOutput, truncate};
 use crate::{Error, Result};
 use async_trait::async_trait;
 use serde::Serialize;
@@ -98,7 +98,12 @@ impl Agent {
 
     /// Run one turn for `user_text`, writing everything to `session`.
     pub async fn turn(&mut self, session: &mut Session, user_text: &str, cancel: &Cancel, on: &mut (dyn FnMut(AgentEvent) + Send)) -> Result<TurnEnd> {
-        session.append(SessionEvent::User { text: user_text.to_string() }).await?;
+        self.turn_with_images(session, user_text, vec![], cancel, on).await
+    }
+
+    /// A turn whose message carries images (`Block::Image`).
+    pub async fn turn_with_images(&mut self, session: &mut Session, user_text: &str, images: Vec<Block>, cancel: &Cancel, on: &mut (dyn FnMut(AgentEvent) + Send)) -> Result<TurnEnd> {
+        session.append(SessionEvent::User { text: user_text.to_string(), images }).await?;
         let res = self.run(session, cancel, on).await;
         match &res {
             Err(Error::Cancelled) => session.append(SessionEvent::Interrupted { reason: "Stopped by the user".into() }).await?,
@@ -165,6 +170,20 @@ impl Agent {
         }
         let kind = tool.kind(&input, ctx);
         let summary = tool.summary(&input);
+        // Human in the loop: the question goes to the user, the answer back to the model.
+        if name == ASK_USER {
+            let options = input.get("options").and_then(Value::as_array).map(|a| a.iter().filter_map(|o| o.as_str().map(String::from)).collect()).unwrap_or_default();
+            let q = Question { tool_use_id: id.to_string(), question: summary.clone(), options };
+            on(AgentEvent::ToolCall { id: id.to_string(), name: name.to_string(), summary, input: input.clone() });
+            let answer = tokio::select! {
+                a = self.approver.ask(&q) => a,
+                _ = cancel.cancelled() => return Ok(ToolOutput::err("Not answered: stopped by the user.")),
+            };
+            return Ok(match answer {
+                Some(a) if !a.trim().is_empty() => ToolOutput::ok(format!("The user answered: {}", a.trim())),
+                _ => ToolOutput::err("Nobody can answer questions right now. Decide yourself, and say what you assumed."),
+            });
+        }
         // 1. approval (fail closed)
         if self.policy.needs_approval(kind) && !self.allowed.contains(name) {
             let req = ApprovalRequest { tool_use_id: id.to_string(), tool: name.to_string(), kind, summary: summary.clone(), input: input.clone() };

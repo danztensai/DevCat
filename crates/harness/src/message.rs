@@ -28,6 +28,8 @@ pub enum Block {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         is_error: bool,
     },
+    /// An image the user attached (base64), for models that can see.
+    Image { media_type: String, data: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
