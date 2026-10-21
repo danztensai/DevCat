@@ -1,7 +1,7 @@
 // AI connections UI: the provider picker (sidebar header / tab toolbar) and the
 // "Manage AI connections" dialog (add / edit / delete profiles, API key, test).
 import clsx from "clsx";
-import { Bot, Check, ChevronDown, Copy, Eye, EyeOff, KeyRound, Plus, RotateCw, Settings2, Trash2, X } from "lucide-react";
+import { Bot, Check, ChevronDown, Copy, Eye, EyeOff, KeyRound, Plus, Settings2, Trash2, X } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { Badge, Button, Dialog, Field, IconButton, Input, Select, Spinner } from "../../components/ui";
@@ -134,23 +134,26 @@ function useModelList(value: AgentSettings, providerId: string, apiKey: string) 
   return { ...state, reload: () => setNonce((n) => n + 1) };
 }
 
-/** DevCat Agent: which model API to use, with presets for the common ones. */
+/** DevCat Agent: which model API to use, with presets for the common ones. The model itself is
+ *  picked in the chat; here it only gets a default once the provider's list is known. */
 function AgentFields({ value, onChange, providerId, apiKey }: { value: AgentSettings; onChange: (a: AgentSettings) => void; providerId: string; apiKey: string }) {
   const list = useModelList(value, providerId, apiKey);
-  const [typing, setTyping] = useState(false);
-  // nothing chosen yet: take the newest model
-  useEffect(() => {
-    if (list.models?.length && !value.model.trim()) onChange({ ...value, model: list.models[0] });
-  }, [list.models]);
-  const pickList = !!list.models?.length && !typing;
   const preset = AGENT_PRESETS.find((p) => p.settings.baseUrl === value.baseUrl && p.settings.protocol === value.protocol);
+  // Default model: keep the current one if the provider has it, else the preset's, else the newest.
+  useEffect(() => {
+    const models = list.models;
+    if (!models?.length || models.includes(value.model)) return;
+    const wanted = preset?.settings.model;
+    onChange({ ...value, model: wanted && models.includes(wanted) ? wanted : models[0] });
+  }, [list.models]);
+  const manual = !list.loading && !list.models?.length && !!list.error;
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Provider" hint={preset?.keyHint ?? "Any OpenAI- or Anthropic-compatible API."}>
           <Select value={preset?.label ?? ""} onChange={(e) => {
             const p = AGENT_PRESETS.find((x) => x.label === e.target.value);
-            if (p) onChange({ ...p.settings, model: p.settings.model || value.model });
+            if (p) onChange({ ...p.settings });
           }}>
             {!preset && <option value="">Custom</option>}
             {AGENT_PRESETS.map((p) => <option key={p.label} value={p.label}>{p.label}</option>)}
@@ -163,35 +166,20 @@ function AgentFields({ value, onChange, providerId, apiKey }: { value: AgentSett
           </Select>
         </Field>
       </div>
-      <div className="grid grid-cols-[1fr_14rem] gap-3">
-        <Field label="API address">
-          <Input className="font-mono text-xs" value={value.baseUrl} placeholder="https://api.example.com/v1" onChange={(e) => onChange({ ...value, baseUrl: e.target.value })} />
+      <Field label="API address">
+        <Input className="font-mono text-xs" value={value.baseUrl} placeholder="https://api.example.com/v1" onChange={(e) => onChange({ ...value, baseUrl: e.target.value })} />
+      </Field>
+      {manual && (
+        <Field label="Model" hint="This provider didn't list its models: type the one to use.">
+          <Input className="font-mono text-xs" value={value.model} placeholder="model name" onChange={(e) => onChange({ ...value, model: e.target.value })} />
         </Field>
-        <Field label="Model">
-          <div className="flex items-center gap-1">
-            {pickList ? (
-              <Select className="min-w-0 flex-1 font-mono text-xs" value={value.model} onChange={(e) => {
-                if (e.target.value === "__other__") setTyping(true);
-                else onChange({ ...value, model: e.target.value });
-              }}>
-                {value.model && !list.models!.includes(value.model) && <option value={value.model}>{value.model} (not listed)</option>}
-                {list.models!.map((m) => <option key={m} value={m}>{m}</option>)}
-                <option value={"__other__"}>Other model…</option>
-              </Select>
-            ) : (
-              <Input className="min-w-0 flex-1 font-mono text-xs" value={value.model} placeholder="model name" onChange={(e) => onChange({ ...value, model: e.target.value })} />
-            )}
-            <IconButton title={list.models?.length ? "Reload the model list" : "Load the provider's models"} onClick={() => { setTyping(false); list.reload(); }}>
-              {list.loading ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" />}
-            </IconButton>
-          </div>
-        </Field>
+      )}
+      <div className={clsx("-mt-1 flex items-center gap-1.5 text-[11px]", list.error && !manual ? "text-warn" : "text-faint")}>
+        {list.loading ? <><Spinner className="size-3" />Checking the provider…</>
+          : list.models?.length ? <><Check className="size-3 text-ok" />Connected: {list.models.length} models. Default <code className="text-muted">{value.model}</code>; switch models any time in the chat.</>
+          : list.error ? <>Couldn't reach the provider ({list.error}).<button className="text-accent hover:underline" onClick={list.reload}>Try again</button></>
+          : null}
       </div>
-      <p className={clsx("-mt-1.5 text-[11px]", list.error ? "text-warn" : "text-faint")}>
-        {list.loading ? "Loading the provider's models…"
-          : list.error ? `Couldn't load the model list (${list.error}). Check the address and API key, or type the model name.`
-          : list.models ? `${list.models.length} models available from this provider, newest first.` : ""}
-      </p>
     </>
   );
 }

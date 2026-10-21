@@ -1,7 +1,7 @@
 // Small set of shared UI primitives. Keep them dumb and composable.
 import clsx from "clsx";
 import { Loader2, X } from "lucide-react";
-import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 type Variant = "primary" | "ghost" | "danger" | "default";
 
@@ -108,10 +108,13 @@ const dialogStack: symbol[] = [];
 
 export function Dialog({ open, onClose, title, children, footer, width = 560 }:
   { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; width?: number }) {
+  // A dialog opened from another one (e.g. "Delete?" from a settings dialog) goes on top of it.
+  const [depth, setDepth] = useState(0);
   useEffect(() => {
     if (!open) return;
     const me = Symbol("dialog");
     dialogStack.push(me);
+    setDepth(dialogStack.length);
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape" && dialogStack[dialogStack.length - 1] === me) onClose();
     };
@@ -123,7 +126,7 @@ export function Dialog({ open, onClose, title, children, footer, width = 560 }:
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" style={{ zIndex: 50 + depth }} onMouseDown={onClose}>
       <div
         className="flex max-h-[88vh] flex-col rounded-lg border border-line bg-panel shadow-2xl"
         style={{ width }}

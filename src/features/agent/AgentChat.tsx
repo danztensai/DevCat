@@ -4,17 +4,18 @@
 // carries the permission mode, model and token use.
 import clsx from "clsx";
 import {
-  ArrowUp, Ban, Bot, Brain, Check, ChevronDown, ChevronRight, Cpu, FilePen, FilePlus, FileText, FolderSearch, GitCompare, Search, Shield, ShieldAlert, ShieldCheck, ShieldOff, Square,
+  ArrowUp, Ban, BookOpen, Bot, Brain, Check, ChevronDown, ChevronRight, Cpu, FilePen, File as FileIcon, MessageCircleQuestion, Paperclip, Plug, TriangleAlert, Upload, FilePlus, FileText, FolderSearch, GitCompare, Search, Shield, ShieldAlert, ShieldCheck, ShieldOff, Square,
   SquareTerminal, Wrench, X,
 } from "lucide-react";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button, Empty, Spinner } from "../../components/ui";
 import type { AgentPolicy, AiProvider } from "../../lib/types";
 import { useTabs } from "../../store/tabs";
 import { Markdown } from "../claude/Markdown";
 import { openManageProviders } from "../claude/providers";
 import { basename } from "../claude/util";
-import { answer, closeChat, dismissError, openChat, send, setPolicy, stop, useAgent, type Item, type ToolStatus } from "./store";
+import { open as pickFiles } from "@tauri-apps/plugin-dialog";
+import { answer, answerQuestion, attach, closeChat, connectionModels, dismissError, openChat, send, setModel, setPolicy, stop, unattach, useAgent, type Item, type ToolStatus } from "./store";
 
 type ToolItem = Extract<Item, { kind: "tool" }>;
 
@@ -40,7 +41,13 @@ function describe(name: string, input: Record<string, unknown> | null, status: T
     case "glob": return { icon: FolderSearch, verb: done ? "Found files" : "Finding files", target: str(i.pattern) };
     case "grep": return { icon: Search, verb: done ? "Searched" : "Searching", target: str(i.pattern) };
     case "shell": return { icon: SquareTerminal, verb: done ? "Ran" : "Running", target: str(i.command) };
-    default: return { icon: Wrench, verb: name, target: "" };
+    case "ask_user": return { icon: MessageCircleQuestion, verb: done ? "Asked" : "Asking", target: str(i.question) };
+    default:
+      if (name.startsWith("mcp__")) {
+        const [, server, tool] = name.split("__");
+        return { icon: Plug, verb: done ? "Used" : "Using", target: `${server} · ${tool}` };
+      }
+      return { icon: Wrench, verb: name, target: "" };
   }
 }
 
@@ -82,10 +89,10 @@ export default function AgentChat({ tabId, cwd, provider, visible, onReview }: {
       </Empty>
     );
   }
-  return <ChatBody tabId={tabId} cwd={cwd} visible={visible} onReview={onReview} />;
+  return <ChatBody tabId={tabId} cwd={cwd} visible={visible} onReview={onReview} provider={provider} />;
 }
 
-function ChatBody({ tabId, cwd, visible, onReview }: { tabId: string; cwd: string; visible: boolean; onReview: () => void }) {
+function ChatBody({ tabId, cwd, visible, onReview, provider }: { tabId: string; cwd: string; visible: boolean; onReview: () => void; provider: AiProvider }) {
   const chat = useAgent((s) => s.chats[tabId])!;
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -101,8 +108,18 @@ function ChatBody({ tabId, cwd, visible, onReview }: { tabId: string; cwd: strin
   };
 
   const lastUser = chat.items.map((i) => i.kind).lastIndexOf("user");
+  const [dragging, setDragging] = useState(false);
+  const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col"
+      onDragOver={(e) => { if (hasFiles(e)) { e.preventDefault(); setDragging(true); } }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
+      onDrop={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setDragging(false); void attach(tabId, [...e.dataTransfer.files]); }}>
+      {dragging && (
+        <div className="pointer-events-none absolute inset-3 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accent/60 bg-app/80 text-[13px] text-fg">
+          <Upload className="size-6 text-accent" />Drop files to attach them<span className="text-[11px] text-muted">Images are shown to the model; PDFs and other files it reads with its tools</span>
+        </div>
+      )}
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[780px] flex-col gap-3 px-5 pt-6 pb-4">
           {chat.items.length === 0 ? (
@@ -122,7 +139,7 @@ function ChatBody({ tabId, cwd, visible, onReview }: { tabId: string; cwd: strin
         </div>
       )}
       <EditedFiles items={chat.items} onReview={onReview} />
-      <Composer tabId={tabId} visible={visible} />
+      <Composer tabId={tabId} visible={visible} provider={provider} />
     </div>
   );
 }
@@ -137,6 +154,7 @@ function Welcome({ tabId, cwd }: { tabId: string; cwd: string }) {
         <h2 className="text-lg font-semibold text-fg">What should we do in {basename(cwd)}?</h2>
         <p className="mt-1 text-[12px] text-muted">{chat.providerName} · {chat.model} · {policy.hint.toLowerCase()}.</p>
       </div>
+      <ContextLine tabId={tabId} />
       <div className="flex flex-wrap justify-center gap-2">
         {SUGGESTIONS.map((s) => (
           <button key={s} onClick={() => void send(tabId, s)} className="rounded-full border border-line px-3 py-1.5 text-[12px] text-muted hover:border-accent/50 hover:text-fg">{s}</button>
@@ -158,8 +176,9 @@ const ItemView = memo(function ItemView({ item, tabId, cwd, working }: { item: I
   switch (item.kind) {
     case "user":
       return (
-        <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-raised px-3.5 py-2 text-[13px] whitespace-pre-wrap text-fg">{item.text}</div>
+        <div className="flex flex-col items-end gap-1.5">
+          {item.attachments.length > 0 && <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">{item.attachments.map((p) => <AttachmentChip key={p} path={p} />)}</div>}
+          {item.text && <div className="max-w-[85%] rounded-2xl rounded-br-md bg-raised px-3.5 py-2 text-[13px] whitespace-pre-wrap text-fg">{item.text}</div>}
         </div>
       );
     case "answer":
@@ -171,11 +190,39 @@ const ItemView = memo(function ItemView({ item, tabId, cwd, working }: { item: I
   }
 });
 
+function AttachmentChip({ path, onRemove }: { path: string; onRemove?: () => void }) {
+  return (
+    <span className="flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-line bg-panel px-2 text-[12px] text-muted" title={path}>
+      <FileIcon className="size-3.5 shrink-0" /><span className="truncate">{basename(path)}</span>
+      {onRemove && <button onClick={onRemove} className="text-faint hover:text-fg" aria-label={`Remove ${basename(path)}`}><X className="size-3" /></button>}
+    </span>
+  );
+}
+
+/** What the agent loaded for this folder: rules, skills, MCP servers (and problems). */
+function ContextLine({ tabId }: { tabId: string }) {
+  const ctx = useAgent((s) => s.chats[tabId]?.context);
+  if (!ctx) return null;
+  const parts: ReactNode[] = [];
+  if (ctx.rules.length) parts.push(<span key="r" title={ctx.rules.join("\n")} className="flex items-center gap-1"><BookOpen className="size-3" />{ctx.rules.length === 1 ? ctx.rules[0] : `${ctx.rules.length} rule files`}</span>);
+  if (ctx.skills.length) parts.push(<span key="s" title={ctx.skills.join("\n")}>{ctx.skills.length} skill{ctx.skills.length === 1 ? "" : "s"}</span>);
+  for (const m of ctx.mcp) parts.push(<span key={`m${m.name}`} className="flex items-center gap-1"><Plug className="size-3" />{m.name} ({m.tools} tool{m.tools === 1 ? "" : "s"})</span>);
+  return (
+    <div className="flex flex-col items-center gap-1 text-[11.5px] text-faint">
+      {parts.length > 0 && <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1"><span>Using</span>{parts}</div>}
+      {ctx.notices.map((n) => <div key={n} className="flex items-start gap-1.5 text-warn"><TriangleAlert className="mt-0.5 size-3 shrink-0" />{n}</div>)}
+    </div>
+  );
+}
+
 function Answer({ item, cwd }: { item: Extract<Item, { kind: "answer" }>; cwd: string }) {
   // Shown while the model thinks, folded once it answers; a click always wins.
   const [choice, setChoice] = useState<boolean | null>(null);
   const thinkingLive = item.streaming && !item.text;
   const open = choice ?? thinkingLive;
+  // While streaming, the Markdown re-render runs at low priority (typing and scrolling stay smooth).
+  const text = useDeferredValue(item.text);
+  const thinking = useDeferredValue(item.thinking);
   return (
     <div className="flex flex-col gap-1.5">
       {item.thinking.trim() && (
@@ -186,11 +233,11 @@ function Answer({ item, cwd }: { item: Extract<Item, { kind: "answer" }>; cwd: s
             <ChevronRight className={clsx("size-3 transition-transform", open && "rotate-90")} />
           </button>
           {open && (
-            <div className="mt-1.5 max-h-64 overflow-y-auto border-l-2 border-line pl-3 text-[12px] leading-relaxed whitespace-pre-wrap text-muted">{item.thinking.trim()}</div>
+            <div className="mt-1.5 max-h-64 overflow-y-auto border-l-2 border-line pl-3 text-[12px] leading-relaxed whitespace-pre-wrap text-muted">{thinking.trim()}</div>
           )}
         </div>
       )}
-      {item.text.trim() && <Markdown text={item.text} cwd={cwd} className="text-[13px]" />}
+      {text.trim() && <Markdown text={text} cwd={cwd} className="text-[13px]" />}
     </div>
   );
 }
@@ -200,6 +247,7 @@ function StatusIcon({ status }: { status: ToolStatus }) {
     case "pending":
     case "running": return <Spinner className="size-3.5" />;
     case "approval": return <ShieldAlert className="size-3.5 text-accent" />;
+    case "question": return <MessageCircleQuestion className="size-3.5 text-accent" />;
     case "done": return <Check className="size-3.5 text-ok" />;
     case "error": return <X className="size-3.5 text-danger" />;
     case "denied": return <Ban className="size-3.5 text-faint" />;
@@ -212,6 +260,7 @@ function ToolRow({ item, tabId, working }: { item: ToolItem; tabId: string; work
   const Icon = d.icon;
   const stale = !working && (item.status === "pending" || item.status === "running");
   if (item.status === "approval" && item.request) return <ApprovalCard item={item} tabId={tabId} />;
+  if (item.status === "question" && item.question) return <QuestionCard item={item} tabId={tabId} />;
   return (
     <div className="text-[12.5px]">
       <button onClick={() => setOpen(!open)} className="group flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-hover/60">
@@ -299,6 +348,37 @@ function ApprovalCard({ item, tabId }: { item: ToolItem; tabId: string }) {
   );
 }
 
+/** The model asks the user (ask_user): its options as buttons, or an answer in your own words. */
+function QuestionCard({ item, tabId }: { item: ToolItem; tabId: string }) {
+  const q = item.question!;
+  const [own, setOwn] = useState("");
+  const reply = (text: string) => void answerQuestion(tabId, item.id, text);
+  return (
+    <div className="rounded-lg border border-accent/40 bg-accent/5 p-3">
+      <div className="mb-2.5 flex items-start gap-2 text-[13px] text-fg">
+        <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-accent" />
+        <span className="whitespace-pre-wrap">{q.question}</span>
+      </div>
+      {q.options.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1.5">
+          {q.options.map((o, n) => (
+            <button key={n} onClick={() => reply(o)} autoFocus={n === 0}
+              className="flex items-center gap-2.5 rounded-md border border-line bg-panel px-3 py-2 text-left text-[12.5px] text-fg hover:border-accent/60 hover:bg-hover">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded border border-line font-mono text-[10.5px] text-muted">{n + 1}</span>{o}
+            </button>
+          ))}
+        </div>
+      )}
+      <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (own.trim()) reply(own); }}>
+        <input value={own} onChange={(e) => setOwn(e.target.value)} autoFocus={!q.options.length}
+          placeholder={q.options.length ? "Or answer in your own words…" : "Your answer…"}
+          className="h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2.5 text-[12.5px] text-fg outline-none placeholder:text-faint focus:border-accent/60 focus-visible:outline-none" />
+        <Button size="sm" variant="primary" type="submit" disabled={!own.trim()}>Answer</Button>
+      </form>
+    </div>
+  );
+}
+
 function TurnEnd({ item }: { item: Extract<Item, { kind: "end" }> }) {
   if (item.end === "error") {
     return <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">{item.error ?? "Something went wrong."}</div>;
@@ -340,9 +420,11 @@ function EditedFiles({ items, onReview }: { items: Item[]; onReview: () => void 
   );
 }
 
-function Composer({ tabId, visible }: { tabId: string; visible: boolean }) {
+function Composer({ tabId, visible, provider }: { tabId: string; visible: boolean; provider: AiProvider }) {
   const chat = useAgent((s) => s.chats[tabId])!;
   const [text, setText] = useState("");
+  const [models, setModels] = useState<string[]>([]);
+  useEffect(() => { void connectionModels(provider).then(setModels); }, [provider]);
   const box = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { if (visible) box.current?.focus({ preventScroll: true }); }, [visible]);
@@ -355,7 +437,7 @@ function Composer({ tabId, visible }: { tabId: string; visible: boolean }) {
   }, [text]);
 
   const submit = async () => {
-    if (!text.trim() || chat.busy) return;
+    if ((!text.trim() && !chat.attachments.length) || chat.busy) return;
     const t = text;
     setText("");
     if (!(await send(tabId, t))) setText(t);
@@ -373,16 +455,34 @@ function Composer({ tabId, visible }: { tabId: string; visible: boolean }) {
   return (
     <div className="mx-auto w-full max-w-[780px] px-5 pt-2 pb-3">
       <div className="rounded-2xl border border-line bg-panel shadow-[0_6px_24px_rgba(0,0,0,0.25)] transition-[border-color,box-shadow] focus-within:border-accent/60 focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_14%,transparent)]">
+        {chat.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pt-3">
+            {chat.attachments.map((p) => <AttachmentChip key={p} path={p} onRemove={() => unattach(tabId, p)} />)}
+          </div>
+        )}
         <textarea
           ref={box}
           rows={2}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKey}
+          onPaste={(e) => {
+            const files = [...e.clipboardData.files];
+            if (files.length) { e.preventDefault(); void attach(tabId, files); }
+          }}
           placeholder={chat.busy ? "Working… type your next message" : "Ask DevCat Agent to build, fix or explain something"}
           className="block max-h-[240px] min-h-[52px] w-full resize-none border-0 bg-transparent px-4 pt-3.5 pb-1 text-[13.5px] leading-relaxed text-fg outline-none placeholder:text-faint focus-visible:outline-none"
+          // the composer's border shows focus; no second outline around the text box
+          style={{ outline: "none", boxShadow: "none" }}
         />
         <div className="flex items-center gap-1.5 px-2.5 pt-1 pb-2.5">
+          <button title="Attach files (or drop them here, or paste an image)" aria-label="Attach files"
+            onClick={async () => {
+              const picked = await pickFiles({ multiple: true, title: "Attach files" }).catch(() => null);
+              const list = Array.isArray(picked) ? picked : picked ? [picked] : [];
+              if (list.length) void attach(tabId, list.map(String));
+            }}
+            className="flex size-7 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-fg"><Paperclip className="size-3.5" /></button>
           <label title={policy.hint} className={clsx("relative flex h-7 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-[12px] transition-colors",
             chat.policy === "bypass" ? "border-warn/40 bg-warn/10 text-warn" : "border-line text-muted hover:border-faint hover:text-fg")}>
             <PolicyIcon className="size-3.5" />
@@ -392,9 +492,17 @@ function Composer({ tabId, visible }: { tabId: string; visible: boolean }) {
               {POLICIES.map((p) => <option key={p.id} value={p.id}>{p.label}: {p.hint}</option>)}
             </select>
           </label>
-          <span className="flex h-7 max-w-[220px] items-center gap-1.5 rounded-full bg-hover/70 px-2.5 text-[12px] text-muted" title={`${chat.providerName}: ${chat.model}`}>
+          <label className="relative flex h-7 max-w-[240px] cursor-pointer items-center gap-1.5 rounded-full bg-hover/70 px-2.5 text-[12px] text-muted hover:text-fg"
+            title={models.length ? `Model for the next messages (${chat.providerName})` : `${chat.providerName}: ${chat.model}`}>
             <Cpu className="size-3.5 shrink-0" /><span className="truncate">{chat.model}</span>
-          </span>
+            {models.length > 0 && <ChevronDown className="size-3 shrink-0 opacity-60" />}
+            {models.length > 0 && (
+              <select value={chat.model} onChange={(e) => setModel(tabId, e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Model">
+                {!models.includes(chat.model) && <option value={chat.model}>{chat.model}</option>}
+                {models.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
+          </label>
           <span className="ml-auto flex items-center gap-2 text-[11px] text-faint">
             {tokens > 0 && (
               <span title={`${chat.usage.input_tokens.toLocaleString()} input tokens (${chat.usage.cache_read_tokens.toLocaleString()} from the provider's cache) · ${chat.usage.output_tokens.toLocaleString()} output tokens`}>
@@ -405,7 +513,7 @@ function Composer({ tabId, visible }: { tabId: string; visible: boolean }) {
           {chat.busy ? (
             <button onClick={() => stop(tabId)} title="Stop" className="flex size-8 items-center justify-center rounded-full bg-fg text-app transition hover:opacity-85"><Square className="size-3 fill-current" /></button>
           ) : (
-            <button onClick={() => void submit()} disabled={!text.trim()} title="Send (Enter) · new line: Shift+Enter"
+            <button onClick={() => void submit()} disabled={!text.trim() && !chat.attachments.length} title="Send (Enter) · new line: Shift+Enter"
               className="flex size-8 items-center justify-center rounded-full bg-accent text-accent-fg transition hover:brightness-110 disabled:bg-hover disabled:text-faint"><ArrowUp className="size-4" /></button>
           )}
         </div>

@@ -4,14 +4,14 @@
 import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import { api, errMsg } from "../../lib/api";
-import type { AgentApprovalRequest, AgentBlock, AgentDecision, AgentLiveEvent, AgentPolicy, AgentSessionEvent, AgentUsage } from "../../lib/types";
+import type { AiProvider, AgentApprovalRequest, AgentContext, AgentQuestion, AgentBlock, AgentDecision, AgentLiveEvent, AgentPolicy, AgentSessionEvent, AgentUsage } from "../../lib/types";
 
-export type ToolStatus = "pending" | "approval" | "running" | "done" | "error" | "denied";
+export type ToolStatus = "pending" | "approval" | "question" | "running" | "done" | "error" | "denied";
 
 export type Item =
-  | { kind: "user"; key: string; text: string }
+  | { kind: "user"; key: string; text: string; attachments: string[] }
   | { kind: "answer"; key: string; text: string; thinking: string; streaming: boolean; thinkingMs: number | null; thinkingStart: number | null }
-  | { kind: "tool"; key: string; id: string; name: string; input: Record<string, unknown> | null; status: ToolStatus; output: string; request: AgentApprovalRequest | null }
+  | { kind: "tool"; key: string; id: string; name: string; input: Record<string, unknown> | null; status: ToolStatus; output: string; request: AgentApprovalRequest | null; question?: AgentQuestion | null }
   | { kind: "end"; key: string; end: "answered" | "stepLimit" | "stopped" | "error"; error: string | null; elapsedMs: number | null; tokens: number };
 
 export interface Chat {
@@ -25,6 +25,10 @@ export interface Chat {
   items: Item[];
   usage: AgentUsage;
   policy: AgentPolicy;
+  /** Rules, skills and MCP servers the agent loaded for the folder. */
+  context: AgentContext | null;
+  /** Files attached to the message being written (paths). */
+  attachments: string[];
 }
 
 const ZERO: AgentUsage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0 };
@@ -39,7 +43,7 @@ function savedPolicy(): AgentPolicy {
   }
 }
 
-const emptyChat = (): Chat => ({ sessionId: null, title: "", model: "", providerName: "", busy: false, opening: true, error: null, items: [], usage: ZERO, policy: savedPolicy() });
+const emptyChat = (): Chat => ({ sessionId: null, title: "", model: "", providerName: "", busy: false, opening: true, error: null, items: [], usage: ZERO, policy: savedPolicy(), context: null, attachments: [] });
 
 export const useAgent = create<{ chats: Record<string, Chat> }>(() => ({ chats: {} }));
 
@@ -60,7 +64,7 @@ export function itemsFromLog(events: AgentSessionEvent[]): Item[] {
   const items: Item[] = [];
   const tools = new Map<string, Extract<Item, { kind: "tool" }>>();
   for (const e of events) {
-    if (e.event === "user") items.push({ kind: "user", key: key(), text: e.text });
+    if (e.event === "user") items.push({ kind: "user", key: key(), ...splitAttachments(e.text) });
     else if (e.event === "assistant") addBlocks(items, tools, e.content);
     else if (e.event === "tool_results") {
       for (const r of e.results) if (r.type === "tool_result") finishTool(tools.get(r.tool_use_id), r.content, !!r.is_error);
@@ -72,6 +76,17 @@ export function itemsFromLog(events: AgentSessionEvent[]): Item[] {
     }
   }
   return items;
+}
+
+const ATTACHED = "\n\nAttached files:\n";
+
+/** A logged user message carries its attachment list in the text: show them as chips again. */
+function splitAttachments(text: string): { text: string; attachments: string[] } {
+  const i = text.lastIndexOf(ATTACHED);
+  if (i < 0) return { text, attachments: [] };
+  const attachments = text.slice(i + ATTACHED.length).split("\n").map((l) => l.replace(/^- /, "").replace(/ \([^)]*\)$/, "").trim()).filter(Boolean);
+  const rest = text.slice(0, i);
+  return { text: rest === "See the attached files." ? "" : rest, attachments };
 }
 
 function addBlocks(items: Item[], tools: Map<string, Extract<Item, { kind: "tool" }>>, content: AgentBlock[]) {
@@ -104,8 +119,12 @@ function apply(c: Chat, e: AgentLiveEvent): Partial<Chat> {
   };
   switch (e.type) {
     case "turnStart":
-      items.push({ kind: "user", key: key(), text: e.text });
+      items.push({ kind: "user", key: key(), text: e.text, attachments: e.attachments ?? [] });
       return { items, busy: true, error: null };
+    case "question":
+      if (toolIdx(e.question.toolUseId) < 0) items.push({ kind: "tool", key: key(), id: e.question.toolUseId, name: "ask_user", input: { question: e.question.question }, status: "question", output: "", request: null, question: e.question });
+      else setTool(e.question.toolUseId, () => ({ status: "question", question: e.question }));
+      return { items };
     case "thinking":
     case "text": {
       if (last?.kind === "answer" && last.streaming) {
@@ -149,17 +168,18 @@ function apply(c: Chat, e: AgentLiveEvent): Partial<Chat> {
       setTool(e.request.toolUseId, () => ({ status: "approval", request: e.request, input: e.request.input }));
       return { items };
     case "toolCall":
-      setTool(e.id, () => ({ status: "running", request: null, input: e.input }));
+      setTool(e.id, (t) => ({ status: t.status === "question" ? "question" : "running", request: null, input: e.input }));
       return { items };
     case "toolResult":
       setTool(e.id, (t) => ({
         output: e.content,
         request: null,
+        question: null,
         status: t.status === "approval" || e.content.startsWith("The user declined") ? "denied" : e.is_error ? "error" : "done",
       }));
       return { items };
     case "turnEnd": {
-      const closed = items.map((i) => (i.kind === "answer" && i.streaming ? { ...i, streaming: false } : i.kind === "tool" && (i.status === "pending" || i.status === "running" || i.status === "approval") ? { ...i, status: "error" as const, request: null } : i));
+      const closed = items.map((i) => (i.kind === "answer" && i.streaming ? { ...i, streaming: false } : i.kind === "tool" && (i.status === "pending" || i.status === "running" || i.status === "approval" || i.status === "question") ? { ...i, status: "error" as const, request: null, question: null } : i));
       const tokens = e.usage.input_tokens + e.usage.output_tokens;
       closed.push({ kind: "end", key: key(), end: e.end, error: e.error, elapsedMs: e.elapsedMs, tokens });
       return { items: closed, busy: false, usage: e.usage, title: e.title };
@@ -167,11 +187,26 @@ function apply(c: Chat, e: AgentLiveEvent): Partial<Chat> {
   }
 }
 
+// Streamed text arrives in many small events: apply them once per frame, all at once, so the
+// chat redraws at most ~60 times a second however fast the model writes.
+const queued = new Map<string, AgentLiveEvent[]>();
+let frame = 0;
+function flush() {
+  frame = 0;
+  const batch = [...queued.entries()];
+  queued.clear();
+  for (const [tabId, events] of batch) patch(tabId, (c) => events.reduce<Chat>((acc, e) => ({ ...acc, ...apply(acc, e) }), c));
+}
+
 let listening: Promise<unknown> | null = null;
 function ensureListening() {
   listening ??= listen<{ sessionId: string; event: AgentLiveEvent }>("agent-event", (ev) => {
     const tabId = tabOfSession(ev.payload.sessionId);
-    if (tabId) patch(tabId, (c) => apply(c, ev.payload.event));
+    if (!tabId) return;
+    const list = queued.get(tabId) ?? [];
+    list.push(ev.payload.event);
+    queued.set(tabId, list);
+    frame ||= requestAnimationFrame(flush);
   });
   return listening;
 }
@@ -184,7 +219,7 @@ export async function openChat(tabId: string, cwd: string, providerId: string, s
     const o = await api.agentOpen(cwd, providerId, sessionId);
     patch(tabId, () => ({
       sessionId: o.sessionId, title: o.title, model: o.model, providerName: o.providerName, busy: o.busy, opening: false,
-      items: itemsFromLog(o.events), usage: o.usage,
+      items: itemsFromLog(o.events), usage: o.usage, context: o.context,
     }));
     return o.sessionId;
   } catch (e) {
@@ -204,9 +239,10 @@ export async function closeChat(tabId: string) {
 
 export async function send(tabId: string, text: string): Promise<boolean> {
   const c = useAgent.getState().chats[tabId];
-  if (!c?.sessionId || c.busy || !text.trim()) return false;
+  if (!c?.sessionId || c.busy || (!text.trim() && !c.attachments.length)) return false;
   try {
-    await api.agentSend(c.sessionId, text.trim(), c.policy);
+    await api.agentSend(c.sessionId, text.trim(), c.policy, c.model || null, c.attachments);
+    patch(tabId, () => ({ attachments: [] }));
     return true;
   } catch (e) {
     patch(tabId, () => ({ error: errMsg(e) }));
@@ -230,6 +266,62 @@ export async function answer(tabId: string, toolUseId: string, decision: AgentDe
 export function setPolicy(tabId: string, policy: AgentPolicy) {
   try { localStorage.setItem(KEY_POLICY, policy); } catch { /* private mode */ }
   patch(tabId, () => ({ policy }));
+}
+
+/** Answer the model's question (ask_user). */
+export async function answerQuestion(tabId: string, toolUseId: string, text: string) {
+  const c = useAgent.getState().chats[tabId];
+  if (!c?.sessionId || !text.trim()) return;
+  patch(tabId, (x) => ({ items: x.items.map((i) => (i.kind === "tool" && i.id === toolUseId ? { ...i, status: "running", question: null } : i)) }));
+  await api.agentAnswer(c.sessionId, toolUseId, text.trim()).catch((e) => patch(tabId, () => ({ error: errMsg(e) })));
+}
+
+/** Attach files to the message being written: paths, or files dropped / pasted (saved first). */
+export async function attach(tabId: string, files: (string | File)[]) {
+  const c = useAgent.getState().chats[tabId];
+  if (!c?.sessionId) return;
+  const paths: string[] = [];
+  for (const f of files) {
+    if (typeof f === "string") paths.push(f);
+    else {
+      try {
+        paths.push(await api.agentAttach(c.sessionId, f.name || "pasted", await toBase64(f)));
+      } catch (e) {
+        patch(tabId, () => ({ error: `${f.name}: ${errMsg(e)}` }));
+      }
+    }
+  }
+  patch(tabId, (x) => ({ attachments: [...x.attachments, ...paths.filter((p) => !x.attachments.includes(p))] }));
+}
+
+export function unattach(tabId: string, path: string) {
+  patch(tabId, (x) => ({ attachments: x.attachments.filter((p) => p !== path) }));
+}
+
+function toBase64(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ""));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+}
+
+/** Model for this chat's next messages. */
+export function setModel(tabId: string, model: string) {
+  patch(tabId, () => ({ model }));
+}
+
+const modelLists = new Map<string, Promise<string[]>>();
+/** Models of a DevCat Agent connection (asked once per window and connection). */
+export function connectionModels(provider: AiProvider): Promise<string[]> {
+  if (!provider.agent) return Promise.resolve([]);
+  let p = modelLists.get(provider.id);
+  if (!p) {
+    p = api.agentModels(provider.agent, provider.id, null).catch(() => []);
+    modelLists.set(provider.id, p);
+  }
+  return p;
 }
 
 export function dismissError(tabId: string) {

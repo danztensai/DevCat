@@ -12,7 +12,7 @@ import { Button, IconButton } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { ClaudeInfo, GitStatus, SessionMeta } from "../../lib/types";
 import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
-import { basename, copyText, relTime, revealPath } from "../files/format";
+import { basename, copyText, relTime, revealPath, REVEAL_LABEL } from "../files/format";
 import { openGitRepo } from "../git/open";
 import { openClaudeWorkspace } from "./open";
 import { useSelectedProvider } from "./providers";
@@ -138,7 +138,7 @@ function WorkspaceHeader() {
         "separator",
         ...(branch && gitRoot && !isRemote(gitRoot) ? [{ label: "Open Git repository", icon: <FolderGit2 className="size-3.5" />, onClick: () => openGitRepo(gitRoot) }] : []),
         { label: "Copy folder path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(remoteParts(cwd)?.path ?? cwd) },
-        ...(isRemote(cwd) ? [] : [{ label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(cwd) } as MenuItem]),
+        ...(isRemote(cwd) ? [] : [{ label: REVEAL_LABEL, icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(cwd) } as MenuItem]),
         { label: "Close folder", icon: <X className="size-3.5" />, onClick: () => setCwd(null) },
       );
     }

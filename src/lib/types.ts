@@ -417,21 +417,25 @@ export type AgentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string; signature?: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean };
+  | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean }
+  | { type: "image"; media_type: string; data: string };
 /** One line of a session log. */
 export type AgentSessionEvent =
   | { event: "meta"; id: string; cwd: string; created_ms: number }
-  | { event: "user"; text: string }
+  | { event: "user"; text: string; images?: AgentBlock[] }
   | { event: "assistant"; content: AgentBlock[]; model: string; usage: AgentUsage }
   | { event: "tool_results"; results: AgentBlock[] }
   | { event: "approval"; tool_use_id: string; tool: string; allowed: boolean; by: string }
   | { event: "interrupted"; reason: string }
   | { event: "title"; title: string };
-export interface AgentOpened { sessionId: string; title: string; model: string; providerName: string; busy: boolean; events: AgentSessionEvent[]; usage: AgentUsage }
+export interface AgentContext { rules: string[]; skills: string[]; mcp: { name: string; tools: number }[]; notices: string[] }
+export interface AgentOpened { sessionId: string; title: string; model: string; providerName: string; busy: boolean; events: AgentSessionEvent[]; usage: AgentUsage; context: AgentContext }
+export interface AgentQuestion { toolUseId: string; question: string; options: string[] }
 export interface AgentApprovalRequest { toolUseId: string; tool: string; kind: "read" | "edit" | "edit-outside" | "exec"; summary: string; input: Record<string, unknown> }
 /** Payload of `agent-event`. */
 export type AgentLiveEvent =
-  | { type: "turnStart"; text: string }
+  | { type: "turnStart"; text: string; attachments?: string[] }
+  | { type: "question"; question: AgentQuestion }
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   | { type: "toolStart"; id: string; name: string }

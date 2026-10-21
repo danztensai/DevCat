@@ -12,7 +12,7 @@ import { BlameView } from "../git/BlameView";
 import { openGitRepo } from "../git/open";
 import { useRepoRoot } from "../git/repoOf";
 import { FileIcon } from "./FileIcon";
-import { copyFile, copyText, fmtSize, openExternally, relPath, revealPath } from "./format";
+import { copyFile, copyText, fmtSize, openExternally, relPath, revealPath, REVEAL_LABEL } from "./format";
 import { CsvViewer, SheetViewer } from "./viewers/SheetViewer";
 import { BinaryCard, DocxViewer, ImageViewer, MarkdownViewer } from "./viewers/simple";
 import { TextEditor } from "./viewers/TextEditor";
@@ -94,7 +94,7 @@ export default function FilePreviewTab({ tab }: { tab: Extract<Tab, { type: "fil
           <>
             <IconButton title="Copy file (paste in Slack, Explorer, Finder)" onClick={() => void copyFile(tab.path)}><Files className="size-3.5" /></IconButton>
             <IconButton title="Open with default app" onClick={() => void openExternally(tab.path)}><ExternalLink className="size-3.5" /></IconButton>
-            <IconButton title="Reveal in Finder" onClick={() => void revealPath(tab.path)}><FolderSearch className="size-3.5" /></IconButton>
+            <IconButton title={REVEAL_LABEL} onClick={() => void revealPath(tab.path)}><FolderSearch className="size-3.5" /></IconButton>
           </>
         )}
       </Toolbar>
