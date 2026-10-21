@@ -432,7 +432,11 @@ export type AgentSessionEvent =
   | { event: "interrupted"; reason: string }
   | { event: "title"; title: string };
 export interface AgentContext { rules: string[]; skills: string[]; mcp: { name: string; tools: number }[]; notices: string[]; mcpLoading: boolean }
-export interface AgentOpened { sessionId: string; title: string; model: string; providerName: string; busy: boolean; events: AgentSessionEvent[]; usage: AgentUsage; context: AgentContext }
+/** `live`: while a turn runs, its events so far (after `events`); `seq`: the number of the last one
+ *  (later `agent-event`s carry higher ones). */
+export interface AgentOpened { sessionId: string; title: string; model: string; providerName: string; busy: boolean; events: AgentSessionEvent[]; usage: AgentUsage; context: AgentContext; live?: AgentLiveEvent[]; seq?: number }
+/** A DevCat Agent chat open on the computer (the phone's list; `origin`: "desktop" / "phone:<name>"). */
+export interface AgentChatInfo { sessionId: string; cwd: string; title: string; providerId: string; providerName: string; origin: string; busy: boolean; waiting: string | null; since: number }
 export interface AgentQuestion { toolUseId: string; question: string; options: string[] }
 export interface AgentApprovalRequest { toolUseId: string; tool: string; kind: "read" | "edit" | "edit-outside" | "exec"; summary: string; input: Record<string, unknown> }
 /** Payload of `agent-event`. */
