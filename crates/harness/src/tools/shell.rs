@@ -88,6 +88,12 @@ impl Tool for Shell {
                 let text = truncate(text.trim_end());
                 match code {
                     Some(0) => ToolOutput::ok(if text.is_empty() { "(no output)".into() } else { text }),
+                    // 0xC0000142 / 0xC0000017: Windows couldn't start the process (out of memory
+                    // or desktop heap). The command itself was never run.
+                    Some(c @ (-1073741502 | -1073741801)) if text.is_empty() => ToolOutput::err(format!(
+                        "{} didn't start (exit code {c:#X}): Windows is low on memory. The command was not run; try it again, or ask the user to free some memory.",
+                        shell_name()
+                    )),
                     Some(c) => ToolOutput::err(format!("{text}\n(exit code {c})").trim_start().to_string()),
                     None => ToolOutput::err(format!("{text}\n(killed by a signal)").trim_start().to_string()),
                 }

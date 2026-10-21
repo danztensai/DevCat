@@ -108,9 +108,18 @@ impl Llm {
     }
 }
 
+/// A model a provider offers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModelInfo {
+    pub id: String,
+    /// Context window in tokens, when the provider says (OpenRouter, Anthropic, LM Studio,
+    /// vLLM, Kimi, ...). Many (OpenAI, Z.ai, DeepSeek) don't.
+    pub context: Option<u64>,
+}
+
 /// Models the provider offers (`GET {base}/models`, or `/v1/models` for Anthropic), newest first.
 /// Embedding models are left out: they can't chat.
-pub async fn list_models(cfg: &LlmConfig) -> Result<Vec<String>> {
+pub async fn list_models(cfg: &LlmConfig) -> Result<Vec<ModelInfo>> {
     let http = reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).timeout(Duration::from_secs(20)).build().unwrap_or_default();
     let key = cfg.api_key.as_deref().filter(|k| !k.is_empty());
     let req = match cfg.protocol {
@@ -131,11 +140,20 @@ pub async fn list_models(cfg: &LlmConfig) -> Result<Vec<String>> {
         });
     }
     let v: serde_json::Value = resp.json().await.map_err(|e| Error::Provider(format!("unexpected model list: {e}")))?;
-    Ok(model_ids(&v))
+    Ok(models(&v))
 }
 
-fn model_ids(v: &serde_json::Value) -> Vec<String> {
-    let mut models: Vec<(String, String)> = v
+/// The context window a model entry reports, under any of the names providers use.
+fn context_of(m: &serde_json::Value) -> Option<u64> {
+    ["context_length", "max_context_length", "context_window", "max_input_tokens", "max_model_len", "max_seq_len"]
+        .iter()
+        .find_map(|k| m.get(k).and_then(|c| c.as_u64()))
+        .or_else(|| m.pointer("/top_provider/context_length").and_then(|c| c.as_u64()))
+        .filter(|&c| c > 0)
+}
+
+fn models(v: &serde_json::Value) -> Vec<ModelInfo> {
+    let mut models: Vec<(String, ModelInfo)> = v
         .get("data")
         .and_then(|d| d.as_array())
         .into_iter()
@@ -144,13 +162,13 @@ fn model_ids(v: &serde_json::Value) -> Vec<String> {
             let id = m.get("id")?.as_str()?.to_string();
             // OpenAI: unix seconds; Anthropic: RFC 3339. Both sort as text once padded.
             let created = m.get("created").and_then(|c| c.as_u64()).map(|c| format!("{c:020}")).or_else(|| m.get("created_at").and_then(|c| c.as_str()).map(String::from)).unwrap_or_default();
-            Some((created, id))
+            Some((created, ModelInfo { id, context: context_of(m) }))
         })
-        .filter(|(_, id)| !id.to_lowercase().contains("embed"))
+        .filter(|(_, m)| !m.id.to_lowercase().contains("embed"))
         .collect();
-    models.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-    models.dedup_by(|a, b| a.1 == b.1);
-    models.into_iter().map(|(_, id)| id).collect()
+    models.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.id.cmp(&b.1.id)));
+    models.dedup_by(|a, b| a.1.id == b.1.id);
+    models.into_iter().map(|(_, m)| m).collect()
 }
 
 /// Why a request failed, and whether trying again can help.
@@ -192,9 +210,27 @@ mod tests {
 
     #[test]
     fn model_list_newest_first_without_embeddings() {
+        let ids = |v: &serde_json::Value| models(v).into_iter().map(|m| m.id).collect::<Vec<_>>();
         let openai = serde_json::json!({ "data": [{ "id": "glm-4.5", "created": 1753632000 }, { "id": "glm-5.2", "created": 1781625600 }, { "id": "nomic-embed-text", "created": 1790000000 }] });
-        assert_eq!(model_ids(&openai), vec!["glm-5.2", "glm-4.5"]);
+        assert_eq!(ids(&openai), vec!["glm-5.2", "glm-4.5"]);
         let anthropic = serde_json::json!({ "data": [{ "id": "a", "created_at": "2025-07-28T00:00:00Z" }, { "id": "b", "created_at": "2026-01-01T00:00:00Z" }] });
-        assert_eq!(model_ids(&anthropic), vec!["b", "a"]);
+        assert_eq!(ids(&anthropic), vec!["b", "a"]);
+    }
+
+    #[test]
+    fn model_list_reads_context_windows() {
+        let v = serde_json::json!({ "data": [
+            { "id": "openrouter", "context_length": 1048576 },
+            { "id": "anthropic", "max_input_tokens": 200000 },
+            { "id": "lmstudio", "max_context_length": 32768 },
+            { "id": "nested", "top_provider": { "context_length": 64000 } },
+            { "id": "unknown" },
+        ] });
+        let got: Vec<_> = models(&v).into_iter().map(|m| (m.id, m.context)).collect();
+        assert!(got.contains(&("openrouter".into(), Some(1048576))));
+        assert!(got.contains(&("anthropic".into(), Some(200000))));
+        assert!(got.contains(&("lmstudio".into(), Some(32768))));
+        assert!(got.contains(&("nested".into(), Some(64000))));
+        assert!(got.contains(&("unknown".into(), None)));
     }
 }
