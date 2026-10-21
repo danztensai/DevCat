@@ -4,7 +4,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import { api, errMsg } from "../../lib/api";
-import type { AiProvider, AgentApprovalRequest, AgentContext, AgentQuestion, AgentBlock, AgentDecision, AgentLiveEvent, AgentPolicy, AgentSessionEvent, AgentUsage } from "../../lib/types";
+import type { AiProvider, AgentApprovalRequest, AgentModel, AgentContext, AgentQuestion, AgentBlock, AgentDecision, AgentLiveEvent, AgentPolicy, AgentSessionEvent, AgentUsage } from "../../lib/types";
 
 export type ToolStatus = "pending" | "approval" | "question" | "running" | "done" | "error" | "denied";
 
@@ -89,11 +89,14 @@ function lastContext(events: AgentSessionEvent[]): number {
   return 0;
 }
 
-/** Context window of a model, from its name (providers don't report it). `exact` = from a known model. */
-export function contextWindow(model: string): { tokens: number; exact: boolean } {
+/** Context window of a model: what the provider's model list says, else a guess from its name.
+ *  `exact` = known (listed, or a model in the table). */
+export function contextWindow(model: string, listed: AgentModel[] = []): { tokens: number; exact: boolean } {
+  const fromList = listed.find((x) => x.id === model)?.context;
+  if (fromList) return { tokens: fromList, exact: true };
   const m = model.toLowerCase();
   const known: [RegExp, number][] = [
-    [/claude.*\[1m\]|gpt-4\.1|gemini/, 1_000_000],
+    [/claude.*\[1m\]|gpt-4\.1|gemini|glm-5\.[2-9]|glm-[6-9]|deepseek-v4|kimi-k3/, 1_048_576],
     [/gpt-5|o3|o4/, 400_000],
     [/kimi|moonshot/, 256_000],
     [/claude|glm-4\.[67]|glm-5/, 200_000],
@@ -342,9 +345,9 @@ export function setModel(tabId: string, model: string) {
   patch(tabId, () => ({ model }));
 }
 
-const modelLists = new Map<string, Promise<string[]>>();
-/** Models of a DevCat Agent connection (asked once per window and connection). */
-export function connectionModels(provider: AiProvider): Promise<string[]> {
+const modelLists = new Map<string, Promise<AgentModel[]>>();
+/** Models of a DevCat Agent connection, with their context windows (asked once per window and connection). */
+export function connectionModels(provider: AiProvider): Promise<AgentModel[]> {
   if (!provider.agent) return Promise.resolve([]);
   let p = modelLists.get(provider.id);
   if (!p) {

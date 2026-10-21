@@ -4,12 +4,12 @@
 // carries the permission mode, model and token use.
 import clsx from "clsx";
 import {
-  ArrowUp, Ban, BookOpen, Bot, Brain, Check, ChevronDown, ChevronRight, Cpu, FilePen, File as FileIcon, MessageCircleQuestion, Paperclip, Plug, TriangleAlert, Upload, FilePlus, FileText, FolderSearch, GitCompare, Search, Shield, ShieldAlert, ShieldCheck, ShieldOff, Square,
+  ArrowUp, Ban, BookOpen, Layers, Bot, Brain, Check, ChevronDown, ChevronRight, Cpu, FilePen, File as FileIcon, MessageCircleQuestion, Paperclip, Plug, TriangleAlert, Upload, FilePlus, FileText, FolderSearch, GitCompare, Search, Shield, ShieldAlert, ShieldCheck, ShieldOff, Square,
   SquareTerminal, Wrench, X,
 } from "lucide-react";
 import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Button, Empty, Spinner } from "../../components/ui";
-import type { AgentPolicy, AiProvider } from "../../lib/types";
+import type { AgentModel, AgentPolicy, AiProvider } from "../../lib/types";
 import { useTabs } from "../../store/tabs";
 import { Markdown } from "../claude/Markdown";
 import { openManageProviders } from "../claude/providers";
@@ -31,14 +31,23 @@ const SUGGESTIONS = ["Explain how this project is organized", "Find and fix fail
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const lines = (s: string) => (s ? s.replace(/\n$/, "").split("\n").length : 0);
 
+/** `path` relative to the project folder when it's inside it (the rows stay short). */
+function rel(path: string, cwd?: string) {
+  if (!cwd || !path) return path;
+  const base = cwd.replace(/[\\/]+$/, "");
+  const fold = (s: string) => s.replace(/\\/g, "/").toLowerCase();
+  if (fold(path) === fold(base)) return ".";
+  return fold(path).startsWith(fold(base) + "/") ? path.slice(base.length + 1) : path;
+}
+
 /** How a tool step reads: icon, verb, target and changed lines. */
-function describe(name: string, input: Record<string, unknown> | null, status: ToolStatus) {
+function describe(name: string, input: Record<string, unknown> | null, status: ToolStatus, cwd?: string) {
   const done = status === "done" || status === "error" || status === "denied";
   const i = input ?? {};
   switch (name) {
-    case "read": return { icon: FileText, verb: done ? "Read" : "Reading", target: str(i.path) };
-    case "write": return { icon: FilePlus, verb: done ? "Wrote" : "Writing", target: str(i.path), plus: lines(str(i.content)), minus: 0 };
-    case "edit": return { icon: FilePen, verb: done ? "Edited" : "Editing", target: str(i.path), plus: lines(str(i.new_string)), minus: lines(str(i.old_string)) };
+    case "read": return { icon: FileText, verb: done ? "Read" : "Reading", target: rel(str(i.path), cwd) };
+    case "write": return { icon: FilePlus, verb: done ? "Wrote" : "Writing", target: rel(str(i.path), cwd), plus: lines(str(i.content)), minus: 0 };
+    case "edit": return { icon: FilePen, verb: done ? "Edited" : "Editing", target: rel(str(i.path), cwd), plus: lines(str(i.new_string)), minus: lines(str(i.old_string)) };
     case "glob": return { icon: FolderSearch, verb: done ? "Found files" : "Finding files", target: str(i.pattern) };
     case "grep": return { icon: Search, verb: done ? "Searched" : "Searching", target: str(i.pattern) };
     case "shell": return { icon: SquareTerminal, verb: done ? "Ran" : "Running", target: str(i.command) };
@@ -109,6 +118,7 @@ function ChatBody({ tabId, cwd, visible, onReview, provider }: { tabId: string; 
   };
 
   const lastUser = chat.items.map((i) => i.kind).lastIndexOf("user");
+  const blocks = useMemo(() => toBlocks(chat.items), [chat.items]);
   const [dragging, setDragging] = useState(false);
   // Files from the system (their bytes) or from DevCat's Files tree (their paths).
   const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].some((t) => t === "Files" || t === DRAG_PATHS);
@@ -137,9 +147,11 @@ function ChatBody({ tabId, cwd, visible, onReview, provider }: { tabId: string; 
           {chat.items.length === 0 ? (
             <Welcome tabId={tabId} cwd={cwd} />
           ) : (
-            chat.items.map((it, n) => <ItemView key={it.key} item={it} tabId={tabId} cwd={cwd} working={chat.busy && n > lastUser} />)
+            blocks.map((b) => b.kind === "steps"
+              ? <Steps key={b.items[0].key} items={b.items} tabId={tabId} cwd={cwd} live={chat.busy && b.last === chat.items.length - 1} working={chat.busy && b.last > lastUser} />
+              : <ItemView key={b.item.key} item={b.item} tabId={tabId} cwd={cwd} working={chat.busy && b.n > lastUser} />)
           )}
-          {chat.busy && <Working items={chat.items} />}
+          {chat.busy && blocks[blocks.length - 1]?.kind !== "steps" && <Working items={chat.items} />}
         </div>
       </div>
       {chat.error && (
@@ -176,6 +188,91 @@ function Welcome({ tabId, cwd }: { tabId: string; cwd: string }) {
   );
 }
 
+/** A step the conversation folds away: a tool call that needs nothing from the user, or reasoning
+ *  that came without an answer. */
+function isStep(it: Item) {
+  if (it.kind === "tool") return !(it.status === "approval" && it.request) && !(it.status === "question" && it.question);
+  return it.kind === "answer" && !it.text.trim();
+}
+
+type Block = { kind: "item"; item: Item; n: number } | { kind: "steps"; items: Item[]; last: number };
+
+/** Runs of two or more steps become one foldable group; everything else shows as it is. */
+function toBlocks(items: Item[]): Block[] {
+  const out: Block[] = [];
+  let run: { items: Item[]; start: number } | null = null;
+  const flush = () => {
+    if (!run) return;
+    if (run.items.length > 1) out.push({ kind: "steps", items: run.items, last: run.start + run.items.length - 1 });
+    else out.push({ kind: "item", item: run.items[0], n: run.start });
+    run = null;
+  };
+  items.forEach((it, n) => {
+    if (isStep(it)) {
+      if (run) run.items.push(it);
+      else run = { items: [it], start: n };
+    } else {
+      flush();
+      out.push({ kind: "item", item: it, n });
+    }
+  });
+  flush();
+  return out;
+}
+
+/** "read 6 files · 14 searches · ran 3 commands · 2 failed" for a group of steps. */
+function summarize(items: Item[]) {
+  const reads = new Set<string>(), edits = new Set<string>();
+  let searches = 0, commands = 0, tools = 0, failed = 0, thinkingMs = 0;
+  for (const it of items) {
+    if (it.kind === "answer") thinkingMs += it.thinkingMs ?? 0;
+    if (it.kind !== "tool") continue;
+    if (it.status === "error") failed++;
+    const target = str(it.input?.path) || str(it.input?.pattern);
+    if (it.name === "read") reads.add(target);
+    else if (it.name === "edit" || it.name === "write") edits.add(target);
+    else if (it.name === "glob" || it.name === "grep") searches++;
+    else if (it.name === "shell") commands++;
+    else tools++;
+  }
+  const n = (k: number, one: string, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+  const parts = [
+    reads.size && `read ${n(reads.size, "file")}`,
+    edits.size && `edited ${n(edits.size, "file")}`,
+    searches && n(searches, "search", "searches"),
+    commands && `ran ${n(commands, "command")}`,
+    tools && `used ${n(tools, "tool")}`,
+  ].filter(Boolean) as string[];
+  if (!parts.length && thinkingMs) parts.push(`thought for ${fmtDuration(thinkingMs)}`);
+  return { text: parts.join(" · "), failed, explored: !edits.size && !commands && !tools };
+}
+
+/** A run of steps folded into one line; the step in progress shows under it while it runs. */
+function Steps({ items, tabId, cwd, live, working }: { items: Item[]; tabId: string; cwd: string; live: boolean; working: boolean }) {
+  const [open, setOpen] = useState(false);
+  const s = summarize(items);
+  const current = live ? items[items.length - 1] : null;
+  return (
+    <div className="flex flex-col gap-1">
+      <button onClick={() => setOpen(!open)} aria-expanded={open}
+        className="group flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left text-[12.5px] hover:bg-hover/60">
+        {live ? <Spinner className="size-3.5 shrink-0" /> : <Layers className="size-3.5 shrink-0 text-muted" />}
+        <span className="shrink-0 text-fg">{live ? "Working" : s.explored ? "Explored" : "Worked"}</span>
+        <span className="min-w-0 truncate text-muted">{s.text}</span>
+        {s.failed > 0 && <span className="shrink-0 text-[11.5px] text-danger">· {s.failed} failed</span>}
+        <ChevronRight className={clsx("ml-auto size-3 shrink-0 text-faint transition", open && "rotate-90")} />
+      </button>
+      {open ? (
+        <div className="ml-[7px] flex flex-col gap-1 border-l border-line pl-3">
+          {items.map((it) => <ItemView key={it.key} item={it} tabId={tabId} cwd={cwd} working={working} />)}
+        </div>
+      ) : current && (
+        <div className="ml-[7px] border-l border-line pl-3"><ItemView key={current.key} item={current} tabId={tabId} cwd={cwd} working={working} /></div>
+      )}
+    </div>
+  );
+}
+
 /** "Thinking…" while the model hasn't started its answer or a tool yet. */
 function Working({ items }: { items: Item[] }) {
   const last = items[items.length - 1];
@@ -196,7 +293,7 @@ const ItemView = memo(function ItemView({ item, tabId, cwd, working }: { item: I
     case "answer":
       return <Answer item={item} cwd={cwd} />;
     case "tool":
-      return <ToolRow item={item} tabId={tabId} working={working} />;
+      return <ToolRow item={item} tabId={tabId} cwd={cwd} working={working} />;
     case "end":
       return <TurnEnd item={item} />;
   }
@@ -267,9 +364,9 @@ function StatusIcon({ status }: { status: ToolStatus }) {
   }
 }
 
-function ToolRow({ item, tabId, working }: { item: ToolItem; tabId: string; working: boolean }) {
+function ToolRow({ item, tabId, cwd, working }: { item: ToolItem; tabId: string; cwd: string; working: boolean }) {
   const [open, setOpen] = useState(false);
-  const d = describe(item.name, item.input, item.status);
+  const d = describe(item.name, item.input, item.status, cwd);
   const Icon = d.icon;
   const stale = !working && (item.status === "pending" || item.status === "running");
   if (item.status === "approval" && item.request) return <ApprovalCard item={item} tabId={tabId} />;
@@ -279,7 +376,7 @@ function ToolRow({ item, tabId, working }: { item: ToolItem; tabId: string; work
       <button onClick={() => setOpen(!open)} className="group flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-hover/60">
         <Icon className="size-3.5 shrink-0 text-muted" />
         <span className={clsx("shrink-0", item.status === "denied" ? "text-faint line-through" : "text-fg")}>{d.verb}</span>
-        <span className="min-w-0 truncate font-mono text-[12px] text-muted">{d.target}</span>
+        <span className="min-w-0 truncate font-mono text-[12px] text-muted" title={str(item.input?.path) || undefined}>{d.target}</span>
         {d.plus !== undefined && item.status !== "denied" && (
           <span className="shrink-0 font-mono text-[11px]"><span className="text-ok">+{d.plus}</span> <span className="text-danger">−{d.minus}</span></span>
         )}
@@ -434,10 +531,10 @@ function EditedFiles({ items, onReview }: { items: Item[]; onReview: () => void 
 }
 
 /** How full the context window is (ring + %), with the details on click. */
-function ContextMeter({ tabId }: { tabId: string }) {
+function ContextMeter({ tabId, models }: { tabId: string; models: AgentModel[] }) {
   const chat = useAgent((s) => s.chats[tabId])!;
   const [open, setOpen] = useState(false);
-  const win = contextWindow(chat.model);
+  const win = contextWindow(chat.model, models);
   const used = chat.contextTokens;
   const pct = Math.min(100, Math.round((used / win.tokens) * 100));
   const tone = pct >= 85 ? "text-danger" : pct >= 60 ? "text-warn" : "text-muted";
@@ -488,7 +585,7 @@ function ContextMeter({ tabId }: { tabId: string }) {
 function Composer({ tabId, visible, provider }: { tabId: string; visible: boolean; provider: AiProvider }) {
   const chat = useAgent((s) => s.chats[tabId])!;
   const [text, setText] = useState("");
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<AgentModel[]>([]);
   useEffect(() => { void connectionModels(provider).then(setModels); }, [provider]);
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -563,13 +660,13 @@ function Composer({ tabId, visible, provider }: { tabId: string; visible: boolea
             {models.length > 0 && <ChevronDown className="size-3 shrink-0 opacity-60" />}
             {models.length > 0 && (
               <select value={chat.model} onChange={(e) => setModel(tabId, e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Model">
-                {!models.includes(chat.model) && <option value={chat.model}>{chat.model}</option>}
-                {models.map((m) => <option key={m} value={m}>{m}</option>)}
+                {!models.some((m) => m.id === chat.model) && <option value={chat.model}>{chat.model}</option>}
+                {models.map((m) => <option key={m.id} value={m.id}>{m.id}{m.context ? ` · ${fmtTokens(m.context)}` : ""}</option>)}
               </select>
             )}
           </label>
           <span className="ml-auto flex items-center gap-2 text-[11px] text-faint">
-            <ContextMeter tabId={tabId} />
+            <ContextMeter tabId={tabId} models={models} />
             {tokens > 0 && cacheRate !== null && cacheRate > 0 && <span title="Share of this chat's input the provider read from its cache">{cacheRate}% cached</span>}
           </span>
           {chat.busy ? (

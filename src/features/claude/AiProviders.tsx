@@ -126,6 +126,7 @@ function useModelList(value: AgentSettings, providerId: string, apiKey: string) 
     setState((s) => ({ ...s, loading: true, error: null }));
     const t = setTimeout(() => {
       api.agentModels({ ...value, model: "" }, providerId || null, apiKey.trim() || null)
+        .then((list) => list.map((m) => m.id))
         .then((models) => live && setState({ models, loading: false, error: models.length ? null : "The provider returned no models." }))
         .catch((e) => live && setState({ models: null, loading: false, error: errMsg(e) }));
     }, 500);
