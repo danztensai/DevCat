@@ -39,6 +39,7 @@ pub fn builtin_claude() -> AiProvider {
         api_key: None,
         has_api_key: false,
         builtin: true,
+        agent: None,
     }
 }
 
@@ -103,6 +104,19 @@ impl AiStore {
         p.command = p.command.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
         if p.kind == AiKind::Custom && p.command.is_none() {
             return Err(AppError::msg("A custom AI connection needs a command"));
+        }
+        if p.kind == AiKind::Agent {
+            let a = p.agent.as_mut().ok_or_else(|| AppError::msg("Choose the model API for DevCat Agent"))?;
+            a.base_url = a.base_url.trim().trim_end_matches('/').to_string();
+            a.model = a.model.trim().to_string();
+            if !(a.base_url.starts_with("https://") || a.base_url.starts_with("http://")) {
+                return Err(AppError::msg("The API address must start with https:// or http://"));
+            }
+            if a.model.is_empty() {
+                return Err(AppError::msg("Enter the model name, e.g. glm-5.3-flash"));
+            }
+        } else {
+            p.agent = None;
         }
         p.args.retain(|a| !a.is_empty());
         p.env.retain(|e| !e.key.trim().is_empty());

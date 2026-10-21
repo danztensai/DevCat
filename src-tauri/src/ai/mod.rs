@@ -27,6 +27,8 @@ pub enum AiKind {
     Aider,
     Opencode,
     Custom,
+    /// DevCat's own agent (crates/harness): talks to a model API directly, no CLI.
+    Agent,
 }
 
 impl AiKind {
@@ -41,6 +43,7 @@ impl AiKind {
             AiKind::Aider => "Aider",
             AiKind::Opencode => "opencode",
             AiKind::Custom => "Custom",
+            AiKind::Agent => "DevCat Agent",
         }
     }
 
@@ -53,7 +56,7 @@ impl AiKind {
             AiKind::Copilot => Some("copilot"),
             AiKind::Aider => Some("aider"),
             AiKind::Opencode => Some("opencode"),
-            AiKind::Custom => None,
+            AiKind::Custom | AiKind::Agent => None,
         }
     }
 
@@ -64,6 +67,8 @@ impl AiKind {
             AiKind::Codex | AiKind::Aider | AiKind::Opencode => Some("OPENAI_API_KEY"),
             AiKind::Gemini => Some("GEMINI_API_KEY"),
             AiKind::Copilot => Some("GH_TOKEN"),
+            // not an env var: the agent sends the key itself
+            AiKind::Agent => Some("DEVCAT_AGENT_API_KEY"),
             AiKind::Custom => None,
         }
     }
@@ -76,7 +81,7 @@ impl AiKind {
             AiKind::Copilot => Some("npm i -g @github/copilot"),
             AiKind::Aider => Some("pip install aider-chat"),
             AiKind::Opencode => Some("npm i -g opencode-ai"),
-            AiKind::Custom => None,
+            AiKind::Custom | AiKind::Agent => None,
         }
     }
 }
@@ -115,6 +120,18 @@ pub struct AiProvider {
     /// Read-only: the implicit Claude Code profile (delete = reset).
     #[serde(default)]
     pub builtin: bool,
+    /// DevCat Agent only: which model API to talk to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentSettings>,
+}
+
+/// Model API of a DevCat Agent connection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSettings {
+    pub protocol: devcat_harness::Protocol,
+    pub base_url: String,
+    pub model: String,
 }
 
 impl AiProvider {
@@ -167,6 +184,24 @@ fn not_found(p: &AiProvider, program: &str) -> AppError {
         _ => String::new(),
     };
     AppError::msg(format!("{program} not found on PATH ({}).{hint}", p.name))
+}
+
+/// Model API settings (with the keychain key) for a DevCat Agent connection.
+pub fn agent_config(provider_id: &str) -> AppResult<(AiProvider, devcat_harness::LlmConfig)> {
+    let st = store()?;
+    let p = st.get(provider_id)?;
+    let a = p.agent.clone().filter(|_| p.kind == AiKind::Agent).ok_or_else(|| AppError::msg(format!("{} is not a DevCat Agent connection", p.name)))?;
+    let cfg = devcat_harness::LlmConfig { protocol: a.protocol, base_url: a.base_url, api_key: st.api_key(&p.id), model: a.model, max_tokens: 16_000 };
+    Ok((p, cfg))
+}
+
+/// Models a DevCat Agent API offers, for the model picker. Uses `api_key` (typed in the form, not
+/// saved yet) or else the key stored for `provider_id`.
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn ai_agent_models(settings: AgentSettings, provider_id: Option<String>, api_key: Option<String>) -> AppResult<Vec<String>> {
+    let key = api_key.filter(|k| !k.trim().is_empty()).map(|k| k.trim().to_string()).or_else(|| provider_id.and_then(|id| store().ok()?.api_key(&id)));
+    let cfg = devcat_harness::LlmConfig { protocol: settings.protocol, base_url: settings.base_url.trim().to_string(), api_key: key, model: String::new(), max_tokens: 0 };
+    devcat_harness::llm::list_models(&cfg).await.map_err(|e| AppError::msg(e.to_string()))
 }
 
 static STORE: once_cell::sync::OnceCell<AiStore> = once_cell::sync::OnceCell::new();

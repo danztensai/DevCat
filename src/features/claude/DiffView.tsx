@@ -2,13 +2,13 @@
 // stage / unstage / discard, commit, and "Ask <agent> to review". `ChangesPanel` is also used by the Git tab.
 import { DiffEditor, type DiffOnMount } from "../../components/DiffEditor";
 import clsx from "clsx";
-import { Columns2, ExternalLink, FileDiff, GitCommitHorizontal, ListChecks, Minus, Plus, RefreshCw, Rows2, ScanSearch, Trash2, Undo2, X } from "lucide-react";
+import { Columns2, ExternalLink, FileDiff, FolderGit2, GitCommitHorizontal, ListChecks, Minus, Plus, RefreshCw, Rows2, ScanSearch, Trash2, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Button, Checkbox, Dialog, Empty, ErrorBox, IconButton, Spinner, Textarea } from "../../components/ui";
+import { Button, Checkbox, Dialog, Empty, ErrorBox, IconButton, Select, Spinner, Textarea } from "../../components/ui";
 import { api, errMsg } from "../../lib/api";
 import type { FileVersions, GitFile, GitStatus } from "../../lib/types";
-import { refreshGit, useClaude } from "./store";
+import { refreshGit, setRepo, useClaude } from "./store";
 import { basename, languageOf, openFile } from "./util";
 
 type Group = "staged" | "changes" | "untracked";
@@ -69,7 +69,20 @@ function FileRow({ f, group, selected, checked, onCheck, onSelect, onAction }: {
   );
 }
 
+/** Git repositories directly inside `cwd` (for folders that hold several projects). */
+function useNestedRepos(cwd: string): string[] {
+  const [repos, setRepos] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    api.fsList(cwd).then((l) => live && setRepos(l.filter((e) => e.isDir && e.isRepo).map((e) => e.path)), () => live && setRepos([]));
+    return () => { live = false; };
+  }, [cwd]);
+  return repos;
+}
+
 export function DiffView({ tabId, cwd, active, onReview, agent }: { tabId: string; cwd: string; active: boolean; onReview: () => void; agent?: string }) {
+  const repo = useClaude((s) => s.tabs[tabId]?.repo ?? null);
+  const nested = useNestedRepos(cwd);
   const git = useClaude((s) => s.tabs[tabId]?.git);
   const gitError = useClaude((s) => s.tabs[tabId]?.gitError);
   const gitLoading = useClaude((s) => !!s.tabs[tabId]?.gitLoading);
@@ -82,9 +95,39 @@ export function DiffView({ tabId, cwd, active, onReview, agent }: { tabId: strin
     if (active) void refreshGit(tabId);
   }, [active, tabId]);
 
+  // The folder isn't a repository but holds some: let the user pick one.
+  if (!repo && git && !git.isRepo && nested.length) {
+    return (
+      <Empty icon={<FolderGit2 className="size-8" />} title={`${basename(cwd)} holds ${nested.length} git ${nested.length === 1 ? "repository" : "repositories"}`}>
+        <p className="mb-2">Pick one to see its changes:</p>
+        <div className="flex w-72 flex-col gap-1">
+          {nested.map((r) => (
+            <button key={r} onClick={() => setRepo(tabId, r)} className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-left text-[13px] text-fg hover:border-accent/50 hover:bg-hover">
+              <FolderGit2 className="size-4 shrink-0 text-accent" /><span className="truncate">{basename(r)}</span>
+            </button>
+          ))}
+        </div>
+      </Empty>
+    );
+  }
   return (
-    <ChangesPanel cwd={cwd} git={git ?? null} gitError={gitError ?? null} gitLoading={gitLoading} gitTick={gitTick}
-      focus={focus ?? null} active={active} refresh={refresh} onReview={onReview} agent={agent} />
+    <div className="flex h-full flex-col">
+      {repo && (
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-panel px-3 text-[12px]">
+          <FolderGit2 className="size-3.5 text-muted" />
+          <span className="text-muted">Repository</span>
+          <Select className="h-6 w-56 text-xs" value={repo} onChange={(e) => setRepo(tabId, e.target.value || null)}>
+            {nested.map((r) => <option key={r} value={r}>{basename(r)}</option>)}
+            {!nested.includes(repo) && <option value={repo}>{basename(repo)}</option>}
+            <option value="">{basename(cwd)} (the workspace folder)</option>
+          </Select>
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <ChangesPanel cwd={repo ?? cwd} git={git ?? null} gitError={gitError ?? null} gitLoading={gitLoading} gitTick={gitTick}
+          focus={focus ?? null} active={active} refresh={refresh} onReview={onReview} agent={agent} />
+      </div>
+    </div>
   );
 }
 
