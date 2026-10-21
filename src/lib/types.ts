@@ -428,7 +428,7 @@ export type AgentSessionEvent =
   | { event: "approval"; tool_use_id: string; tool: string; allowed: boolean; by: string }
   | { event: "interrupted"; reason: string }
   | { event: "title"; title: string };
-export interface AgentContext { rules: string[]; skills: string[]; mcp: { name: string; tools: number }[]; notices: string[] }
+export interface AgentContext { rules: string[]; skills: string[]; mcp: { name: string; tools: number }[]; notices: string[]; mcpLoading: boolean }
 export interface AgentOpened { sessionId: string; title: string; model: string; providerName: string; busy: boolean; events: AgentSessionEvent[]; usage: AgentUsage; context: AgentContext }
 export interface AgentQuestion { toolUseId: string; question: string; options: string[] }
 export interface AgentApprovalRequest { toolUseId: string; tool: string; kind: "read" | "edit" | "edit-outside" | "exec"; summary: string; input: Record<string, unknown> }
@@ -436,6 +436,7 @@ export interface AgentApprovalRequest { toolUseId: string; tool: string; kind: "
 export type AgentLiveEvent =
   | { type: "turnStart"; text: string; attachments?: string[] }
   | { type: "question"; question: AgentQuestion }
+  | { type: "context"; context: AgentContext }
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   | { type: "toolStart"; id: string; name: string }

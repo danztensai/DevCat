@@ -18,6 +18,7 @@ import { openBlame, openGitRepo } from "../../git/open";
 import { repoRootOf } from "../../git/repoOf";
 import { useWorkspace } from "./workspace";
 import { isRemote } from "../../../lib/remotePath";
+import { DRAG_PATHS } from "../../files/format";
 import { IS_MAC } from "../../../lib/windows";
 
 const ROW_H = 22;
@@ -339,6 +340,13 @@ const EntryRow = memo(function EntryRow({ row, selected, active, git, dirty, onA
       title={e.path}
       onClick={() => onActivate(e)}
       onContextMenu={(ev) => onMenu(ev, e)}
+      // drag onto a DevCat Agent chat to attach it (local files only)
+      draggable={!isRemote(e.path)}
+      onDragStart={(ev) => {
+        ev.dataTransfer.setData(DRAG_PATHS, JSON.stringify([e.path]));
+        ev.dataTransfer.setData("text/plain", e.path);
+        ev.dataTransfer.effectAllowed = "copy";
+      }}
     >
       {e.isDir ? (
         <span

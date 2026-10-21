@@ -14,8 +14,9 @@ import { useTabs } from "../../store/tabs";
 import { Markdown } from "../claude/Markdown";
 import { openManageProviders } from "../claude/providers";
 import { basename } from "../claude/util";
+import { DRAG_PATHS } from "../files/format";
 import { open as pickFiles } from "@tauri-apps/plugin-dialog";
-import { answer, answerQuestion, attach, closeChat, connectionModels, dismissError, openChat, send, setModel, setPolicy, stop, unattach, useAgent, type Item, type ToolStatus } from "./store";
+import { answer, answerQuestion, attach, closeChat, connectionModels, contextWindow, dismissError, openChat, send, setModel, setPolicy, stop, unattach, useAgent, type Item, type ToolStatus } from "./store";
 
 type ToolItem = Extract<Item, { kind: "tool" }>;
 
@@ -109,12 +110,23 @@ function ChatBody({ tabId, cwd, visible, onReview, provider }: { tabId: string; 
 
   const lastUser = chat.items.map((i) => i.kind).lastIndexOf("user");
   const [dragging, setDragging] = useState(false);
-  const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
+  // Files from the system (their bytes) or from DevCat's Files tree (their paths).
+  const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].some((t) => t === "Files" || t === DRAG_PATHS);
   return (
     <div className="relative flex h-full flex-col"
       onDragOver={(e) => { if (hasFiles(e)) { e.preventDefault(); setDragging(true); } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
-      onDrop={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setDragging(false); void attach(tabId, [...e.dataTransfer.files]); }}>
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        setDragging(false);
+        const fromTree = e.dataTransfer.getData(DRAG_PATHS);
+        if (fromTree) {
+          try { void attach(tabId, JSON.parse(fromTree) as string[]); } catch { /* not ours */ }
+        } else {
+          void attach(tabId, [...e.dataTransfer.files]);
+        }
+      }}>
       {dragging && (
         <div className="pointer-events-none absolute inset-3 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accent/60 bg-app/80 text-[13px] text-fg">
           <Upload className="size-6 text-accent" />Drop files to attach them<span className="text-[11px] text-muted">Images are shown to the model; PDFs and other files it reads with its tools</span>
@@ -207,6 +219,7 @@ function ContextLine({ tabId }: { tabId: string }) {
   if (ctx.rules.length) parts.push(<span key="r" title={ctx.rules.join("\n")} className="flex items-center gap-1"><BookOpen className="size-3" />{ctx.rules.length === 1 ? ctx.rules[0] : `${ctx.rules.length} rule files`}</span>);
   if (ctx.skills.length) parts.push(<span key="s" title={ctx.skills.join("\n")}>{ctx.skills.length} skill{ctx.skills.length === 1 ? "" : "s"}</span>);
   for (const m of ctx.mcp) parts.push(<span key={`m${m.name}`} className="flex items-center gap-1"><Plug className="size-3" />{m.name} ({m.tools} tool{m.tools === 1 ? "" : "s"})</span>);
+  if (ctx.mcpLoading) parts.push(<span key="ml" className="flex items-center gap-1"><Spinner className="size-3" />connecting MCP servers…</span>);
   return (
     <div className="flex flex-col items-center gap-1 text-[11.5px] text-faint">
       {parts.length > 0 && <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1"><span>Using</span>{parts}</div>}
@@ -420,6 +433,58 @@ function EditedFiles({ items, onReview }: { items: Item[]; onReview: () => void 
   );
 }
 
+/** How full the context window is (ring + %), with the details on click. */
+function ContextMeter({ tabId }: { tabId: string }) {
+  const chat = useAgent((s) => s.chats[tabId])!;
+  const [open, setOpen] = useState(false);
+  const win = contextWindow(chat.model);
+  const used = chat.contextTokens;
+  const pct = Math.min(100, Math.round((used / win.tokens) * 100));
+  const tone = pct >= 85 ? "text-danger" : pct >= 60 ? "text-warn" : "text-muted";
+  const r = 6, circ = 2 * Math.PI * r;
+  const ctx = chat.context;
+  const mcpTools = ctx?.mcp.reduce((n, m) => n + m.tools, 0) ?? 0;
+  const u = chat.usage;
+  const rate = u.input_tokens ? Math.round((u.cache_read_tokens / u.input_tokens) * 100) : 0;
+  const Row = ({ label, children }: { label: string; children: ReactNode }) => (
+    <div className="flex justify-between gap-6"><span className="text-muted">{label}</span><span className="text-right text-fg">{children}</span></div>
+  );
+  return (
+    <span className="relative">
+      <button onClick={() => setOpen(!open)} title="Context used: click for details" className={clsx("flex h-7 items-center gap-1.5 rounded-full px-2 hover:bg-hover", tone)}>
+        <svg viewBox="0 0 16 16" className="size-3.5 -rotate-90">
+          <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2.2" />
+          <circle cx="8" cy="8" r={r} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={`${(circ * pct) / 100} ${circ}`} />
+        </svg>
+        {used ? `${pct}%` : "0%"}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onMouseDown={() => setOpen(false)} />
+          <div className="absolute right-0 bottom-9 z-30 w-72 rounded-lg border border-line bg-panel p-3 text-[12px] shadow-2xl">
+            <div className="mb-2 font-medium text-fg">Context</div>
+            <div className="mb-1.5 h-1.5 overflow-hidden rounded-full bg-hover">
+              <div className={clsx("h-full rounded-full", pct >= 85 ? "bg-danger" : pct >= 60 ? "bg-warn" : "bg-accent")} style={{ width: `${Math.max(pct, used ? 2 : 0)}%` }} />
+            </div>
+            <div className="mb-3 text-[11.5px] text-muted">
+              {fmtTokens(used)} of {win.exact ? "" : "~"}{fmtTokens(win.tokens)} tokens used ({pct}%){win.exact ? "" : ". Window size is a guess for this model"}.
+              {pct >= 85 && " Start a new session soon: the oldest messages will stop fitting."}
+            </div>
+            <div className="flex flex-col gap-1">
+              <Row label="Model">{chat.model}</Row>
+              <Row label="This session">{fmtTokens(u.input_tokens)} in · {fmtTokens(u.output_tokens)} out</Row>
+              <Row label="From cache">{fmtTokens(u.cache_read_tokens)} ({rate}%)</Row>
+              <Row label="Rules">{ctx?.rules.length ? <span title={ctx.rules.join("\n")}>{ctx.rules.length} file{ctx.rules.length === 1 ? "" : "s"}</span> : "none"}</Row>
+              <Row label="Skills">{ctx?.skills.length ? <span title={ctx.skills.join("\n")}>{ctx.skills.length}</span> : "none"}</Row>
+              <Row label="MCP">{ctx?.mcpLoading ? "connecting…" : ctx?.mcp.length ? <span title={ctx.mcp.map((m) => `${m.name}: ${m.tools} tools`).join("\n")}>{ctx.mcp.length} server{ctx.mcp.length === 1 ? "" : "s"} · {mcpTools} tools</span> : "none"}</Row>
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 function Composer({ tabId, visible, provider }: { tabId: string; visible: boolean; provider: AiProvider }) {
   const chat = useAgent((s) => s.chats[tabId])!;
   const [text, setText] = useState("");
@@ -504,11 +569,8 @@ function Composer({ tabId, visible, provider }: { tabId: string; visible: boolea
             )}
           </label>
           <span className="ml-auto flex items-center gap-2 text-[11px] text-faint">
-            {tokens > 0 && (
-              <span title={`${chat.usage.input_tokens.toLocaleString()} input tokens (${chat.usage.cache_read_tokens.toLocaleString()} from the provider's cache) · ${chat.usage.output_tokens.toLocaleString()} output tokens`}>
-                {fmtTokens(tokens)} tokens{cacheRate !== null && cacheRate > 0 ? ` · ${cacheRate}% cached` : ""}
-              </span>
-            )}
+            <ContextMeter tabId={tabId} />
+            {tokens > 0 && cacheRate !== null && cacheRate > 0 && <span title="Share of this chat's input the provider read from its cache">{cacheRate}% cached</span>}
           </span>
           {chat.busy ? (
             <button onClick={() => stop(tabId)} title="Stop" className="flex size-8 items-center justify-center rounded-full bg-fg text-app transition hover:opacity-85"><Square className="size-3 fill-current" /></button>

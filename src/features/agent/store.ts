@@ -29,6 +29,8 @@ export interface Chat {
   context: AgentContext | null;
   /** Files attached to the message being written (paths). */
   attachments: string[];
+  /** Input tokens of the last model call: how much of the context window the conversation fills. */
+  contextTokens: number;
 }
 
 const ZERO: AgentUsage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0 };
@@ -43,7 +45,7 @@ function savedPolicy(): AgentPolicy {
   }
 }
 
-const emptyChat = (): Chat => ({ sessionId: null, title: "", model: "", providerName: "", busy: false, opening: true, error: null, items: [], usage: ZERO, policy: savedPolicy(), context: null, attachments: [] });
+const emptyChat = (): Chat => ({ sessionId: null, title: "", model: "", providerName: "", busy: false, opening: true, error: null, items: [], usage: ZERO, policy: savedPolicy(), context: null, attachments: [], contextTokens: 0 });
 
 export const useAgent = create<{ chats: Record<string, Chat> }>(() => ({ chats: {} }));
 
@@ -76,6 +78,30 @@ export function itemsFromLog(events: AgentSessionEvent[]): Item[] {
     }
   }
   return items;
+}
+
+/** Context used by the last model call in a session log. */
+function lastContext(events: AgentSessionEvent[]): number {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.event === "assistant") return e.usage.input_tokens + e.usage.output_tokens;
+  }
+  return 0;
+}
+
+/** Context window of a model, from its name (providers don't report it). `exact` = from a known model. */
+export function contextWindow(model: string): { tokens: number; exact: boolean } {
+  const m = model.toLowerCase();
+  const known: [RegExp, number][] = [
+    [/claude.*\[1m\]|gpt-4\.1|gemini/, 1_000_000],
+    [/gpt-5|o3|o4/, 400_000],
+    [/kimi|moonshot/, 256_000],
+    [/claude|glm-4\.[67]|glm-5/, 200_000],
+    [/glm-4\.5|deepseek|gpt-4o|qwen3-coder/, 128_000],
+    [/qwen3|llama|gemma|mistral/, 32_000],
+  ];
+  const hit = known.find(([re]) => re.test(m));
+  return hit ? { tokens: hit[1], exact: true } : { tokens: 128_000, exact: false };
 }
 
 const ATTACHED = "\n\nAttached files:\n";
@@ -121,6 +147,8 @@ function apply(c: Chat, e: AgentLiveEvent): Partial<Chat> {
     case "turnStart":
       items.push({ kind: "user", key: key(), text: e.text, attachments: e.attachments ?? [] });
       return { items, busy: true, error: null };
+    case "context":
+      return { context: e.context };
     case "question":
       if (toolIdx(e.question.toolUseId) < 0) items.push({ kind: "tool", key: key(), id: e.question.toolUseId, name: "ask_user", input: { question: e.question.question }, status: "question", output: "", request: null, question: e.question });
       else setTool(e.question.toolUseId, () => ({ status: "question", question: e.question }));
@@ -162,7 +190,7 @@ function apply(c: Chat, e: AgentLiveEvent): Partial<Chat> {
         else items.push({ kind: "tool", key: key(), id: b.id, name: b.name, input: b.input, status: "pending", output: "", request: null });
       }
       const usage = { input_tokens: c.usage.input_tokens + e.usage.input_tokens, output_tokens: c.usage.output_tokens + e.usage.output_tokens, cache_read_tokens: c.usage.cache_read_tokens + e.usage.cache_read_tokens };
-      return { items, usage };
+      return { items, usage, contextTokens: e.usage.input_tokens + e.usage.output_tokens || c.contextTokens };
     }
     case "approval":
       setTool(e.request.toolUseId, () => ({ status: "approval", request: e.request, input: e.request.input }));
@@ -219,7 +247,7 @@ export async function openChat(tabId: string, cwd: string, providerId: string, s
     const o = await api.agentOpen(cwd, providerId, sessionId);
     patch(tabId, () => ({
       sessionId: o.sessionId, title: o.title, model: o.model, providerName: o.providerName, busy: o.busy, opening: false,
-      items: itemsFromLog(o.events), usage: o.usage, context: o.context,
+      items: itemsFromLog(o.events), usage: o.usage, context: o.context, contextTokens: lastContext(o.events),
     }));
     return o.sessionId;
   } catch (e) {
@@ -229,12 +257,14 @@ export async function openChat(tabId: string, cwd: string, providerId: string, s
 }
 
 export async function closeChat(tabId: string) {
+  // Forget the chat right away, so a chat opened again in the same tab (a remount) is never
+  // wiped out by this close finishing later.
   const c = useAgent.getState().chats[tabId];
-  if (c?.sessionId) await api.agentClose(c.sessionId).catch(() => {});
   useAgent.setState((s) => {
     const { [tabId]: _, ...rest } = s.chats;
     return { chats: rest };
   });
+  if (c?.sessionId) await api.agentClose(c.sessionId).catch(() => {});
 }
 
 export async function send(tabId: string, text: string): Promise<boolean> {

@@ -70,6 +70,9 @@ export async function copyFile(path: string) {
   }
 }
 
+/** Drag data type for files dragged from DevCat's own file tree (a JSON array of paths). */
+export const DRAG_PATHS = "application/x-devcat-paths";
+
 /** What the system file manager is called: "Reveal in Finder" / "Show in Explorer" / "Show in folder". */
 export const REVEAL_LABEL = (() => {
   const p = navigator.platform.toLowerCase();

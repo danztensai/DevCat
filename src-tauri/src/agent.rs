@@ -39,9 +39,9 @@ struct Run {
     approver: Arc<UiApprover>,
     busy: AtomicBool,
     /// What the agent loaded for this folder (shown in the chat).
-    context: AgentContext,
+    context: Mutex<AgentContext>,
     /// MCP server processes (stopped when the chat closes).
-    _mcp: Vec<Arc<Server>>,
+    mcp: Mutex<Vec<Arc<Server>>>,
 }
 
 /// Rules, skills and MCP servers the agent found for the folder.
@@ -53,6 +53,8 @@ pub struct AgentContext {
     pub mcp: Vec<McpInfo>,
     /// Problems worth telling the user (an MCP server that didn't start, ...).
     pub notices: Vec<String>,
+    /// MCP servers are still starting (their tools come when they're ready).
+    pub mcp_loading: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -120,7 +122,7 @@ fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
-/// MCP servers get this long to start before the chat opens without them.
+/// MCP servers get this long to start; the chat works without them meanwhile.
 const MCP_START: std::time::Duration = std::time::Duration::from_secs(25);
 
 async fn build(cwd: &str, provider_id: &str, session: Session) -> AppResult<Arc<Run>> {
@@ -139,25 +141,49 @@ async fn build(cwd: &str, provider_id: &str, session: Session) -> AppResult<Arc<
     }
     context.rules.extend(PROJECT_RULES.iter().filter(|r| dir.join(r).exists()).map(|r| r.to_string()));
     context.skills = skills(dir, home.as_deref()).into_iter().map(|s| s.name).collect();
-    let mut tools = Registry::standard();
-    let mcp = match tokio::time::timeout(MCP_START, devcat_harness::mcp::connect_all(dir, home.as_deref())).await {
-        Ok((servers, errors)) => {
-            context.notices.extend(errors);
-            servers
-        }
-        Err(_) => {
-            context.notices.push(format!("MCP servers took longer than {} s to start; this chat runs without them.", MCP_START.as_secs()));
-            vec![]
-        }
-    };
-    for s in &mcp {
-        context.mcp.push(McpInfo { name: s.name.clone(), tools: s.tools.len() });
-        for t in McpTool::all(s) {
-            tools.add(t);
-        }
+    let configured = !devcat_harness::mcp::configured(dir, home.as_deref()).0.is_empty();
+    context.mcp_loading = configured;
+    let agent = Agent::new(Arc::new(Llm::new(cfg.clone())), Registry::standard(), Policy::Ask, approver.clone(), system);
+    let run = Arc::new(Run {
+        id,
+        cfg,
+        turn: tokio::sync::Mutex::new((agent, session)),
+        cancel: Mutex::new(Cancel::default()),
+        approver,
+        busy: AtomicBool::new(false),
+        context: Mutex::new(context),
+        mcp: Mutex::default(),
+    });
+    // MCP servers start in the background: the chat opens right away and gets their tools when
+    // they're ready (between turns, never in the middle of one).
+    if configured {
+        let (run2, dir, home) = (Arc::downgrade(&run), dir.to_path_buf(), home.clone());
+        tokio::spawn(async move {
+            let (servers, errors) = match tokio::time::timeout(MCP_START, devcat_harness::mcp::connect_all(&dir, home.as_deref())).await {
+                Ok(r) => r,
+                Err(_) => (vec![], vec![format!("MCP servers took longer than {} s to start; this chat runs without them.", MCP_START.as_secs())]),
+            };
+            let Some(run) = run2.upgrade() else { return };
+            {
+                let mut g = run.turn.lock().await;
+                for s in &servers {
+                    for t in McpTool::all(s) {
+                        g.0.tools.add(t);
+                    }
+                }
+            }
+            let ctx = {
+                let mut c = run.context.lock();
+                c.notices.extend(errors);
+                c.mcp = servers.iter().map(|s| McpInfo { name: s.name.clone(), tools: s.tools.len() }).collect();
+                c.mcp_loading = false;
+                c.clone()
+            };
+            *run.mcp.lock() = servers;
+            emit(&run.id, json!({ "type": "context", "context": ctx }));
+        });
     }
-    let agent = Agent::new(Arc::new(Llm::new(cfg.clone())), tools, Policy::Ask, approver.clone(), system);
-    Ok(Arc::new(Run { id, cfg, turn: tokio::sync::Mutex::new((agent, session)), cancel: Mutex::new(Cancel::default()), approver, busy: AtomicBool::new(false), context, _mcp: mcp }))
+    Ok(run)
 }
 
 /// Open a chat: a new session, or `session_id` to continue one (still running or from disk).
@@ -180,7 +206,7 @@ pub async fn agent_open(cwd: String, provider_id: String, session_id: Option<Str
         Ok(g) => (g.1.events().to_vec(), g.1.title(), g.1.usage()),
         Err(_) => (vec![], String::new(), Usage::default()),
     };
-    Ok(AgentOpened { session_id: run.id.clone(), title, model: cfg.model, provider_name: provider.name, busy, events, usage, context: run.context.clone() })
+    Ok(AgentOpened { session_id: run.id.clone(), title, model: cfg.model, provider_name: provider.name, busy, events, usage, context: run.context.lock().clone() })
 }
 
 fn valid_id(id: &str) -> bool {
@@ -338,6 +364,66 @@ pub async fn agent_close(session_id: String) -> AppResult<()> {
         run.approver.deny_all();
     }
     Ok(())
+}
+
+/// A saved chat, for the Sessions list.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSessionInfo {
+    pub id: String,
+    pub title: String,
+    pub updated_ms: u64,
+    /// Messages the user sent.
+    pub messages: usize,
+}
+
+/// Saved DevCat Agent chats for `cwd`, newest first. Only reads the files.
+#[cfg_attr(feature = "gui", tauri::command)]
+pub async fn agent_sessions(cwd: String) -> AppResult<Vec<AgentSessionInfo>> {
+    let dir = dir()?.clone();
+    let same = |a: &str| {
+        let norm = |p: &str| {
+            let p = p.trim_end_matches(['/', '\\']).replace('\\', "/");
+            if cfg!(windows) { p.to_lowercase() } else { p }
+        };
+        norm(a) == norm(&cwd)
+    };
+    let mut out = Vec::new();
+    let Ok(mut rd) = tokio::fs::read_dir(&dir).await else { return Ok(out) };
+    while let Ok(Some(e)) = rd.next_entry().await {
+        let path = e.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Ok(text) = tokio::fs::read_to_string(&path).await else { continue };
+        let mut lines = text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok());
+        let Some(meta) = lines.next() else { continue };
+        if meta["event"] != "meta" || !same(meta["cwd"].as_str().unwrap_or_default()) {
+            continue;
+        }
+        let (mut first, mut title, mut messages) = (None::<String>, None::<String>, 0);
+        for v in lines {
+            match v["event"].as_str() {
+                Some("user") => {
+                    messages += 1;
+                    if first.is_none() {
+                        let t = v["text"].as_str().unwrap_or_default();
+                        let t = t.split("\n\nAttached files:").next().unwrap_or(t).trim();
+                        first = Some(if t.is_empty() { "Attached files".into() } else { t.lines().next().unwrap_or(t).chars().take(80).collect() });
+                    }
+                }
+                Some("title") => title = v["title"].as_str().map(String::from),
+                _ => {}
+            }
+        }
+        if messages == 0 {
+            continue; // opened but never used
+        }
+        let updated_ms = e.metadata().await.ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64).unwrap_or(0);
+        out.push(AgentSessionInfo { id: meta["id"].as_str().unwrap_or_default().to_string(), title: title.or(first).unwrap_or_default(), updated_ms, messages });
+    }
+    out.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms));
+    Ok(out)
 }
 
 /// Stop every running turn (app exit).

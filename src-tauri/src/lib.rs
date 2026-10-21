@@ -278,6 +278,7 @@ pub fn run() {
             agent::agent_close,
             agent::agent_answer,
             agent::agent_attach,
+            agent::agent_sessions,
             ai::ai_providers_list,
             ai::ai_agent_models,
             ai::ai_provider_save,

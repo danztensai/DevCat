@@ -8,7 +8,7 @@ import { AiTerminalIcon } from "../../components/ui/AppIcons";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { toast } from "sonner";
-import { Button, IconButton } from "../../components/ui";
+import { Button, IconButton, Spinner } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { ClaudeInfo, GitStatus, SessionMeta } from "../../lib/types";
 import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
@@ -16,6 +16,7 @@ import { basename, copyText, relTime, revealPath, REVEAL_LABEL } from "../files/
 import { openGitRepo } from "../git/open";
 import { openClaudeWorkspace } from "./open";
 import { useSelectedProvider } from "./providers";
+import { useAgent } from "../agent/store";
 import FileTree, { type FileTreeHandle } from "./sidebar/FileTree";
 import { SessionsList } from "./sidebar/SessionsList";
 import { pickFolder, useWorkspace } from "./sidebar/workspace";
@@ -226,12 +227,41 @@ function SectionHeader({ title, open, onToggle, count, children }: {
   );
 }
 
+/** DevCat Agent chats saved for the folder (newest first); click to continue one. */
+function AgentSessions({ cwd, providerId, now }: { cwd: string; providerId: string; now: number }) {
+  const [list, setList] = useState<{ id: string; title: string; updatedMs: number; messages: number }[] | null>(null);
+  const [tick, setTick] = useState(0);
+  const busy = useAgent((s) => Object.values(s.chats).some((c) => c.busy));
+  // reload when a chat finishes a turn (new or retitled sessions)
+  useEffect(() => {
+    let live = true;
+    api.agentSessions(cwd).then((l) => live && setList(l), () => live && setList([]));
+    return () => { live = false; };
+  }, [cwd, tick, busy]);
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 30_000); return () => clearInterval(t); }, []);
+  if (!list) return <div className="flex justify-center py-4"><Spinner className="size-4" /></div>;
+  if (!list.length) return <div className="px-3 py-2 text-[12px] text-faint">No DevCat Agent chats in this folder yet. Start one with New chat.</div>;
+  return (
+    <div className="h-full overflow-y-auto pb-2">
+      {list.map((s) => (
+        <button key={s.id} className="flex w-full flex-col items-start gap-0.5 px-3 py-1.5 text-left hover:bg-hover"
+          onClick={() => openClaudeWorkspace(cwd, { providerId, sessionId: s.id, title: s.title })}>
+          <span className="w-full truncate text-[13px] text-fg">{s.title}</span>
+          <span className="text-[11px] text-faint">{relTime(new Date(s.updatedMs).toISOString(), now)} · {s.messages} message{s.messages === 1 ? "" : "s"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Workspace({ cwd }: { cwd: string }) {
   const sessionsOpen = useWorkspace((s) => s.sessionsOpen);
   const setSessionsOpen = useWorkspace((s) => s.setSessionsOpen);
   const git = useSharedGit(cwd);
   // Sessions come from ~/.claude/projects: only shown while Claude Code is the selected AI connection.
-  const isClaude = useSelectedProvider().kind === "claude";
+  const selected = useSelectedProvider();
+  const isClaude = selected.kind === "claude";
+  const isAgent = selected.kind === "agent";
   const [sessions, setSessions] = useState<SessionMeta[] | null>(null);
   const [sessErr, setSessErr] = useState<string | null>(null);
   const [sessLoading, setSessLoading] = useState(false);
@@ -300,8 +330,9 @@ function Workspace({ cwd }: { cwd: string }) {
               <RefreshCw className={clsx("size-3.5", sessLoading && "animate-spin")} />
             </IconButton>
           </SectionHeader>
-          {sessionsOpen && !isClaude && (
-            <div className="px-3 py-2 text-[12px] text-faint">Sessions are available for Claude Code. Pick it in the header above to browse and resume them.</div>
+          {sessionsOpen && isAgent && <div className="min-h-0 flex-1"><AgentSessions cwd={cwd} providerId={selected.id} now={now} /></div>}
+          {sessionsOpen && !isClaude && !isAgent && (
+            <div className="px-3 py-2 text-[12px] text-faint">Sessions are available for Claude Code and DevCat Agent. Pick one in the header above to browse and resume them.</div>
           )}
           {sessionsOpen && isClaude && (
             <div className="min-h-0 flex-1">
