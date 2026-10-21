@@ -1,6 +1,8 @@
 //! DevCat Agent in the app: runs `crates/harness` sessions for the AI workspace's chat tabs.
 //! Everything a turn does is sent to the window as `agent-event` ({ sessionId, event }); tool calls
 //! that need approval wait for `agent_approve` (closing the tab or stopping counts as a no).
+//! What's waiting for the user is also sent to paired phones as `agent-pending`, so they can
+//! answer from there (see `remote::dispatch`).
 use crate::error::{AppError, AppResult};
 use async_trait::async_trait;
 use devcat_harness::approval::{ApprovalRequest, Decision, Question};
@@ -70,22 +72,30 @@ fn emit(session_id: &str, event: Value) {
     crate::events::emit("agent-event", json!({ "sessionId": session_id, "event": event }));
 }
 
-/// Asks the window: sends the request as an event and waits for `agent_approve` (or, for a
-/// question, `agent_answer`).
+/// Asks the window (and paired phones): sends the request as an event and waits for
+/// `agent_approve` (or, for a question, `agent_answer`), from whichever answers first.
 struct UiApprover {
     session_id: String,
-    pending: Mutex<HashMap<String, oneshot::Sender<Decision>>>,
-    questions: Mutex<HashMap<String, oneshot::Sender<String>>>,
+    /// The chat's folder, so a phone can tell chats apart.
+    cwd: String,
+    /// Approvals waiting: the request, and where its answer goes (with who gave it).
+    pending: Mutex<HashMap<String, (ApprovalRequest, oneshot::Sender<(Decision, String)>)>>,
+    questions: Mutex<HashMap<String, (Question, oneshot::Sender<String>)>>,
 }
 
 #[async_trait]
 impl Approver for UiApprover {
     async fn decide(&self, req: &ApprovalRequest) -> (Decision, String) {
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().insert(req.tool_use_id.clone(), tx);
+        self.pending.lock().insert(req.tool_use_id.clone(), (req.clone(), tx));
         emit(&self.session_id, json!({ "type": "approval", "request": req }));
-        match rx.await {
-            Ok(d) => (d, "user".into()),
+        pending_changed();
+        let res = rx.await;
+        // answered, or dropped (tab closed / stopped): either way it's no longer waiting
+        self.pending.lock().remove(&req.tool_use_id);
+        pending_changed();
+        match res {
+            Ok(answer) => answer,
             // the tab was closed or the turn stopped: fail closed
             Err(_) => (Decision::Deny { reason: Some("Nobody answered.".into()) }, "closed".into()),
         }
@@ -93,9 +103,13 @@ impl Approver for UiApprover {
 
     async fn ask(&self, q: &Question) -> Option<String> {
         let (tx, rx) = oneshot::channel();
-        self.questions.lock().insert(q.tool_use_id.clone(), tx);
+        self.questions.lock().insert(q.tool_use_id.clone(), (q.clone(), tx));
         emit(&self.session_id, json!({ "type": "question", "question": q }));
-        rx.await.ok()
+        pending_changed();
+        let res = rx.await.ok();
+        self.questions.lock().remove(&q.tool_use_id);
+        pending_changed();
+        res
     }
 }
 
@@ -103,7 +117,74 @@ impl UiApprover {
     fn deny_all(&self) {
         self.pending.lock().clear();
         self.questions.lock().clear();
+        pending_changed();
     }
+}
+
+/// Something a DevCat Agent chat is waiting for the user to answer (for phones).
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingItem {
+    pub session_id: String,
+    pub folder: String,
+    pub tool_use_id: String,
+    /// "approval" or "question".
+    pub kind: &'static str,
+    pub request: Option<ApprovalRequest>,
+    pub question: Option<Question>,
+}
+
+/// Longest text of a tool input a phone gets (a big `write` is cut).
+const PHONE_INPUT_TEXT: usize = 4_000;
+
+/// Everything the open chats are waiting for, oldest chats first.
+pub fn pending() -> Vec<PendingItem> {
+    let runs: Vec<Arc<Run>> = RUNS.lock().values().cloned().collect();
+    let mut out = Vec::new();
+    for run in runs {
+        let a = &run.approver;
+        for (id, (req, _)) in a.pending.lock().iter() {
+            let mut req = req.clone();
+            if let Some(m) = req.input.as_object_mut() {
+                for v in m.values_mut() {
+                    if let Some(s) = v.as_str().filter(|s| s.len() > PHONE_INPUT_TEXT) {
+                        let cut = (0..=PHONE_INPUT_TEXT).rev().find(|&i| s.is_char_boundary(i)).unwrap_or(0);
+                        *v = Value::String(format!("{}\n… ({} more characters)", &s[..cut], s.len() - cut));
+                    }
+                }
+            }
+            out.push(PendingItem { session_id: a.session_id.clone(), folder: a.cwd.clone(), tool_use_id: id.clone(), kind: "approval", request: Some(req), question: None });
+        }
+        for (id, (q, _)) in a.questions.lock().iter() {
+            out.push(PendingItem { session_id: a.session_id.clone(), folder: a.cwd.clone(), tool_use_id: id.clone(), kind: "question", request: None, question: Some(q.clone()) });
+        }
+    }
+    out
+}
+
+/// Tell phones what's waiting now (the whole list: it's short, and late phones ask `pending`).
+fn pending_changed() {
+    crate::events::emit("agent-pending", json!({ "items": pending() }));
+}
+
+/// Answer an approval; `by` is who answered ("user" in the app, the phone's name).
+pub fn approve_as(session_id: &str, tool_use_id: &str, decision: Decision, by: String) -> AppResult<()> {
+    let run = run_of(session_id)?;
+    let (_, tx) = run.approver.pending.lock().remove(tool_use_id).ok_or_else(|| AppError::msg("That request was already answered"))?;
+    let allowed = !matches!(decision, Decision::Deny { .. });
+    let _ = tx.send((decision, by.clone()));
+    // the chat clears its card even when the answer came from a phone
+    emit(session_id, json!({ "type": "resolved", "toolUseId": tool_use_id, "allowed": allowed, "by": by }));
+    Ok(())
+}
+
+/// Answer a question the model asked.
+pub fn answer_as(session_id: &str, tool_use_id: &str, answer: String, by: String) -> AppResult<()> {
+    let run = run_of(session_id)?;
+    let (_, tx) = run.approver.questions.lock().remove(tool_use_id).ok_or_else(|| AppError::msg("That question was already answered"))?;
+    let _ = tx.send(answer);
+    emit(session_id, json!({ "type": "resolved", "toolUseId": tool_use_id, "allowed": true, "by": by }));
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -130,7 +211,7 @@ const MCP_START: std::time::Duration = std::time::Duration::from_secs(25);
 async fn build(cwd: &str, provider_id: &str, session: Session) -> AppResult<Arc<Run>> {
     let (_, cfg) = crate::ai::agent_config(provider_id)?;
     let id = session.id.clone();
-    let approver = Arc::new(UiApprover { session_id: id.clone(), pending: Mutex::default(), questions: Mutex::default() });
+    let approver = Arc::new(UiApprover { session_id: id.clone(), cwd: cwd.to_string(), pending: Mutex::default(), questions: Mutex::default() });
     let dir = std::path::Path::new(cwd);
     let home = home_dir();
     let shell = if cfg!(windows) { "PowerShell" } else { "bash" };
@@ -297,10 +378,7 @@ fn human_size(n: u64) -> String {
 /// Answer the model's question (`ask_user`).
 #[cfg_attr(feature = "gui", tauri::command)]
 pub async fn agent_answer(session_id: String, tool_use_id: String, answer: String) -> AppResult<()> {
-    let run = run_of(&session_id)?;
-    let tx = run.approver.questions.lock().remove(&tool_use_id).ok_or_else(|| AppError::msg("That question was already answered"))?;
-    let _ = tx.send(answer);
-    Ok(())
+    answer_as(&session_id, &tool_use_id, answer, "user".into())
 }
 
 /// Send a message; the turn runs in the background and reports through `agent-event`.
@@ -363,16 +441,15 @@ pub async fn agent_stop(session_id: String) -> AppResult<()> {
 /// Answer an approval request.
 #[cfg_attr(feature = "gui", tauri::command)]
 pub async fn agent_approve(session_id: String, tool_use_id: String, decision: Decision) -> AppResult<()> {
-    let run = run_of(&session_id)?;
-    let tx = run.approver.pending.lock().remove(&tool_use_id).ok_or_else(|| AppError::msg("That request was already answered"))?;
-    let _ = tx.send(decision);
-    Ok(())
+    approve_as(&session_id, &tool_use_id, decision, "user".into())
 }
 
 /// Forget a chat (its tab closed); a running turn is stopped.
 #[cfg_attr(feature = "gui", tauri::command)]
 pub async fn agent_close(session_id: String) -> AppResult<()> {
-    if let Some(run) = RUNS.lock().remove(&session_id) {
+    // out of the list first: denying tells phones what's still waiting, which reads the list
+    let run = RUNS.lock().remove(&session_id);
+    if let Some(run) = run {
         run.cancel.lock().cancel();
         run.approver.deny_all();
     }
@@ -441,7 +518,8 @@ pub async fn agent_sessions(cwd: String) -> AppResult<Vec<AgentSessionInfo>> {
 
 /// Stop every running turn (app exit).
 pub fn shutdown_all() {
-    for run in RUNS.lock().drain().map(|(_, r)| r) {
+    let runs: Vec<Arc<Run>> = RUNS.lock().drain().map(|(_, r)| r).collect();
+    for run in runs {
         run.cancel.lock().cancel();
         run.approver.deny_all();
     }

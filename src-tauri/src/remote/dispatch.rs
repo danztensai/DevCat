@@ -43,13 +43,15 @@ pub const WRITES: &[&str] = &[
     "fs_upload",
     "fs_upload_cancel",
     "paste_dir",
+    "agent_approve",
+    "agent_answer",
 ];
 
 /// Images / PDFs bigger than this aren't sent to phones (base64 over a phone connection).
 const PHONE_MEDIA_CAP: usize = 12 * 1024 * 1024;
 
 /// Calls too frequent or too private for the audit log (keystrokes, live views).
-pub const NOT_AUDITED: &[&str] = &["pty_write", "pty_resize", "pty_attach", "pty_detach", "net_traffic", "k8s_stream_stop", "agents", "home_dir"];
+pub const NOT_AUDITED: &[&str] = &["pty_write", "pty_resize", "pty_attach", "pty_detach", "net_traffic", "k8s_stream_stop", "agents", "home_dir", "agent_pending"];
 
 /// A file transfer is many calls: log a download once (first piece) and an upload once (last piece).
 pub fn audit_skip(cmd: &str, args: &Value) -> bool {
@@ -82,6 +84,16 @@ pub async fn call(client: &Arc<Client>, cmd: &str, args: &Value) -> CallResult {
         "notify_settings" => out(crate::notify::notify_settings().await),
         "notify_save" => out(crate::notify::notify_save(a!("settings")).await),
         "notify_test" => out(crate::notify::notify_test().await),
+        // DevCat Agent: what the chats are waiting for, and the answers
+        "agent_pending" => Ok(json!(crate::agent::pending())),
+        "agent_approve" => {
+            let (session, tool_use, decision): (String, String, devcat_harness::Decision) = (a!("sessionId"), a!("toolUseId"), a!("decision"));
+            out(crate::agent::approve_as(&session, &tool_use, decision, format!("phone: {}", client.device.name)))
+        }
+        "agent_answer" => {
+            let (session, tool_use, answer): (String, String, String) = (a!("sessionId"), a!("toolUseId"), a!("answer"));
+            out(crate::agent::answer_as(&session, &tool_use, answer, format!("phone: {}", client.device.name)))
+        }
         "agents" => Ok(json!({
             "terminals": crate::claude::pty::list(),
             "agents": crate::notify::hooks::all(),
@@ -320,6 +332,8 @@ pub fn audit_detail(cmd: &str, args: &Value) -> Option<String> {
             Some(v)
         }
         "k8s_logs_start" => s("pod"),
+        "agent_approve" => Some(format!("DevCat Agent: {}", args.pointer("/decision/decision").and_then(Value::as_str).unwrap_or("?"))),
+        "agent_answer" => s("answer").map(|a| format!("DevCat Agent question: {a}")),
         _ => None,
     };
     let conn = s("connId").map(|c| format!("[{c}] "));

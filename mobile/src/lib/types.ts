@@ -17,6 +17,16 @@ export interface PtyInfo {
   rows: number;
 }
 
+/** Something a DevCat Agent chat on the computer waits for: an approval or a question. */
+export interface AgentPending {
+  sessionId: string;
+  folder: string;
+  toolUseId: string;
+  kind: "approval" | "question";
+  request: { toolUseId: string; tool: string; kind: "read" | "edit" | "edit-outside" | "exec" | "fetch" | "query"; summary: string; input: Record<string, unknown> } | null;
+  question: { toolUseId: string; question: string; options: string[] } | null;
+}
+
 export interface AgentStatus {
   ptyId: string;
   cwd?: string | null;

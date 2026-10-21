@@ -446,6 +446,8 @@ export type AgentLiveEvent =
   | { type: "toolStart"; id: string; name: string }
   | { type: "step"; content: AgentBlock[]; usage: AgentUsage }
   | { type: "compacting"; tokens_before: number }
+  /** An approval or question was answered (here or on a phone). */
+  | { type: "resolved"; toolUseId: string; allowed: boolean; by: string }
   | { type: "compacted"; summary: string; tokens_before: number; usage: AgentUsage }
   | { type: "approval"; request: AgentApprovalRequest }
   | { type: "toolCall"; id: string; name: string; summary: string; input: Record<string, unknown> }

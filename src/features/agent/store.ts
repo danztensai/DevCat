@@ -214,6 +214,9 @@ function apply(c: Chat, e: AgentLiveEvent): Partial<Chat> {
       const usage = { input_tokens: c.usage.input_tokens + e.usage.input_tokens, output_tokens: c.usage.output_tokens + e.usage.output_tokens, cache_read_tokens: c.usage.cache_read_tokens + e.usage.cache_read_tokens };
       return { items, usage, contextTokens: Math.round(e.summary.length / 4) };
     }
+    case "resolved":
+      setTool(e.toolUseId, (t) => (t.status === "approval" || t.status === "question" ? { status: e.allowed ? "running" : "denied", request: null, question: null } : {}));
+      return { items };
     case "approval":
       setTool(e.request.toolUseId, () => ({ status: "approval", request: e.request, input: e.request.input }));
       return { items };

@@ -7,9 +7,9 @@ import clsx from "clsx";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock, FolderOpen, ImagePlus, Keyboard, Laptop, MoreVertical, Plus, Send, Smartphone, Square, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { onEvent } from "../lib/rpc";
-import { host, nav, refreshAgents, toast, toastErr, useApp } from "../lib/store";
+import { answerAgent, host, nav, refreshAgents, toast, toastErr, useApp, verb } from "../lib/store";
 import { uploadPasteImage } from "../lib/transfer";
-import type { AgentStatus, AiProvider, ClaudeProject, PtyInfo, SessionMeta } from "../lib/types";
+import type { AgentPending, AgentStatus, AiProvider, ClaudeProject, PtyInfo, SessionMeta } from "../lib/types";
 import { Btn, Card, Confirm, Empty, ErrorBox, Field, Input, Item, Loading, Screen, Section, Seg, Sheet, Spinner, TextArea, ago, duration, folderName, useLoad } from "../ui";
 
 const THEME = {
@@ -38,6 +38,52 @@ function statusLine(t: PtyInfo, a: AgentStatus | undefined): string {
   return `${t.program} · ${origin}`;
 }
 
+// ------------------------------------------------------------------ DevCat Agent
+
+/** A DevCat Agent approval or question from the computer, answered right here. */
+function PendingCard({ p, readonly }: { p: AgentPending; readonly: boolean }) {
+  const [own, setOwn] = useState("");
+  const [busy, setBusy] = useState(false);
+  const act = async (reply: Parameters<typeof answerAgent>[1]) => { setBusy(true); await answerAgent(p, reply); };
+  const r = p.request;
+  const detail = r ? (r.tool === "shell" ? String(r.input.command ?? r.summary) : r.tool === "db_query" ? String(r.input.query ?? r.summary) : r.summary) : "";
+  return (
+    <Card tone="warn">
+      <div className="flex items-center gap-2"><AlertTriangle className="size-4 text-warn" /><b className="min-w-0 flex-1 truncate">{folderName(p.folder)}</b><span className="text-[11px] text-muted">DevCat Agent</span></div>
+      {p.kind === "approval" && r ? (
+        <>
+          <div className="mt-1 text-[12.5px]">Wants to {verb(p)}{r.tool === "db_query" || r.kind === "query" ? ` (${String(r.input.connection ?? "")})` : ""}:</div>
+          <pre className="mt-1.5 max-h-40 overflow-auto rounded-lg bg-app px-2.5 py-2 font-mono text-[11.5px] whitespace-pre-wrap break-all">{detail}</pre>
+          {readonly ? (
+            <div className="mt-2 text-[12px] text-muted">Read-only access: answer it on the computer.</div>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Btn size="sm" variant="primary" loading={busy} onClick={() => void act({ decision: "allow" })}>Allow</Btn>
+              <Btn size="sm" disabled={busy} onClick={() => void act({ decision: "allow-for-session" })}>Always in this chat</Btn>
+              <Btn size="sm" variant="danger" disabled={busy} onClick={() => void act({ decision: "deny" })}>Deny</Btn>
+            </div>
+          )}
+        </>
+      ) : p.question ? (
+        <>
+          <div className="mt-1 text-[13px] whitespace-pre-wrap">{p.question.question}</div>
+          {readonly ? (
+            <div className="mt-2 text-[12px] text-muted">Read-only access: answer it on the computer.</div>
+          ) : (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {p.question.options.map((o) => <Btn key={o} size="sm" block disabled={busy} onClick={() => void act({ answer: o })}>{o}</Btn>)}
+              <div className="flex gap-1.5">
+                <Input value={own} onChange={(e) => setOwn(e.target.value)} placeholder="Or type an answer" className="h-8 flex-1 text-[13px]" />
+                <Btn size="sm" variant="primary" disabled={busy || !own.trim()} onClick={() => void act({ answer: own.trim() })}><Send className="size-4" /></Btn>
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
+    </Card>
+  );
+}
+
 // ------------------------------------------------------------------ list
 
 export function Agents() {
@@ -45,6 +91,7 @@ export function Agents() {
   const agents = useApp((s) => s.agents);
   const conn = useApp((s) => s.conn[s.current ?? ""]);
   const machine = useApp((s) => s.machines.find((m) => m.id === s.current));
+  const pending = useApp((s) => s.agentPending);
   const [, tick] = useState(0);
   useEffect(() => {
     void refreshAgents();
@@ -75,10 +122,11 @@ export function Agents() {
       tab="agents"
     >
       {offline && conn?.error && <ErrorBox error={conn.error} onRetry={() => void refreshAgents()} />}
-      {terms.length === 0 && !offline && (
+      {terms.length === 0 && pending.length === 0 && !offline && (
         <Empty icon={<TerminalSquare className="size-8" />} title="No agents running">Start one with <b className="text-fg">New</b>. It runs on the computer and keeps going when you close this app.</Empty>
       )}
-      {groups.waiting.length > 0 && <Section>Needs you</Section>}
+      {(groups.waiting.length > 0 || pending.length > 0) && <Section>Needs you</Section>}
+      {pending.map((p) => <PendingCard key={p.toolUseId} p={p} readonly={machine?.access === "readonly"} />)}
       {groups.waiting.map((t) => (
         <Card key={t.id} tone="warn" onClick={() => open(t)}>
           <div className="flex items-center gap-2"><AlertTriangle className="size-4 text-warn" /><b className="min-w-0 flex-1 truncate">{folderName(cwdOf(t, agents[t.id]))}</b><span className="text-[11px] text-muted">{t.program} · <OriginIcon t={t} /></span></div>

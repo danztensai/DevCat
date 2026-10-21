@@ -2,7 +2,7 @@
 // navigation stack (mirrored into browser history so Android's back button works) and toasts.
 import { create } from "zustand";
 import { call, errMsg, onConn, onEvent, phone, type ConnState, type Machine, type PhoneInfo } from "./rpc";
-import type { AgentStatus, PtyInfo, Route, TabRoot } from "./types";
+import type { AgentPending, AgentStatus, PtyInfo, Route, TabRoot } from "./types";
 
 export interface Toast { id: number; text: string; tone: "ok" | "err" | "info" }
 
@@ -14,6 +14,8 @@ interface State {
   /** Live terminals and agent status of the current computer. */
   terms: PtyInfo[];
   agents: Record<string, AgentStatus>;
+  /** DevCat Agent approvals and questions waiting on the current computer. */
+  agentPending: AgentPending[];
   stack: Route[];
   toasts: Toast[];
 }
@@ -27,6 +29,7 @@ export const useApp = create<State>(() => ({
   conn: {},
   terms: [],
   agents: {},
+  agentPending: [],
   stack: [{ s: "loading" }],
   toasts: [],
 }));
@@ -114,12 +117,29 @@ export async function refreshAgents() {
     const r = await call<{ terminals: PtyInfo[]; agents: AgentStatus[] }>(id, "agents");
     if (get().current !== id) return;
     set({ terms: r.terminals, agents: Object.fromEntries(r.agents.map((a) => [a.ptyId, a])) });
+    // older computers don't know this command: then there's nothing to show
+    const pending = await call<AgentPending[]>(id, "agent_pending").catch(() => [] as AgentPending[]);
+    if (get().current === id) set({ agentPending: pending });
   } catch { /* offline: the connection state shows it */ }
 }
 
 /** How many agents wait for the user on the selected computer. */
 export function waitingCount(s: State = get()): number {
-  return Object.values(s.agents).filter((a) => a.status === "waiting" && s.terms.some((t) => t.id === a.ptyId)).length;
+  return Object.values(s.agents).filter((a) => a.status === "waiting" && s.terms.some((t) => t.id === a.ptyId)).length + s.agentPending.length;
+}
+
+/** Answer a DevCat Agent approval (`decision`) or question (`answer`) on the current computer. */
+export async function answerAgent(p: AgentPending, reply: { decision: "allow" | "allow-for-session" | "deny" } | { answer: string }) {
+  // gone from the list at once; the computer confirms with agent-pending
+  set({ agentPending: get().agentPending.filter((x) => x.toolUseId !== p.toolUseId) });
+  try {
+    if ("answer" in reply) await host("agent_answer", { sessionId: p.sessionId, toolUseId: p.toolUseId, answer: reply.answer });
+    else await host("agent_approve", { sessionId: p.sessionId, toolUseId: p.toolUseId, decision: { decision: reply.decision } });
+  } catch (e) {
+    toastErr(e);
+  } finally {
+    void refreshAgents();
+  }
 }
 
 // ------------------------------------------------------------------ events
@@ -128,6 +148,19 @@ let notify: ((title: string, body: string) => void) | null = null;
 export function setLocalNotifier(fn: (title: string, body: string) => void) { notify = fn; }
 
 const folder = (p?: string | null) => (p ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "agent";
+
+/** "run a command", "edit notes.txt", … for an approval. */
+export function verb(p: AgentPending): string {
+  const r = p.request;
+  if (!r) return "do something";
+  switch (r.kind) {
+    case "exec": return r.tool === "db_query" ? "change data" : "run a command";
+    case "fetch": return "fetch a page";
+    case "query": return "read from a connection";
+    case "edit-outside": return "edit a file outside the project";
+    default: return r.tool === "write" ? "write a file" : "edit a file";
+  }
+}
 
 export function startStateEvents() {
   onConn((id, state, error) => {
@@ -160,6 +193,16 @@ export function startStateEvents() {
   onEvent<{ id: string }>("pty-exit", (p, mid) => {
     if (mid !== get().current) return;
     set({ terms: get().terms.filter((t) => t.id !== p.id) });
+  });
+  onEvent<{ items: AgentPending[] }>("agent-pending", (p, mid) => {
+    if (mid !== get().current) return;
+    const before = new Set(get().agentPending.map((x) => x.toolUseId));
+    set({ agentPending: p.items });
+    for (const x of p.items.filter((x) => !before.has(x.toolUseId))) {
+      const what = x.kind === "question" ? x.question?.question ?? "has a question" : `wants to ${verb(x)}`;
+      if (document.hidden) notify?.(`${folder(x.folder)}: DevCat Agent needs you`, what);
+      else if (top().s !== "agents") toast(`${folder(x.folder)}: ${what}`, "info");
+    }
   });
   onEvent<PtyInfo>("remote-pty-opened", (p, mid) => {
     if (mid !== get().current) return;
