@@ -1,6 +1,7 @@
 // The CLI build (no `gui` feature) leaves the window-only commands unused.
 #![cfg_attr(not(feature = "gui"), allow(dead_code, unused_imports))]
 
+mod agent;
 mod ai;
 mod bookmarks;
 mod claude;
@@ -67,6 +68,7 @@ fn init_process() {
 fn init_backend(dir: std::path::PathBuf) {
     network::init(dir.clone());
     ai::init(dir.clone());
+    agent::init(dir.clone());
     state::init(dir.clone());
     network::start();
     notify::init(dir.clone());
@@ -78,6 +80,7 @@ fn shutdown_backend() {
     network::shutdown();
     crate::rt::block_on(remote::shutdown());
     claude::runner::shutdown_all();
+    agent::shutdown_all();
     keep_awake::shutdown();
 }
 
@@ -270,7 +273,16 @@ pub fn run() {
             notes::note_save,
             notes::note_delete,
             // AI connections (providers for the AI workspace terminal)
+            agent::agent_open,
+            agent::agent_send,
+            agent::agent_stop,
+            agent::agent_approve,
+            agent::agent_close,
+            agent::agent_answer,
+            agent::agent_attach,
+            agent::agent_sessions,
             ai::ai_providers_list,
+            ai::ai_agent_models,
             ai::ai_provider_save,
             ai::ai_provider_delete,
             ai::ai_provider_detect,

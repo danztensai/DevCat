@@ -14,7 +14,7 @@ import type { GitView, Tab } from "../../tabs/types";
 import { ChangesPanel } from "../claude/DiffView";
 import { openClaudeWorkspace } from "../claude/open";
 import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
-import { basename, copyText, revealPath } from "../files/format";
+import { basename, copyText, revealPath, REVEAL_LABEL } from "../files/format";
 import { checkout, createBranch, pushCurrent } from "./actions";
 import { BranchesView } from "./BranchesView";
 import { useGitDialogs, type Dialogs } from "./dialogs";
@@ -270,7 +270,7 @@ function RepoMenu({ repo }: { repo: string }) {
       { label: "New AI chat here", icon: <AiTerminalIcon className="size-3.5" />, onClick: () => openClaudeWorkspace(repo) },
       "separator",
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(repo) },
-      { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(repo) },
+      { label: REVEAL_LABEL, icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(repo) },
     ]);
   };
   return (

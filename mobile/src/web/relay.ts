@@ -3,7 +3,7 @@
 // speaks the app's protocol (crates/remote-proto). This browser has its own key, kept here;
 // the computer lists it under Paired phones like the app.
 import init, { Node, type Pipe } from "devcat-web-iroh";
-import { deviceName, parseLink, platform } from "./client";
+import { carryPairing, deviceName, parseLink, platform } from "./client";
 
 export interface RelaySaved {
   hostId: string;
@@ -29,6 +29,7 @@ export function relaySaved(): RelaySaved | null {
 
 function save(s: RelaySaved | null) {
   if (s) localStorage.setItem(SAVED, JSON.stringify(s)); else localStorage.removeItem(SAVED);
+  carryPairing();
 }
 
 /** This browser's key (32 random bytes, hex), made once. */

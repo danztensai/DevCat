@@ -1,0 +1,32 @@
+# Tests and lints crates/harness (DevCat Agent: agent loop, session log, model adapters, tools) on
+# every OS, when it changes. Shell and path handling differ per OS, so all three run.
+name: harness
+
+on:
+  pull_request:
+    paths: ["crates/harness/**", ".github/workflows/harness.yml"]
+  push:
+    branches: [master]
+    paths: ["crates/harness/**", ".github/workflows/harness.yml"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: crates/harness
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: crates/harness -> target
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test

@@ -27,6 +27,9 @@ Options for serve (saved for next time, also used by the app's remote access):
   --no-browser             Don't serve the browser version (http on the same port)
   --browser                Serve it again
 Only for this run:
+  --tailscale              Pair over Tailscale: the QR code opens the browser version at this
+                           computer's tailnet name, which phones with Tailscale reach from any
+                           network (pair once, stays paired). Needs Tailscale connected.
   --approve <ask|full|readonly>
                            Who answers pairing requests: you in this terminal (ask, the
                            default) or nobody (every phone with a valid pairing code is
@@ -89,6 +92,7 @@ struct Opts {
     web: Option<bool>,
     approve: Option<String>,
     data_dir: Option<PathBuf>,
+    tailscale: bool,
 }
 
 fn parse(args: &[String]) -> Result<Opts, String> {
@@ -107,6 +111,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--public-addr" => o.public_addr = Some(value()?),
             "--no-browser" => o.web = Some(false),
             "--browser" => o.web = Some(true),
+            "--tailscale" => o.tailscale = true,
             "--approve" => {
                 let v = value()?;
                 if !["ask", "full", "readonly"].contains(&v.as_str()) {
@@ -209,6 +214,19 @@ async fn serve(o: Opts, approve: String, interactive: bool, dir: PathBuf) -> i32
                 break;
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    }
+    if o.tailscale {
+        if !st.web_running {
+            eprintln!("--tailscale pairs through the browser version, which isn't running{}.", st.web_error.as_deref().map(|e| format!(" ({e})")).unwrap_or_else(|| " (start with --browser)".into()));
+            return 2;
+        }
+        match crate::remote::tailscale::tailnet_host().await {
+            Ok(h) => crate::remote::prefer_addr(Some(format!("{h}:{}", st.settings.port))),
+            Err(e) => {
+                eprintln!("{e}");
+                return 2;
+            }
         }
     }
     println!("DevCat {} is sharing this computer (data: {})", env!("DEVCAT_VERSION"), dir.display());
@@ -427,10 +445,14 @@ async fn show_pairing(qr: bool) {
         println!("New pairing code (valid {mins} min):");
     }
     println!("  Code:     {}", p.code);
+    let tailnet = crate::remote::preferred_addr().is_some();
+    if let (true, Some(w)) = (tailnet, &p.web_link) {
+        println!("  Browser (Tailscale): {w}");
+    }
     if let Some(h) = &p.hosted_link {
         println!("  Browser (any network): {h}");
     }
-    if let Some(w) = &p.web_link {
+    if let (false, Some(w)) = (tailnet, &p.web_link) {
         println!("  Browser (same network): {w}");
     }
     println!("  DevCat Mobile: {}", p.app_link);

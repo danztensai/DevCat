@@ -83,6 +83,16 @@ async fn login_shell_path() -> Option<OsString> {
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
+    // An interactive shell opens /dev/tty and makes itself the terminal's foreground job, so
+    // `devcat serve` (reading commands from that terminal) got SIGTTIN and was suspended,
+    // dropping every phone. In its own session it has no terminal to take.
+    // SAFETY: setsid is async-signal-safe.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
     let out = tokio::time::timeout(Duration::from_secs(4), cmd.output()).await.ok()?.ok()?;
     let s = String::from_utf8_lossy(&out.stdout);
     let start = s.find(MARK)? + MARK.len();

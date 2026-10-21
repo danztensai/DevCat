@@ -16,6 +16,7 @@ import { glassOn, onPaletteChange, palette } from "../appearance/store";
 import { onFontsChange, terminalFont, terminalZoomKey } from "../appearance/fonts";
 import { terminalTheme } from "../appearance/themes";
 import { enableGpu } from "../../lib/xtermGpu";
+import { droppedPaths, isFileDrag, shellQuote } from "../files/drop";
 
 const IS_MAC = navigator.platform.toLowerCase().includes("mac");
 
@@ -263,9 +264,35 @@ export function TerminalPane({ cwd, program, providerId, getArgs, startKey = 0, 
     });
   }, [visible]);
 
+  // Drop files on the terminal to type their paths (like iTerm2 / Windows Terminal): Claude Code
+  // and other CLIs then read them, images included.
+  const [dropping, setDropping] = useState(false);
+  const onDrop = async (e: React.DragEvent) => {
+    if (!isFileDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    setDropping(false);
+    const id = ptyRef.current;
+    if (!id) return;
+    try {
+      const paths = await droppedPaths(e.dataTransfer, "terminal");
+      if (paths.length) await api.ptyWrite(id, paths.map(shellQuote).join(" ") + " ");
+      termRef.current?.term.focus();
+    } catch (err) {
+      termRef.current?.term.write(`\r\n\x1b[31mCouldn't drop the file: ${errMsg(err)}\x1b[0m\r\n`);
+    }
+  };
+
   return (
-    <div className="h-full w-full bg-app px-2 pt-1.5 pb-1" onMouseDown={() => termRef.current?.term.focus()}>
+    <div className="relative h-full w-full bg-app px-2 pt-1.5 pb-1" onMouseDown={() => termRef.current?.term.focus()}
+      onDragOver={(e) => { if (isFileDrag(e.dataTransfer)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDropping(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); }}
+      onDrop={(e) => void onDrop(e)}>
       <div ref={host} className="h-full w-full" />
+      {dropping && (
+        <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-lg border-2 border-dashed border-accent/60 bg-app/70 text-[13px] text-fg">
+          Drop to type the file's path into the terminal
+        </div>
+      )}
     </div>
   );
 }
