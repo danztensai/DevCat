@@ -2,6 +2,7 @@
 // their own api files under src/features/<feature>/api.ts.
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentDecision, AgentModel, AgentOpened, AgentPolicy, AgentSettings,
   KeepAwakeState,
   UpdateInfo,
   GitRepo, GitLogQuery, GitCommit, GitCommitDetail, GitBlame, GitRefs, GitStash, CommitAction, RemoteOpts,
@@ -131,6 +132,17 @@ export const api = {
     invoke<string>("fs_write_text", { path, content, expectedVersion, lineEnding: lineEnding ?? null }),
   /** Open a regular, non-executable file in its default app (scripts/executables are refused). */
   fsOpenExternal: (path: string) => invoke<void>("fs_open_external", { path }),
+  // DevCat Agent (crates/harness): chats report through the `agent-event` event.
+  agentOpen: (cwd: string, providerId: string, sessionId: string | null) => invoke<AgentOpened>("agent_open", { cwd, providerId, sessionId }),
+  agentSend: (sessionId: string, text: string, policy: AgentPolicy, model: string | null, attachments: string[]) => invoke<void>("agent_send", { sessionId, text, policy, model, attachments }),
+  agentAnswer: (sessionId: string, toolUseId: string, answer: string) => invoke<void>("agent_answer", { sessionId, toolUseId, answer }),
+  /** Save a dropped / pasted file (base64) for the chat; returns its path. */
+  agentAttach: (sessionId: string, name: string, data: string) => invoke<string>("agent_attach", { sessionId, name, data }),
+  agentStop: (sessionId: string) => invoke<void>("agent_stop", { sessionId }),
+  agentApprove: (sessionId: string, toolUseId: string, decision: AgentDecision) => invoke<void>("agent_approve", { sessionId, toolUseId, decision }),
+  agentClose: (sessionId: string) => invoke<void>("agent_close", { sessionId }),
+  agentSessions: (cwd: string) => invoke<{ id: string; title: string; updatedMs: number; messages: number }[]>("agent_sessions", { cwd }),
+  agentModels: (settings: AgentSettings, providerId: string | null, apiKey: string | null) => invoke<AgentModel[]>("ai_agent_models", { settings, providerId, apiKey }),
   /** Put local files / folders on the OS clipboard (paste attaches them in Slack, copies them in Explorer / Finder). */
   fsCopyFiles: (paths: string[]) => invoke<void>("fs_copy_files", { paths }),
   gitStatus: (cwd: string) => invoke<GitStatus>("git_status", { cwd }),

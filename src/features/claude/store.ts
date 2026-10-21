@@ -49,6 +49,9 @@ export interface TabState {
   ptyId: string | null;
   /** Bump to (re)start the claude process. */
   startSeq: number;
+  /** A repository inside the folder to show in Diff (the folder itself isn't one, or the user picked
+   *  another); null = the folder. */
+  repo: string | null;
   git: GitStatus | null;
   gitError: string | null;
   gitLoading: boolean;
@@ -64,7 +67,7 @@ const newReview = (): ReviewState => ({ runId: null, status: "idle", scope: "unc
 const newTab = (cwd: string, sessionId: string | null): TabState => ({
   cwd, isClaude: true, sessionId, options: { model: "", permissionMode: "" }, launched: null, launchedAt: null, ptyId: null, startSeq: 0,
 
-  git: null, gitError: null, gitLoading: false, gitTick: 0, diffFocus: null, review: newReview(),
+  repo: null, git: null, gitError: null, gitLoading: false, gitTick: 0, diffFocus: null, review: newReview(),
 });
 
 let seq = 0;
@@ -204,7 +207,7 @@ export async function refreshGit(tabId: string) {
   if (!s || s.gitLoading) return;
   patch(tabId, { gitLoading: true });
   try {
-    const git = await api.gitStatus(s.cwd);
+    const git = await api.gitStatus(s.repo ?? s.cwd);
     // Keep the old object when nothing changed so subscribers don't re-render on every poll.
     patch(tabId, (cur) => ({
       git: JSON.stringify(cur.git) === JSON.stringify(git) ? cur.git : git,
@@ -213,6 +216,12 @@ export async function refreshGit(tabId: string) {
   } catch (e) {
     patch(tabId, { gitError: errMsg(e), gitLoading: false });
   }
+}
+
+/** Show the changes of `repo` (a repository inside the tab's folder; null = the folder itself). */
+export function setRepo(tabId: string, repo: string | null) {
+  patch(tabId, { repo, git: null, gitError: null });
+  void refreshGit(tabId);
 }
 
 export const focusDiff = (tabId: string, path: string, line?: number | null) =>

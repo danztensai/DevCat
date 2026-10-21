@@ -15,7 +15,7 @@ import { useUi } from "../../store/ui";
 import { openClaudeWorkspace } from "../claude/open";
 import { useWorkspace } from "../claude/sidebar/workspace";
 import { useContextMenu, type MenuItem } from "../connections/ContextMenu";
-import { basename, copyText, revealPath } from "../files/format";
+import { basename, copyText, revealPath, REVEAL_LABEL } from "../files/format";
 import { openGitRepo } from "./open";
 import { DEFAULT_DEPTH, pickScanRoot, useGitScan, useScanRoot } from "./scan";
 import { gitAction, useGitRepos } from "./store";
@@ -123,7 +123,7 @@ function RootHeader({ root }: { root: string | null }) {
       items.push(
         "separator",
         { label: "Copy folder path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(root) },
-        { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(root) },
+        { label: REVEAL_LABEL, icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(root) },
       );
     }
     menu.show({ clientX: r.left, clientY: r.bottom + 2 }, items);
@@ -234,7 +234,7 @@ function RepoList({ root }: { root: string }) {
       { label: "Scan from this folder", icon: <FolderSearch className="size-3.5" />, onClick: () => useGitScan.getState().setRoot(r.path) },
       "separator",
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(r.path) },
-      { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(r.path) },
+      { label: REVEAL_LABEL, icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(r.path) },
     ];
     menu.show(e, items);
   };

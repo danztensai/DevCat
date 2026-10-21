@@ -1708,6 +1708,7 @@ dependencies = [
  "chrono",
  "clipboard-rs",
  "csv",
+ "devcat-harness",
  "devcat-remote-proto",
  "dirs",
  "flate2",
@@ -1754,6 +1755,23 @@ dependencies = [
  "tokio-util",
  "uuid",
  "zip 8.6.0",
+]
+
+[[package]]
+name = "devcat-harness"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "futures",
+ "globset",
+ "ignore",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
