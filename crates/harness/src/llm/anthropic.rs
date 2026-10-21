@@ -52,6 +52,7 @@ fn wire_message(m: &Message) -> Value {
             Block::ToolResult { tool_use_id, content, is_error } => {
                 Some(json!({ "type": "tool_result", "tool_use_id": tool_use_id, "content": content, "is_error": is_error }))
             }
+            Block::Image { media_type, data } => Some(json!({ "type": "image", "source": { "type": "base64", "media_type": media_type, "data": data } })),
         })
         .collect();
     json!({ "role": match m.role { Role::User => "user", Role::Assistant => "assistant" }, "content": content })

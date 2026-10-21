@@ -57,10 +57,24 @@ pub enum Decision {
     Deny { reason: Option<String> },
 }
 
+/// A question the model asks the user (the `ask_user` tool).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Question {
+    pub tool_use_id: String,
+    pub question: String,
+    /// Suggested answers to pick from; the user can always type their own.
+    pub options: Vec<String>,
+}
+
 #[async_trait]
 pub trait Approver: Send + Sync {
     /// Ask the user. `by` in the returned pair names who answered (for the audit log).
     async fn decide(&self, req: &ApprovalRequest) -> (Decision, String);
+    /// Put a question to the user and wait for the answer (None = nobody can answer).
+    async fn ask(&self, _q: &Question) -> Option<String> {
+        None
+    }
 }
 
 /// Refuses everything: the default when nobody can answer (fail closed).

@@ -26,6 +26,22 @@ fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8192).any(|b| *b == 0)
 }
 
+/// What to do with a file `read` can't show: write a small extraction script, like a person would.
+fn binary_hint(path: &Path, size: usize) -> String {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let how = match ext.as_str() {
+        "pdf" => "Extract its text with a script, e.g. `python -c \"import pypdf,sys; print('\n'.join(p.extract_text() or '' for p in pypdf.PdfReader(sys.argv[1]).pages))\" FILE` or `pdftotext FILE -`.",
+        "docx" => "Extract its text with a script, e.g. python-docx (`docx.Document(FILE).paragraphs`).",
+        "xlsx" | "xlsm" | "xls" => "Read it with a script, e.g. openpyxl or pandas (`pandas.read_excel(FILE)`), printing only the sheets and rows you need.",
+        "pptx" => "Extract its text with a script, e.g. python-pptx.",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" => "It's an image: if the user attached it, it's in their message for you to see; otherwise use a script (e.g. Pillow) for size or metadata.",
+        "zip" | "gz" | "tar" | "7z" => "List or extract it with a script or the shell (`tar -tf`, `python -m zipfile -l`).",
+        "sqlite" | "db" => "Query it with `sqlite3` or Python's sqlite3 module.",
+        _ => "If you need what's inside, write a small script that converts it to text.",
+    };
+    format!("{} is a binary file ({size} bytes), so `read` can't show it. {how} Run scripts with `shell`; if a library is missing, ask the user before installing it.", path.display())
+}
+
 pub struct Read;
 
 #[async_trait]
@@ -66,7 +82,7 @@ impl Tool for Read {
             Err(e) => return ToolOutput::err(format!("Can't read {}: {e}", path.display())),
         };
         if looks_binary(&bytes) {
-            return ToolOutput::err(format!("{} is a binary file ({} bytes).", path.display(), bytes.len()));
+            return ToolOutput::err(binary_hint(&path, bytes.len()));
         }
         let text = String::from_utf8_lossy(&bytes);
         let offset = input.get("offset").and_then(Value::as_u64).unwrap_or(1).max(1) as usize;

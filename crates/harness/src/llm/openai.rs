@@ -57,7 +57,19 @@ fn wire_message(m: &Message) -> Vec<Value> {
                 })
                 .collect();
             let text = m.text();
-            if !text.is_empty() {
+            let images: Vec<Value> = m
+                .content
+                .iter()
+                .filter_map(|b| match b {
+                    Block::Image { media_type, data } => Some(json!({ "type": "image_url", "image_url": { "url": format!("data:{media_type};base64,{data}") } })),
+                    _ => None,
+                })
+                .collect();
+            if !images.is_empty() {
+                let mut parts = vec![json!({ "type": "text", "text": text })];
+                parts.extend(images);
+                out.push(json!({ "role": "user", "content": parts }));
+            } else if !text.is_empty() {
                 out.push(json!({ "role": "user", "content": text }));
             }
             out

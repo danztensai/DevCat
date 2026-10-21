@@ -2,7 +2,7 @@
 //! each wire protocol has its own small adapter.
 mod anthropic;
 mod openai;
-mod sse;
+pub(crate) mod sse;
 
 use crate::message::{Block, Message, ToolSpec, Usage};
 use crate::{Error, Result};

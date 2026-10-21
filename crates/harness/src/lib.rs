@@ -15,6 +15,7 @@
 pub mod agent;
 pub mod approval;
 pub mod llm;
+pub mod mcp;
 pub mod message;
 pub mod prompt;
 pub mod session;
