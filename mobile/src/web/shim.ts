@@ -3,13 +3,14 @@
 // WebHost (talks to the DevCat that served the page) or, in the hosted version, RelayHost
 // (through the computer's relay); camera and notifications are stubs (the QR code is scanned
 // with the phone's camera app, notifications come through ntfy).
-import { WebHost, deviceName, platform, saved as webSaved, setDeviceName } from "./client";
+import { WebHost, carryPairing, deviceName, platform, saved as webSaved, setDeviceName } from "./client";
 import type { RelayHost, RelaySaved } from "./relay";
 
 type Handler = (e: { event: string; payload: unknown }) => void;
 const handlers = new Map<string, Set<Handler>>();
 function emit(event: string, payload: unknown) {
   handlers.get(event)?.forEach((h) => h({ event, payload }));
+  if (event === "m-conn" && (payload as { state: string }).state === "offline") keepUp(backoff);
 }
 
 // The relay code and its WebAssembly are only in the hosted build (MODE is replaced at build
@@ -29,6 +30,27 @@ function machine() {
   };
 }
 
+// The app's Rust side keeps the connection up; here the page does. Phones drop the socket when
+// the browser goes to the background, so reconnect when it's back, and retry while offline.
+let retry: ReturnType<typeof setTimeout> | null = null;
+let backoff = 1000;
+function keepUp(delay: number) {
+  if (retry) clearTimeout(retry);
+  retry = setTimeout(async () => {
+    retry = null;
+    host ??= await hostP;
+    if (document.hidden || !saved() || host.online()) return;
+    try { await host.connect(); backoff = 1000; } catch { backoff = Math.min(backoff * 2, 30_000); keepUp(backoff); }
+  }, delay);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) carryPairing(); // before "Open in Safari" or another app takes the address
+  else keepUp(0);
+});
+window.addEventListener("pageshow", () => keepUp(0));
+// Back to a history entry from before pairing: put the pairing back in its address.
+window.addEventListener("popstate", () => carryPairing());
+
 export async function invoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
   host ??= await hostP;
   const r = await (async (): Promise<unknown> => {
@@ -39,7 +61,8 @@ export async function invoke<T>(cmd: string, args: Record<string, any> = {}): Pr
       case "m_pair": await host.pair(String(args.link)); return machine();
       case "m_connect": return host.connect();
       case "m_call": return host.call(String(args.cmd), args.args ?? null);
-      case "m_disconnect": case "m_network_changed": host.close(); return null;
+      case "m_disconnect": host.close(); return null;
+      case "m_network_changed": host.close(); keepUp(0); return null;
       case "m_forget": host.forget(); return [];
       case "m_set_addrs": { const m = machine(); return m ? [m] : []; }
       default: throw `Not available in the browser: ${cmd}`;

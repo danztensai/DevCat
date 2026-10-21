@@ -42,6 +42,7 @@ pub const WRITES: &[&str] = &[
     "fs_write_text",
     "fs_upload",
     "fs_upload_cancel",
+    "paste_dir",
 ];
 
 /// Images / PDFs bigger than this aren't sent to phones (base64 over a phone connection).
@@ -171,6 +172,7 @@ pub async fn call(client: &Arc<Client>, cmd: &str, args: &Value) -> CallResult {
             let done = arg(args, "done").unwrap_or(false);
             super::transfer::write_chunk(target, arg(args, "offset").unwrap_or(0), a!("data"), done, arg(args, "overwrite").unwrap_or(false)).await.map_err(|e| json!(e))
         }
+        "paste_dir" => super::transfer::paste_dir().map(|p| json!(p)).map_err(|e| json!(e)),
         "home_dir" => Ok(json!(dirs::home_dir().map(|h| h.to_string_lossy().into_owned()))),
         "claude_sessions" => out(crate::claude::sessions::claude_sessions(a!("cwd")).await),
         "claude_transcript" => out(crate::claude::sessions::claude_transcript(a!("cwd"), a!("sessionId")).await),

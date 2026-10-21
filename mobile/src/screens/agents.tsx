@@ -4,10 +4,11 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import clsx from "clsx";
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock, FolderOpen, Laptop, MoreVertical, Plus, Send, Smartphone, Square, TerminalSquare } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock, FolderOpen, ImagePlus, Keyboard, Laptop, MoreVertical, Plus, Send, Smartphone, Square, TerminalSquare } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { onEvent } from "../lib/rpc";
-import { host, nav, refreshAgents, toastErr, useApp } from "../lib/store";
+import { host, nav, refreshAgents, toast, toastErr, useApp } from "../lib/store";
+import { uploadPasteImage } from "../lib/transfer";
 import type { AgentStatus, AiProvider, ClaudeProject, PtyInfo, SessionMeta } from "../lib/types";
 import { Btn, Card, Confirm, Empty, ErrorBox, Field, Input, Item, Loading, Screen, Section, Seg, Sheet, Spinner, TextArea, ago, duration, folderName, useLoad } from "../ui";
 
@@ -108,6 +109,32 @@ const FONT = "\"JetBrains Mono\", \"SF Mono\", Menlo, monospace";
 /** Width of one character cell per px of font size (monospace). */
 const CELL = 0.602;
 
+/** Let the terminal take typing (and show the keyboard) or not. */
+function setKeys(t: XTerm, on: boolean) {
+  const ta = t.textarea;
+  if (!ta) return;
+  ta.readOnly = !on;
+  ta.inputMode = on ? "text" : "none";
+  if (on) t.focus(); else ta.blur();
+}
+
+/** A numbered menu on screen (Claude Code's "❯ 1. Yes  2. No …"): the options, or none. */
+type Choice = { n: string; label: string; current: boolean };
+const OPTION = /^[\s│|]*(❯|›|>)?\s*(\d{1,2})[.)]\s+(.+?)[\s│|]*$/;
+function scanChoices(t: XTerm): Choice[] {
+  const b = t.buffer.active;
+  const found: Choice[] = [];
+  for (let y = b.baseY; y < b.baseY + t.rows; y++) {
+    const m = OPTION.exec(b.getLine(y)?.translateToString(true) ?? "");
+    if (!m) continue;
+    // A "1." starts a new list: keep only the last one on screen.
+    if (m[2] === "1") found.length = 0;
+    if (Number(m[2]) === found.length + 1) found.push({ n: m[2], label: m[3], current: !!m[1] });
+  }
+  // Only a menu with the selection marker, not a numbered list in the agent's answer.
+  return found.length >= 2 && found.some((c) => c.current) ? found : [];
+}
+
 export function Terminal({ id }: { id: string }) {
   const term = useApp((s) => s.terms.find((t) => t.id === id));
   const agent = useApp((s) => s.agents[id]);
@@ -122,6 +149,9 @@ export function Terminal({ id }: { id: string }) {
   const [stop, setStop] = useState(false);
   const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem("devcat.mobile.termFont")) || 11);
   const [fitWidth, setFitWidth] = useState(false);
+  const [choices, setChoices] = useState<Choice[]>([]);
+  /** Typing straight into the terminal; off, tapping it only scrolls (no keyboard popping up). */
+  const [keyboard, setKeyboard] = useState(false);
 
   const write = (data: string) => {
     if (readonly) return;
@@ -151,13 +181,19 @@ export function Terminal({ id }: { id: string }) {
         t.resize(cols, rows);
         if (!t.element && box.current) t.open(box.current);
         t.reset();
-        t.write(b64ToBytes(r.data));
+        t.write(b64ToBytes(r.data), rescan);
         t.scrollToBottom();
+        setKeys(t, keyboardRef.current);
       } catch (e) {
         if (!disposed) setError(typeof e === "string" ? e : String(e));
       }
     };
-    const offOut = onEvent<{ id: string; data: string }>("pty-output", (p) => { if (p.id === id) t.write(b64ToBytes(p.data)); });
+    let scan: ReturnType<typeof setTimeout> | null = null;
+    const rescan = () => {
+      if (scan) clearTimeout(scan);
+      scan = setTimeout(() => { if (!disposed) setChoices(scanChoices(t)); }, 150);
+    };
+    const offOut = onEvent<{ id: string; data: string }>("pty-output", (p) => { if (p.id === id) t.write(b64ToBytes(p.data), rescan); });
     const offLag = onEvent<{ id: string }>("pty-lagged", (p) => { if (p.id === id) void attach(); });
     const offExit = onEvent<{ id: string }>("pty-exit", (p) => { if (p.id === id) setExited(true); });
     void attach();
@@ -165,6 +201,7 @@ export function Terminal({ id }: { id: string }) {
     document.addEventListener("visibilitychange", onVis);
     return () => {
       disposed = true;
+      if (scan) clearTimeout(scan);
       offOut(); offLag(); offExit();
       document.removeEventListener("visibilitychange", onVis);
       void host("pty_detach", { id }).catch(() => {});
@@ -173,6 +210,19 @@ export function Terminal({ id }: { id: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // keyboard on/off: xterm types through a hidden textarea; read-only, focusing it shows no keyboard
+  const keyboardRef = useRef(keyboard);
+  useEffect(() => {
+    keyboardRef.current = keyboard;
+    if (xt.current) setKeys(xt.current, keyboard);
+  }, [keyboard]);
+
+  /** Send keys from a button, and put the keyboard away unless it's wanted. */
+  const press = (seq: string) => {
+    write(seq);
+    if (!keyboard) (document.activeElement as HTMLElement | null)?.blur();
+  };
 
   // text size / fit to width
   useEffect(() => {
@@ -191,6 +241,33 @@ export function Terminal({ id }: { id: string }) {
     setText("");
   };
 
+  // images: sent to the computer, then their path pasted in (Claude Code shows it as [Image #n])
+  const picker = useRef<HTMLInputElement>(null);
+  const [sending, setSending] = useState(0);
+  const attach = async (files: Blob[]) => {
+    let added = 0;
+    for (const f of files) {
+      setSending((n) => n + 1);
+      try {
+        const path = await uploadPasteImage(f);
+        // As a paste (bracketed), like dropping the file on the terminal; a shell just gets the path.
+        write(term?.agent ? `\x1b[200~${path}\x1b[201~` : `${path.includes(" ") ? `"${path}"` : path} `);
+        added++;
+      } catch (e) {
+        toastErr(e);
+      } finally {
+        setSending((n) => n - 1);
+      }
+    }
+    if (added) toast(added > 1 ? `${added} images added` : "Image added", "ok");
+  };
+  const pastedImages = (e: ClipboardEvent) => {
+    const imgs = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) return;
+    e.preventDefault();
+    void attach(imgs);
+  };
+
   const st = agent?.status;
   const sub = exited ? "exited" : st === "waiting" ? <span className="text-warn">⚠ {agent?.message ?? "waiting for you"}</span> : st === "working" ? <span className="text-warn">◐ working</span> : st === "idle" ? <span className="text-ok">✓ done</span> : (term?.program ?? info?.program ?? "");
 
@@ -198,21 +275,39 @@ export function Terminal({ id }: { id: string }) {
     <Screen title={folderName(cwdOf(term ?? info ?? undefined, agent)) || "Terminal"} sub={sub} scroll={false} className="flex flex-col gap-2 p-2"
       right={<button aria-label="Terminal menu" className="flex size-9 items-center justify-center text-muted" onClick={() => setMenu(true)}><MoreVertical className="size-5" /></button>}>
       {error && <ErrorBox error={error} />}
-      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-line bg-[#0a0b0d] p-1">
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-line bg-[#0a0b0d] p-1" onPasteCapture={readonly ? undefined : pastedImages}>
         <div ref={box} className="h-full min-w-full" />
       </div>
+      {!readonly && choices.length > 0 && (
+        <div className="space-y-1.5">
+          {choices.map((c) => (
+            <button key={c.n} onClick={() => press(c.n)} className={clsx("flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left active:bg-line", c.current ? "border-accent bg-accent/10" : "border-line bg-raised")}>
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-hover font-mono text-[12px] font-bold">{c.n}</span>
+              <span className="min-w-0 flex-1 text-[13.5px] leading-snug">{c.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {exited && <div className="rounded-lg bg-hover px-3 py-1.5 text-center text-[12px] text-muted">The program exited.</div>}
       {readonly ? (
         <div className="rounded-lg bg-hover px-3 py-2 text-center text-[12px] text-muted">Read-only access: you can watch but not type.</div>
       ) : (
         <>
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+            <button aria-label={keyboard ? "Hide keyboard" : "Type in the terminal"} aria-pressed={keyboard} onClick={() => { if (xt.current) setKeys(xt.current, !keyboard); setKeyboard(!keyboard); }}
+              className={clsx("flex h-8 min-w-9 shrink-0 items-center justify-center rounded-lg border px-2", keyboard ? "border-accent bg-accent/15 text-accent" : "border-line bg-hover")}>
+              <Keyboard className="size-4" />
+            </button>
             {KEYS.map(([label, seq]) => (
-              <button key={label} onClick={() => write(seq)} className="h-8 min-w-9 shrink-0 rounded-lg border border-line bg-hover px-2 font-mono text-[12px] font-semibold active:bg-line">{label}</button>
+              <button key={label} onClick={() => press(seq)} className="h-8 min-w-9 shrink-0 rounded-lg border border-line bg-hover px-2 font-mono text-[12px] font-semibold active:bg-line">{label}</button>
             ))}
           </div>
           <div className="flex items-end gap-2" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-            <TextArea rows={1} className="max-h-28 min-h-11 flex-1 resize-none" placeholder={term?.agent ? "Message Claude…" : "Type a command…"} value={text}
+            <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; void attach(fs); }} />
+            <button aria-label="Add image" disabled={sending > 0} onClick={() => picker.current?.click()} className="flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-hover text-muted active:bg-line disabled:opacity-60">
+              {sending > 0 ? <Spinner /> : <ImagePlus className="size-5" />}
+            </button>
+            <TextArea onPaste={pastedImages} rows={1} className="max-h-28 min-h-11 flex-1 resize-none" placeholder={term?.agent ? "Message Claude…" : "Type a command…"} value={text}
               onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} />
             <button aria-label="Send" onClick={send} className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg active:brightness-90"><Send className="size-5" /></button>
           </div>

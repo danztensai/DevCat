@@ -1,8 +1,9 @@
 // More: this computer (address, access, keep awake), notifications setup, the activity log,
 // help, renaming this phone and unpairing.
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Bell, ChevronRight, Coffee, HelpCircle, History, Laptop, LogOut, Pencil, Repeat, Server } from "lucide-react";
+import { Bell, ChevronRight, Coffee, Copy, HelpCircle, History, Laptop, LogOut, Pencil, Repeat, Server } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { IS_WEB } from "../lib/env";
 import { phone } from "../lib/rpc";
 import { currentMachine, host, loadMachines, nav, toast, toastErr, useApp } from "../lib/store";
 import type { AuditEntry, HostInfo, NotifySettings } from "../lib/types";
@@ -49,12 +50,40 @@ export function More() {
       <Item icon={<Server className="size-5" />} title="Computer settings" meta="Addresses, name" onClick={() => nav.push({ s: "machine" })} chevron />
       <Section>This phone</Section>
       <PhoneName />
+      {IS_WEB && <OtherBrowsers />}
       <div className="text-[11px] text-faint">DevCat Mobile {info?.version} · {info?.platform} · key {info?.deviceId.slice(0, 8)}…</div>
       <Btn variant="danger" block onClick={() => setUnpair(true)}><LogOut className="size-4" />Unpair this computer</Btn>
       <Confirm open={unpair} danger title={`Unpair ${machine?.name}?`} confirm="Unpair" onCancel={() => setUnpair(false)} onConfirm={() => { setUnpair(false); void forget(); }}>
         This phone forgets the computer. To pair again, scan a new code. On the computer, also click <b>Revoke</b> next to this phone.
       </Confirm>
     </Screen>
+  );
+}
+
+/** Opened from the Home Screen icon (its own window, no address bar). */
+const standalone = () => matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true;
+
+/** The address carries this browser's pairing (web/client.ts carryPairing). */
+function OtherBrowsers() {
+  const installed = standalone();
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(location.href); toast("Copied. Open it in another browser on this phone.", "ok"); }
+    catch { toast(installed ? "Couldn't copy here. Open DevCat in Safari to copy the link." : "Copy the address from the address bar instead.", "info"); }
+  };
+  return (
+    <>
+      {installed ? (
+        <Note>Installed on the Home Screen: DevCat opens in its own window and stays paired.</Note>
+      ) : (
+        <Note>
+          <b>Install it as an app:</b> {ios ? <>in Safari tap <b>Share</b> → <b>Add to Home Screen</b> (from the QR code's preview, first tap <b>Open in Safari</b>)</> : <>in the browser menu tap <b>Add to Home screen</b> / <b>Install app</b></>}.
+          It opens full-screen with its own App Switcher card and stays paired.
+        </Note>
+      )}
+      <Note>This page's address carries the pairing, so it also works in another browser or as a bookmark. Keep it private, like a password.</Note>
+      <Btn block onClick={() => void copy()}><Copy className="size-4" />Copy link for another browser</Btn>
+    </>
   );
 }
 

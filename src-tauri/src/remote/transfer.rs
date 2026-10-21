@@ -32,6 +32,21 @@ pub async fn read_chunk(path: String, offset: u64, len: usize) -> Result<Value, 
     .map_err(|e| e.to_string())?
 }
 
+/// Where images pasted on a phone go before their path is pasted into an agent (like Claude
+/// Code's own image paste, which saves to a temp file too). Pastes older than a day are cleared.
+pub fn paste_dir() -> Result<String, String> {
+    let dir = std::env::temp_dir().join("devcat-paste");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Couldn't make a folder for the image: {e}"))?;
+    let day = std::time::Duration::from_secs(24 * 3600);
+    for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > day);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 /// The file an upload of `name` into `dir` ends up as. `name` must be a plain file name.
 pub fn upload_target(dir: &str, name: &str) -> Result<PathBuf, String> {
     let bad = name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) || name.len() > 255;

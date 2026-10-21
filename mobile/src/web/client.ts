@@ -41,6 +41,48 @@ export function saved(): Saved | null {
 
 function save(s: Saved | null) {
   if (s) localStorage.setItem(SAVED, JSON.stringify(s)); else localStorage.removeItem(SAVED);
+  carryPairing();
+}
+
+// Browsers don't share storage: not the in-app browser a QR code opens in, not Safari, not a
+// Home Screen icon. So the address bar carries this browser's pairing too (in the fragment,
+// which never goes over the network): open the same address anywhere and it's paired.
+const CARRY = [SAVED, "devcat.hosted.pairing", "devcat.hosted.key"];
+const CARRY_PARAM = "dc";
+
+/** Put this browser's pairing in the address bar (or take it out when there's none). */
+export function carryPairing() {
+  const base = location.pathname + location.search;
+  if (!pairedHostId()) {
+    if (new URLSearchParams(location.hash.slice(1)).has(CARRY_PARAM)) history.replaceState(history.state, "", base);
+    return;
+  }
+  const v: Record<string, string> = {};
+  for (const k of CARRY) { const x = localStorage.getItem(k); if (x !== null) v[k] = x; }
+  const hash = `#${CARRY_PARAM}=${b64url(enc.encode(JSON.stringify(v)))}`;
+  if (location.hash !== hash) history.replaceState(history.state, "", base + hash);
+}
+
+/** When the pairing in a store (this browser's, or the carried one) was made; 0 for none. */
+function pairedAt(get: (k: string) => string | null | undefined): number {
+  let t = 0;
+  for (const k of [SAVED, "devcat.hosted.pairing"]) {
+    try { t = Math.max(t, Number(JSON.parse(get(k) ?? "null")?.addedAt) || 0); } catch { /* ignore */ }
+  }
+  return t;
+}
+
+/** Take the pairing the address bar carries (opened from another browser) into this one, unless
+ *  this one has a newer pairing (a Home Screen icon keeps the address it was added with). */
+export function adoptCarried() {
+  const p = new URLSearchParams(location.hash.slice(1)).get(CARRY_PARAM);
+  if (!p) return;
+  try {
+    const v = JSON.parse(dec.decode(b64urlDecode(p)));
+    if (!CARRY.some((k) => typeof v[k] === "string")) return;
+    if (pairedAt((k) => localStorage.getItem(k)) > pairedAt((k) => v[k])) return;
+    for (const k of CARRY) if (typeof v[k] === "string") localStorage.setItem(k, v[k]); else localStorage.removeItem(k);
+  } catch { /* not ours */ }
 }
 
 /** Pairing details from a QR link: `http://host/#v=1&id=…&code=…&s=…&name=…` (served by the

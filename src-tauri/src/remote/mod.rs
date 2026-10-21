@@ -9,6 +9,7 @@ pub mod paths;
 pub mod readonly;
 pub mod server;
 pub mod store;
+pub mod tailscale;
 pub mod transfer;
 pub mod web;
 
@@ -111,11 +112,49 @@ pub fn reachable_addrs(port: u16, public: Option<&str>) -> Vec<String> {
             ips.push(ip);
         }
     }
+    // Tailscale's interface is a virtual one, but phones on the same tailnet reach it anywhere.
+    for i in ifaces.iter().filter(|i| virtual_iface(&i.name)) {
+        if let std::net::IpAddr::V4(v4) = i.ip()
+            && tailscale::is_tailnet_ip(v4)
+            && !ips.contains(&i.ip())
+        {
+            ips.push(i.ip());
+        }
+    }
     let mut out: Vec<String> = ips.into_iter().map(|ip| format!("{ip}:{port}")).collect();
     if let Some(p) = public.map(str::trim).filter(|p| !p.is_empty()) {
         out.push(if p.contains(':') && !p.starts_with('[') && p.rsplit(':').next().is_some_and(|x| x.parse::<u16>().is_ok()) { p.to_string() } else { format!("{p}:{port}") });
     }
     out
+}
+
+static PREFERRED_ADDR: Mutex<Option<String>> = Mutex::new(None);
+
+/// Make `addr` ("host:port", e.g. the tailnet name) the address phones get first, and the
+/// pairing QR open the browser version there instead of the hosted page (`devcat serve --tailscale`).
+pub fn prefer_addr(addr: Option<String>) {
+    *PREFERRED_ADDR.lock() = addr;
+}
+
+pub fn preferred_addr() -> Option<String> {
+    PREFERRED_ADDR.lock().clone()
+}
+
+/// [`reachable_addrs`] with the preferred address first.
+fn phone_addrs(s: &RemoteSettings) -> Vec<String> {
+    let mut addrs = reachable_addrs(s.port, s.public_addr.as_deref());
+    if let Some(p) = PREFERRED_ADDR.lock().clone() {
+        addrs.retain(|a| a != &p);
+        addrs.insert(0, p);
+    }
+    addrs
+}
+
+/// What the QR code opens: the browser link at the preferred address when there is one, else
+/// the hosted page (relays on), else the browser link, else the app link.
+fn qr_link(preferred: bool, hosted: Option<&String>, web: Option<&String>, app: &str) -> String {
+    let first = if preferred { web.or(hosted) } else { hosted.or(web) };
+    first.cloned().unwrap_or_else(|| app.to_string())
 }
 
 /// The browser version on GitHub Pages: reaches the computer through its relay, from any network.
@@ -132,7 +171,7 @@ fn host_info_now() -> HostInfo {
         name: host_name(&s),
         os: std::env::consts::OS.to_string(),
         app_version: env!("DEVCAT_VERSION").to_string(),
-        addrs: reachable_addrs(s.port, s.public_addr.as_deref()),
+        addrs: phone_addrs(&s),
         relay: s.relay_value(),
     }
 }
@@ -176,7 +215,7 @@ pub(crate) fn status_now() -> AppResult<RemoteStatus> {
         error: r.error.lock().clone(),
         id: r.host.endpoint_id(),
         host_name: host_name(&s),
-        addrs: reachable_addrs(s.port, s.public_addr.as_deref()),
+        addrs: phone_addrs(&s),
         clients: r.host.client_infos(),
         pairing_expires: r.host.pairing_expires(),
         pending: r.pending.lock().clone(),
@@ -396,7 +435,7 @@ pub async fn remote_save(settings: RemoteSettings) -> AppResult<RemoteStatus> {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairInfo {
-    /// What the QR code holds: the browser link when browser access is on, else the app link.
+    /// What the QR code holds: see [`qr_link`].
     pub link: String,
     /// `devcat://pair?…` for the app (paste).
     pub app_link: String,
@@ -418,7 +457,7 @@ pub async fn remote_pair_start(addr: Option<String>) -> AppResult<PairInfo> {
     let id = r.host.endpoint_id().ok_or_else(|| AppError::msg("Turn on remote access first"))?;
     let s = r.host.store.settings();
     let (code, web_secret, expires_at) = r.host.pair_start();
-    let mut addrs = reachable_addrs(s.port, s.public_addr.as_deref());
+    let mut addrs = phone_addrs(&s);
     if let Some(a) = addr.filter(|a| addrs.contains(a)) {
         addrs.retain(|x| x != &a);
         addrs.insert(0, a);
@@ -428,7 +467,7 @@ pub async fn remote_pair_start(addr: Option<String>) -> AppResult<PairInfo> {
     let web_link = (s.web && r.host.web_running() && web::has_assets()).then(|| pl.to_web_url(&devcat_remote_proto::web::b64url(&web_secret)));
     // With a relay the QR opens the hosted page, which works on any network (and hands over to the app).
     let hosted_link = (s.web && pl.relay.is_some()).then(|| pl.to_hosted_url(HOSTED_PAGE));
-    let link = hosted_link.clone().or_else(|| web_link.clone()).unwrap_or_else(|| app_link.clone());
+    let link = qr_link(PREFERRED_ADDR.lock().is_some(), hosted_link.as_ref(), web_link.as_ref(), &app_link);
     let svg = qr_svg(&link)?;
     push_status();
     Ok(PairInfo { link, app_link, web_link, hosted_link, code, svg, expires_at })
@@ -532,6 +571,11 @@ mod tests {
         assert_eq!(a.last().unwrap(), "devbox.example.com:47100");
         assert_eq!(reachable_addrs(1, Some("1.2.3.4:5000")).last().unwrap(), "1.2.3.4:5000");
         assert!(virtual_iface("utun4") && virtual_iface("bridge100") && !virtual_iface("en0"));
+        let (h, w) = ("https://hosted/#".to_string(), "http://mini.ts.net:47100/#".to_string());
+        assert_eq!(qr_link(false, Some(&h), Some(&w), "devcat://"), h);
+        assert_eq!(qr_link(true, Some(&h), Some(&w), "devcat://"), w);
+        assert_eq!(qr_link(true, Some(&h), None, "devcat://"), h);
+        assert_eq!(qr_link(false, None, None, "devcat://"), "devcat://");
         assert!(constant_time_eq(b"abc", b"abc") && !constant_time_eq(b"abc", b"abd") && !constant_time_eq(b"ab", b"abc"));
     }
 }
