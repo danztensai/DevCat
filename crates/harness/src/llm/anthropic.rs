@@ -133,6 +133,13 @@ impl Parser {
                 if v.pointer("/usage/output_tokens").is_some() {
                     self.usage.output_tokens = n("/usage/output_tokens");
                 }
+                // Anthropic (newer) and compatible APIs such as Z.ai send the input count here too,
+                // sometimes only here (message_start then says 0).
+                if n("/usage/input_tokens") > 0 {
+                    let read = n("/usage/cache_read_input_tokens");
+                    self.usage.input_tokens = n("/usage/input_tokens") + read + n("/usage/cache_creation_input_tokens");
+                    self.usage.cache_read_tokens = read;
+                }
             }
             "message_stop" => return Ok(true),
             "error" => return Err(Error::Provider(s("/error/message"))),
@@ -193,6 +200,20 @@ mod tests {
         ]);
         assert_eq!(r.usage, Usage { input_tokens: 950, output_tokens: 42, cache_read_tokens: 900 });
         assert!(!r.truncated);
+    }
+
+    #[test]
+    fn input_tokens_reported_at_the_end() {
+        let mut p = Parser::default();
+        for e in [
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 0, "output_tokens": 0 } } }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "max_tokens" }, "usage": { "input_tokens": 14, "output_tokens": 20, "cache_read_input_tokens": 6 } }),
+        ] {
+            p.event(&e, &mut |_| {}).unwrap();
+        }
+        let r = p.finish();
+        assert_eq!(r.usage, Usage { input_tokens: 20, output_tokens: 20, cache_read_tokens: 6 });
+        assert!(r.truncated);
     }
 
     #[test]
