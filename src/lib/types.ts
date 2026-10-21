@@ -316,7 +316,12 @@ export interface TrafficSample {
 
 // ---- AI connections (mirror src-tauri/src/ai/mod.rs)
 
-export type AiKind = "claude" | "codex" | "gemini" | "copilot" | "aider" | "opencode" | "custom";
+export type AiKind = "claude" | "codex" | "gemini" | "copilot" | "aider" | "opencode" | "custom" | "agent";
+/** Model API of a DevCat Agent connection. */
+/** A model a DevCat Agent API offers; `context` = its window in tokens, when known. */
+export interface AgentModel { id: string; context: number | null }
+
+export interface AgentSettings { protocol: "openai-chat" | "anthropic"; baseUrl: string; model: string }
 export interface AiEnvVar { key: string; value: string }
 /** Saved AI connection: the coding-agent CLI the AI workspace terminal runs. */
 export interface AiProvider {
@@ -335,6 +340,8 @@ export interface AiProvider {
   /** Read-only. */
   hasApiKey?: boolean;
   builtin?: boolean;
+  /** DevCat Agent only. */
+  agent?: AgentSettings | null;
 }
 export interface AiDetect {
   kind: AiKind;
@@ -404,3 +411,40 @@ export interface UpdateInfo { version: string; currentVersion: string; date?: st
 
 // ---- keep awake (mirror src-tauri/src/keep_awake.rs)
 export interface KeepAwakeState { on: boolean; until?: number | null }
+
+// ---- DevCat Agent (crates/harness) ----
+export type AgentPolicy = "ask" | "auto-edit" | "bypass";
+export type AgentDecision = { decision: "allow" } | { decision: "allow-for-session" } | { decision: "deny"; reason?: string | null };
+export interface AgentUsage { input_tokens: number; output_tokens: number; cache_read_tokens: number }
+export type AgentBlock =
+  | { type: "text"; text: string }
+  | { type: "thinking"; text: string; signature?: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean }
+  | { type: "image"; media_type: string; data: string };
+/** One line of a session log. */
+export type AgentSessionEvent =
+  | { event: "meta"; id: string; cwd: string; created_ms: number }
+  | { event: "user"; text: string; images?: AgentBlock[] }
+  | { event: "assistant"; content: AgentBlock[]; model: string; usage: AgentUsage }
+  | { event: "tool_results"; results: AgentBlock[] }
+  | { event: "approval"; tool_use_id: string; tool: string; allowed: boolean; by: string }
+  | { event: "interrupted"; reason: string }
+  | { event: "title"; title: string };
+export interface AgentContext { rules: string[]; skills: string[]; mcp: { name: string; tools: number }[]; notices: string[]; mcpLoading: boolean }
+export interface AgentOpened { sessionId: string; title: string; model: string; providerName: string; busy: boolean; events: AgentSessionEvent[]; usage: AgentUsage; context: AgentContext }
+export interface AgentQuestion { toolUseId: string; question: string; options: string[] }
+export interface AgentApprovalRequest { toolUseId: string; tool: string; kind: "read" | "edit" | "edit-outside" | "exec"; summary: string; input: Record<string, unknown> }
+/** Payload of `agent-event`. */
+export type AgentLiveEvent =
+  | { type: "turnStart"; text: string; attachments?: string[] }
+  | { type: "question"; question: AgentQuestion }
+  | { type: "context"; context: AgentContext }
+  | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
+  | { type: "toolStart"; id: string; name: string }
+  | { type: "step"; content: AgentBlock[]; usage: AgentUsage }
+  | { type: "approval"; request: AgentApprovalRequest }
+  | { type: "toolCall"; id: string; name: string; summary: string; input: Record<string, unknown> }
+  | { type: "toolResult"; id: string; content: string; is_error: boolean }
+  | { type: "turnEnd"; end: "answered" | "stepLimit" | "stopped" | "error"; error: string | null; usage: AgentUsage; title: string; elapsedMs: number };

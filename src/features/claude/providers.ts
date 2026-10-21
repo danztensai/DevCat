@@ -3,7 +3,7 @@
 // one is persisted per machine in localStorage and used for new chats.
 import { create } from "zustand";
 import { api, errMsg } from "../../lib/api";
-import type { AiDetect, AiKind, AiProvider } from "../../lib/types";
+import type { AgentSettings, AiDetect, AiKind, AiProvider } from "../../lib/types";
 
 /** Id of the implicit Claude Code profile. */
 export const CLAUDE_PROVIDER_ID = "claude";
@@ -30,13 +30,32 @@ export const KINDS: Record<AiKind, KindInfo> = {
   aider: { label: "Aider", program: "aider", keyEnv: "OPENAI_API_KEY", keyEnvEditable: true, install: "pip install aider-chat", login: "Aider reads the API key of the model's vendor." },
   opencode: { label: "opencode", program: "opencode", keyEnv: "OPENAI_API_KEY", keyEnvEditable: true, install: "npm i -g opencode-ai", login: "Run opencode auth login once, or set an API key." },
   custom: { label: "Custom", program: "", keyEnv: null, keyEnvEditable: true, install: null, login: "Any CLI that runs in a terminal." },
+  agent: { label: "DevCat Agent", program: "", keyEnv: null, keyEnvEditable: false, install: null, login: "Built in: talks to a model API directly. Nothing to install." },
 };
 
-export const KIND_ORDER: AiKind[] = ["claude", "codex", "gemini", "copilot", "aider", "opencode", "custom"];
+export const KIND_ORDER: AiKind[] = ["claude", "agent", "codex", "gemini", "copilot", "aider", "opencode", "custom"];
 
 export const builtinClaude = (): AiProvider => ({ id: CLAUDE_PROVIDER_ID, name: "Claude Code", kind: "claude", args: [], env: [], builtin: true });
 
-export const blankProvider = (kind: AiKind): AiProvider => ({ id: "", name: KINDS[kind].label, kind, command: null, args: [], env: [] });
+export const blankProvider = (kind: AiKind): AiProvider => ({
+  id: "", name: KINDS[kind].label, kind, command: null, args: [], env: [],
+  ...(kind === "agent" ? { agent: { ...AGENT_PRESETS[0].settings } } : {}),
+});
+
+/** Model APIs offered when setting up DevCat Agent (all editable afterwards). */
+export const AGENT_PRESETS: { label: string; settings: AgentSettings; keyHint: string }[] = [
+  // Z.ai's Anthropic-style endpoint caches the conversation (90%+ of input tokens in our tests),
+  // its OpenAI-style one much less.
+  { label: "Z.ai GLM Coding Plan", settings: { protocol: "anthropic", baseUrl: "https://api.z.ai/api/anthropic", model: "glm-5.3-flash" }, keyHint: "Your Z.ai API key (z.ai → API keys)." },
+  { label: "Z.ai GLM (OpenAI-style)", settings: { protocol: "openai-chat", baseUrl: "https://api.z.ai/api/coding/paas/v4", model: "glm-5.3-flash" }, keyHint: "Your Z.ai API key. The Anthropic-style preset caches more." },
+  { label: "DeepSeek", settings: { protocol: "openai-chat", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" }, keyHint: "From platform.deepseek.com." },
+  { label: "OpenAI", settings: { protocol: "openai-chat", baseUrl: "https://api.openai.com/v1", model: "gpt-5" }, keyHint: "From platform.openai.com." },
+  { label: "Anthropic", settings: { protocol: "anthropic", baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5" }, keyHint: "From console.anthropic.com." },
+  { label: "OpenRouter", settings: { protocol: "openai-chat", baseUrl: "https://openrouter.ai/api/v1", model: "deepseek/deepseek-chat" }, keyHint: "From openrouter.ai/keys." },
+  { label: "Kimi (Moonshot)", settings: { protocol: "openai-chat", baseUrl: "https://api.moonshot.ai/v1", model: "kimi-k2-turbo-preview" }, keyHint: "From platform.moonshot.ai." },
+  { label: "Ollama (this computer)", settings: { protocol: "openai-chat", baseUrl: "http://127.0.0.1:11434/v1", model: "qwen3:8b" }, keyHint: "No key needed." },
+  { label: "LM Studio (this computer)", settings: { protocol: "openai-chat", baseUrl: "http://127.0.0.1:1234/v1", model: "" }, keyHint: "No key needed." },
+];
 
 interface ProvidersState {
   providers: AiProvider[];
@@ -141,6 +160,7 @@ export type InstallState = "installed" | "missing" | "unknown";
 
 /** Whether a profile's CLI is installed (only known for profiles that use the default binary). */
 export function installState(p: AiProvider, detect: Partial<Record<AiKind, AiDetect>>): InstallState {
+  if (p.kind === "agent") return "installed";
   if (p.kind === "custom" || p.command) return "unknown";
   const d = detect[p.kind];
   if (!d) return "unknown";

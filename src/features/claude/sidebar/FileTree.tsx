@@ -13,11 +13,12 @@ import type { FileEntry, GitStatus } from "../../../lib/types";
 import { useTabs } from "../../../store/tabs";
 import { useContextMenu, type MenuItem } from "../../connections/ContextMenu";
 import { FileIcon } from "../../files/FileIcon";
-import { copyFile, copyText, dirname, openFilePreview, relPath, revealPath } from "../../files/format";
+import { copyFile, copyText, dirname, openFilePreview, relPath, revealPath, REVEAL_LABEL } from "../../files/format";
 import { openBlame, openGitRepo } from "../../git/open";
 import { repoRootOf } from "../../git/repoOf";
 import { useWorkspace } from "./workspace";
 import { isRemote } from "../../../lib/remotePath";
+import { DRAG_PATHS } from "../../files/format";
 import { IS_MAC } from "../../../lib/windows";
 
 const ROW_H = 22;
@@ -231,7 +232,7 @@ const FileTree = forwardRef<FileTreeHandle, { cwd: string; git: GitStatus | null
       { label: "Copy path", icon: <Copy className="size-3.5" />, onClick: () => void copyText(e.path) },
       { label: "Copy relative path", icon: <ClipboardCopy className="size-3.5" />, onClick: () => void copyText(rel) },
       { label: "Mention in chat", icon: <AtSign className="size-3.5" />, onClick: () => void copyText(`@${rel}${e.isDir ? "/" : ""}`, `Copied @${rel} — paste it in the chat`) },
-      ...(isRemote(e.path) ? [] : ["separator", { label: "Reveal in Finder", icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(e.path) }] as MenuItem[]),
+      ...(isRemote(e.path) ? [] : ["separator", { label: REVEAL_LABEL, icon: <FolderSearch className="size-3.5" />, onClick: () => void revealPath(e.path) }] as MenuItem[]),
     ];
     menu.show(ev, items);
   }, [cwd, expanded, toggle, menu]);
@@ -339,6 +340,13 @@ const EntryRow = memo(function EntryRow({ row, selected, active, git, dirty, onA
       title={e.path}
       onClick={() => onActivate(e)}
       onContextMenu={(ev) => onMenu(ev, e)}
+      // drag onto a DevCat Agent chat to attach it (local files only)
+      draggable={!isRemote(e.path)}
+      onDragStart={(ev) => {
+        ev.dataTransfer.setData(DRAG_PATHS, JSON.stringify([e.path]));
+        ev.dataTransfer.setData("text/plain", e.path);
+        ev.dataTransfer.effectAllowed = "copy";
+      }}
     >
       {e.isDir ? (
         <span

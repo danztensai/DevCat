@@ -33,6 +33,8 @@ import { setTabVisible, useTabActivity } from "./activity";
 import { TerminalPane } from "./TerminalPane";
 import { basename, modelOptions, PERMISSION_MODES } from "./util";
 import { isRemote } from "../../lib/remotePath";
+import AgentChat from "../agent/AgentChat";
+import { closeChat, send as sendToChat, useAgent } from "../agent/store";
 import { openTerminal } from "../terminal/open";
 
 type ClaudeTabT = Extract<Tab, { type: "claude" }>;
@@ -217,6 +219,9 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
   useLayoutEffect(() => ensureTab(tabId, tab.cwd, tab.sessionId), [tabId, tab.cwd, tab.sessionId]);
   const provider = useProvider(tab.providerId);
   const isClaude = provider?.kind === "claude";
+  // DevCat Agent: a chat view instead of a terminal
+  const isAgent = provider?.kind === "agent";
+  const agentBusy = useAgent((s) => !!s.chats[tabId]?.busy);
   const agent = isClaude ? "Claude" : provider?.name ?? "the agent";
   useLayoutEffect(() => { if (ready && provider) setTabIsClaude(tabId, isClaude); }, [ready, provider, isClaude, tabId]);
   const active = useTabs((s) => s.activeId === tabId);
@@ -276,6 +281,11 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
 
   // Claude: structured review run (Code Review view). Others: ask the agent in its terminal.
   const reviewNow = () => {
+    if (isAgent) {
+      setView("chat");
+      void sendToChat(tabId, REVIEW_PROMPT);
+      return;
+    }
     if (isClaude) {
       setView("review");
       void startReview(tabId);
@@ -301,7 +311,7 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
 
   if (!ready || provider === undefined) return null;
   // Claude Code with its default binary: claude_info knows whether it's installed.
-  const notInstalled = isClaude && !provider?.command ? infoLoaded && info !== null && !info.path : missing;
+  const notInstalled = isAgent ? false : isClaude && !provider?.command ? infoLoaded && info !== null && !info.path : missing;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-app">
@@ -332,16 +342,20 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
         <BranchChip tabId={tabId} onClick={() => setView("diff")} />
         {isClaude && <ReviewBadge tabId={tabId} onClick={() => setView("review")} />}
         <div className="flex-1" />
-        {activity.working && <span className="shimmer-text text-[11px] font-medium" title={`${agent} is working`}>working</span>}
-        <span className={clsx("size-1.5 rounded-full", activity.working ? "bg-accent" : running ? "bg-ok" : "bg-faint")} title={activity.working ? `${agent} is working` : running ? `${agent} is running` : `${agent} is not running`} />
+        {(isAgent ? agentBusy : activity.working) && <span className="shimmer-text text-[11px] font-medium" title={`${agent} is working`}>working</span>}
+        {!isAgent && <span className={clsx("size-1.5 rounded-full", activity.working ? "bg-accent" : running ? "bg-ok" : "bg-faint")} title={activity.working ? `${agent} is working` : running ? `${agent} is running` : `${agent} is not running`} />}
         {isClaude && <SessionChip tabId={tabId} />}
         {isClaude && <LaunchOptions tabId={tabId} onBypass={() => setConfirmBypass(true)} />}
         {provider && !isClaude && (
-          <Button size="sm" variant="ghost" title={`Ask ${agent} to review the uncommitted changes (typed into its terminal)`} onClick={reviewNow}>
+          <Button size="sm" variant="ghost" title={isAgent ? `Ask ${agent} to review the uncommitted changes` : `Ask ${agent} to review the uncommitted changes (typed into its terminal)`} onClick={reviewNow}>
             <ScanSearch className="size-3.5" />Review
           </Button>
         )}
-        <Button size="sm" variant="ghost" disabled={!provider} title={`Start a new ${agent} session`} onClick={() => { setView("chat"); newSession(tabId); }}>
+        <Button size="sm" variant="ghost" disabled={!provider} title={`Start a new ${agent} session`} onClick={() => {
+          setView("chat");
+          if (isAgent) void closeChat(tabId).then(() => useTabs.getState().update(tabId, { sessionId: null } as never));
+          else newSession(tabId);
+        }}>
           <MessageSquarePlus className="size-3.5" />New session
         </Button>
         {view === "diff" && provider && (
@@ -360,7 +374,11 @@ export default function ClaudeTab({ tab }: { tab: ClaudeTabT }) {
           ) : notInstalled ? (
             isClaude ? <InstallHelp onRetry={() => void loadInfo(true)} error={infoError} /> : <AgentInstallHelp provider={provider} />
           ) : (
-            <ChatPane tabId={tabId} cwd={tab.cwd} visible={active && view === "chat"} provider={provider} />
+            isAgent ? (
+              <AgentChat tabId={tabId} cwd={tab.cwd} provider={provider} visible={active && view === "chat"} onReview={() => setView("diff")} />
+            ) : (
+              <ChatPane tabId={tabId} cwd={tab.cwd} visible={active && view === "chat"} provider={provider} />
+            )
           )}
         </div>
         {view === "diff" && <div className="absolute inset-0 bg-app"><DiffView tabId={tabId} cwd={tab.cwd} active={active} onReview={reviewNow} agent={agent} /></div>}
