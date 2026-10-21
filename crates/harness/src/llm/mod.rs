@@ -41,6 +41,8 @@ pub struct Request<'a> {
     pub system: &'a str,
     pub messages: &'a [Message],
     pub tools: &'a [ToolSpec],
+    /// Stable per session: lets providers that support it keep the session on one cache.
+    pub cache_key: Option<&'a str>,
 }
 
 /// Pieces of the answer as they arrive, for live display.
@@ -106,6 +108,51 @@ impl Llm {
     }
 }
 
+/// Models the provider offers (`GET {base}/models`, or `/v1/models` for Anthropic), newest first.
+/// Embedding models are left out: they can't chat.
+pub async fn list_models(cfg: &LlmConfig) -> Result<Vec<String>> {
+    let http = reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).timeout(Duration::from_secs(20)).build().unwrap_or_default();
+    let key = cfg.api_key.as_deref().filter(|k| !k.is_empty());
+    let req = match cfg.protocol {
+        Protocol::OpenaiChat => {
+            let r = http.get(url(&cfg.base_url, "models"));
+            if let Some(k) = key { r.bearer_auth(k) } else { r }
+        }
+        Protocol::Anthropic => {
+            let path = if cfg.base_url.trim_end_matches('/').ends_with("/v1") { "models?limit=1000" } else { "v1/models?limit=1000" };
+            let r = http.get(url(&cfg.base_url, path)).header("anthropic-version", "2023-06-01");
+            if let Some(k) = key { r.header("x-api-key", k) } else { r }
+        }
+    };
+    let resp = req.send().await?;
+    if !resp.status().is_success() {
+        return Err(match http_error(resp).await {
+            Retry::Later(e, _) | Retry::Never(e) => e,
+        });
+    }
+    let v: serde_json::Value = resp.json().await.map_err(|e| Error::Provider(format!("unexpected model list: {e}")))?;
+    Ok(model_ids(&v))
+}
+
+fn model_ids(v: &serde_json::Value) -> Vec<String> {
+    let mut models: Vec<(String, String)> = v
+        .get("data")
+        .and_then(|d| d.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|m| {
+            let id = m.get("id")?.as_str()?.to_string();
+            // OpenAI: unix seconds; Anthropic: RFC 3339. Both sort as text once padded.
+            let created = m.get("created").and_then(|c| c.as_u64()).map(|c| format!("{c:020}")).or_else(|| m.get("created_at").and_then(|c| c.as_str()).map(String::from)).unwrap_or_default();
+            Some((created, id))
+        })
+        .filter(|(_, id)| !id.to_lowercase().contains("embed"))
+        .collect();
+    models.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    models.dedup_by(|a, b| a.1 == b.1);
+    models.into_iter().map(|(_, id)| id).collect()
+}
+
 /// Why a request failed, and whether trying again can help.
 pub(crate) enum Retry {
     Later(Error, Option<Duration>),
@@ -137,4 +184,17 @@ pub(crate) fn transport(e: reqwest::Error) -> Retry {
 /// `base_url` + `path`, without doubling the slash.
 pub(crate) fn url(base: &str, path: &str) -> String {
     format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_list_newest_first_without_embeddings() {
+        let openai = serde_json::json!({ "data": [{ "id": "glm-4.5", "created": 1753632000 }, { "id": "glm-5.2", "created": 1781625600 }, { "id": "nomic-embed-text", "created": 1790000000 }] });
+        assert_eq!(model_ids(&openai), vec!["glm-5.2", "glm-4.5"]);
+        let anthropic = serde_json::json!({ "data": [{ "id": "a", "created_at": "2025-07-28T00:00:00Z" }, { "id": "b", "created_at": "2026-01-01T00:00:00Z" }] });
+        assert_eq!(model_ids(&anthropic), vec!["b", "a"]);
+    }
 }

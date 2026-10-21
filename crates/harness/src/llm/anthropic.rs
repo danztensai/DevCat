@@ -27,6 +27,11 @@ pub(super) fn body(cfg: &LlmConfig, req: &Request<'_>) -> Value {
         "messages": req.messages.iter().map(wire_message).collect::<Vec<_>>(),
         "stream": true,
     });
+    // A rolling breakpoint on the newest block: the next step reads the whole conversation so far
+    // from the cache, and only the new tool results are fresh input.
+    if let Some(last) = b["messages"].as_array_mut().and_then(|m| m.last_mut()).and_then(|m| m["content"].as_array_mut()).and_then(|c| c.last_mut()) {
+        last["cache_control"] = json!({ "type": "ephemeral" });
+    }
     if !req.tools.is_empty() {
         b["tools"] = req.tools.iter().map(|t| json!({ "name": t.name, "description": t.description, "input_schema": t.input_schema })).collect();
     }
@@ -227,10 +232,13 @@ mod tests {
             ],
         }];
         let cfg = LlmConfig { protocol: super::super::Protocol::Anthropic, base_url: "x".into(), api_key: None, model: "m".into(), max_tokens: 10 };
-        let b = body(&cfg, &Request { system: "s", messages: &msgs, tools: &[] });
+        let b = body(&cfg, &Request { system: "s", messages: &msgs, tools: &[], cache_key: None });
         let c = b["messages"][0]["content"].as_array().unwrap();
         assert_eq!(c.len(), 2);
         assert_eq!(c[0]["type"], "thinking");
         assert_eq!(c[1]["type"], "tool_use");
+        // the newest block carries the rolling cache breakpoint
+        assert_eq!(c[1]["cache_control"]["type"], "ephemeral");
+        assert!(c[0].get("cache_control").is_none());
     }
 }

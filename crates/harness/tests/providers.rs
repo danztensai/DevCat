@@ -73,7 +73,7 @@ async fn openai_compatible_streams_a_tool_call_after_a_retry() {
     let msgs = [Message::user_text("what's in a.txt?")];
     let mut text = String::new();
     let reply = llm
-        .step(&Request { system: "be brief", messages: &msgs, tools: &tools() }, &mut |d| {
+        .step(&Request { system: "be brief", messages: &msgs, tools: &tools(), cache_key: None }, &mut |d| {
             if let Delta::Text(t) = d {
                 text.push_str(&t);
             }
@@ -106,12 +106,12 @@ async fn anthropic_streams_and_reports_errors() {
     let (base, seen) = server(vec![(200, stream), (401, r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#.into())]).await;
     let llm = Llm::new(LlmConfig { protocol: Protocol::Anthropic, base_url: base, api_key: Some("ant-key".into()), model: "claude-x".into(), max_tokens: 500 });
     let msgs = [Message::user_text("hi")];
-    let reply = llm.step(&Request { system: "s", messages: &msgs, tools: &tools() }, &mut |_| {}).await.unwrap();
+    let reply = llm.step(&Request { system: "s", messages: &msgs, tools: &tools(), cache_key: None }, &mut |_| {}).await.unwrap();
     assert_eq!(reply.content, vec![Block::Text { text: "Héllo ✓".into() }]);
     assert_eq!((reply.usage.input_tokens, reply.usage.output_tokens), (11, 5));
 
     // 401 is not retried and keeps the provider's message
-    let err = llm.step(&Request { system: "s", messages: &msgs, tools: &[] }, &mut |_| {}).await.unwrap_err();
+    let err = llm.step(&Request { system: "s", messages: &msgs, tools: &[], cache_key: None }, &mut |_| {}).await.unwrap_err();
     assert_eq!(err.to_string(), "model provider: 401 invalid x-api-key");
 
     let seen = seen.lock().unwrap();

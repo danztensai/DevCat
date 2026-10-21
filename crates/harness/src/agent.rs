@@ -114,7 +114,7 @@ impl Agent {
         let ctx = ToolCtx { cwd: session.cwd.clone().into() };
         for _ in 0..MAX_STEPS {
             let messages = session.messages();
-            let req = Request { system: &self.system, messages: &messages, tools: &specs };
+            let req = Request { system: &self.system, messages: &messages, tools: &specs, cache_key: Some(&session.id) };
             let mut forward = |d: Delta| {
                 on(match d {
                     Delta::Text(text) => AgentEvent::Text { text },
