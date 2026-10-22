@@ -109,7 +109,9 @@ jobs:
           for i in $(seq 1 "$ITERATIONS"); do
             echo "::group::iteration $i/$ITERATIONS"
             start=$(date +%s)
-            if ! cargo test --lib -- --ignored --test-threads=8 $SKIP; then
+            # postgres_truncation_stops_early asserts a wall-clock bound that only holds on an
+            # idle runner; it runs in the serial step above.
+            if ! cargo test --lib -- --ignored --test-threads=8 $SKIP --skip postgres_truncation_stops_early; then
               fails=$((fails + 1))
               echo "::warning::iteration $i failed"
             fi
