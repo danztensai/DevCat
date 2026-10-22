@@ -69,6 +69,7 @@ jobs:
       - run: mkdir -p dist
 
       - name: Build tests
+        id: build
         working-directory: src-tauri
         run: cargo test --lib --no-run
 
@@ -95,10 +96,13 @@ jobs:
         run: cargo test --lib
 
       - name: Integration tests (serial)
+        # Run even when unit tests fail, so one unit failure doesn't hide integration results.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         working-directory: src-tauri
         run: cargo test --lib -- --ignored --test-threads=1 $SKIP
 
       - name: Stress (parallel, repeated)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         working-directory: src-tauri
         run: |
           fails=0
