@@ -1914,12 +1914,14 @@ mod mssql_it {
         assert_eq!(page.total, Some(1));
         assert_eq!(page.primary_key, vec!["id".to_string()]);
         // a filter can't smuggle in another statement
+        let all = TableDataRequest { table: items.clone(), offset: 0, limit: 10, filter: None, sort: vec![] };
+        let before = d.table_data(&all).await.unwrap().result.rows.len();
+        assert!(before > 0);
         for f in ["1=0) DELETE FROM [app].[items] --", "1=0; DELETE FROM [app].[items]", "1=1 EXEC('DELETE FROM [app].[items]')"] {
             let req = TableDataRequest { table: items.clone(), offset: 0, limit: 10, filter: Some(f.into()), sort: vec![] };
             assert!(d.table_data(&req).await.is_err(), "{f}");
         }
-        let all = TableDataRequest { table: items.clone(), offset: 0, limit: 10, filter: None, sort: vec![] };
-        assert!(d.table_data(&all).await.unwrap().total.unwrap() > 1);
+        assert_eq!(d.table_data(&all).await.unwrap().result.rows.len(), before);
 
         // apply_changes: insert (identity skipped), update, delete in one transaction
         let mut ins = Map::new();
