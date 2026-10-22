@@ -187,11 +187,24 @@ pub async fn call(client: &Arc<Client>, cmd: &str, args: &Value) -> CallResult {
         // DevCat Agent chats (src-tauri/src/agent.rs): the phone gets `agent-event`s of the chats it opened.
         "agent_open" => {
             let session_id: Option<String> = arg(args, "sessionId").unwrap_or(None);
-            if client.readonly() && session_id.is_none() {
+            if client.readonly() && !session_id.as_deref().is_some_and(crate::agent::exists) {
                 return Err(json!("This phone has read-only access: it can watch chats but not start one."));
             }
             let origin = format!("phone:{}", client.device.name);
-            let opened = crate::agent::open(expand_home(&arg::<String>(args, "cwd")?), a!("providerId"), session_id, &origin).await.map_err(|e| json!(e.to_string()))?;
+            // Attach first: events sent while the chat opens reach the phone (it skips the ones
+            // `open` returns, by `seq`).
+            if let Some(id) = &session_id {
+                client.attach(id);
+            }
+            let opened = match crate::agent::open(expand_home(&arg::<String>(args, "cwd")?), a!("providerId"), session_id.clone(), &origin, &client.device.id).await {
+                Ok(o) => o,
+                Err(e) => {
+                    if let Some(id) = &session_id {
+                        client.detach(id);
+                    }
+                    return Err(json!(e.to_string()));
+                }
+            };
             client.attach(&opened.session_id);
             out(Ok(opened))
         }
@@ -200,24 +213,32 @@ pub async fn call(client: &Arc<Client>, cmd: &str, args: &Value) -> CallResult {
             Ok(Value::Null)
         }
         "agent_send" => {
+            let session_id: String = a!("sessionId");
             let attachments: Vec<String> = arg(args, "attachments").unwrap_or_default();
-            for p in &attachments {
-                super::paths::check(p).map_err(|e| json!(e))?;
+            if !attachments.is_empty() {
+                // files pasted on the phone are saved in this chat's attachments (agent_attach)
+                let own = crate::agent::attachments_dir(&session_id).map_err(|e| json!(e.to_string()))?;
+                for p in &attachments {
+                    super::paths::check_within(p, &own).map_err(|e| json!(e))?;
+                }
             }
-            out(crate::agent::agent_send(a!("sessionId"), a!("text"), a!("policy"), arg(args, "model").unwrap_or(None), Some(attachments)).await)
+            out(crate::agent::agent_send(session_id, a!("text"), a!("policy"), arg(args, "model").unwrap_or(None), Some(attachments)).await)
         }
         "agent_attach" => out(crate::agent::agent_attach(a!("sessionId"), a!("name"), a!("data")).await),
         "agent_stop" => out(crate::agent::agent_stop(a!("sessionId")).await),
         "agent_approve" => out(crate::agent::agent_approve(a!("sessionId"), a!("toolUseId"), a!("decision")).await),
         "agent_answer" => out(crate::agent::agent_answer(a!("sessionId"), a!("toolUseId"), a!("answer")).await),
         "agent_close" => {
-            // Only chats started from a phone: one in a desktop tab stays open there.
+            // Only the phone that started the chat ends it: one in a desktop tab stays open there.
             let id: String = a!("sessionId");
-            if !crate::agent::origin(&id).is_some_and(|o| o.starts_with("phone:")) {
-                return Err(json!("This chat is open on the computer; close its tab there."));
+            match crate::agent::owner(&id) {
+                Some(o) if o == client.device.id => {}
+                Some(o) if o == "desktop" => return Err(json!("This chat is open on the computer; close its tab there.")),
+                Some(_) => return Err(json!("Another phone started this chat; it can end it there.")),
+                None => {}
             }
             client.detach(&id);
-            out(crate::agent::agent_close(id).await)
+            out(crate::agent::close(&id))
         }
         "agent_sessions" => out(crate::agent::agent_sessions(expand_home(&arg::<String>(args, "cwd")?)).await),
         "agent_models" => {

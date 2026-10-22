@@ -55,15 +55,33 @@ function flush() {
   for (const [tabId, events] of batch) patch(tabId, (c) => applyAll(c, events));
 }
 
+// Events are numbered (`seq`) per chat: ones that arrive while a chat opens wait for it, and ones
+// it already got from `agentOpen` (or before) are skipped.
+type Numbered = { event: AgentLiveEvent; seq?: number };
+const lastSeq = new Map<string, number>();
+const opening = new Map<string, Numbered[]>();
+
+function queue(tabId: string, sessionId: string, events: Numbered[]) {
+  const list = queued.get(tabId) ?? [];
+  for (const e of events) {
+    if (e.seq !== undefined) {
+      if (e.seq <= (lastSeq.get(sessionId) ?? 0)) continue;
+      lastSeq.set(sessionId, e.seq);
+    }
+    list.push(e.event);
+  }
+  queued.set(tabId, list);
+  frame ||= requestAnimationFrame(flush);
+}
+
 let listening: Promise<unknown> | null = null;
 function ensureListening() {
-  listening ??= listen<{ sessionId: string; event: AgentLiveEvent }>("agent-event", (ev) => {
-    const tabId = tabOfSession(ev.payload.sessionId);
-    if (!tabId) return;
-    const list = queued.get(tabId) ?? [];
-    list.push(ev.payload.event);
-    queued.set(tabId, list);
-    frame ||= requestAnimationFrame(flush);
+  listening ??= listen<{ sessionId: string; event: AgentLiveEvent; seq?: number }>("agent-event", (ev) => {
+    const { sessionId, event, seq } = ev.payload;
+    const early = opening.get(sessionId);
+    if (early) return void early.push({ event, seq });
+    const tabId = tabOfSession(sessionId);
+    if (tabId) queue(tabId, sessionId, [{ event, seq }]);
   });
   return listening;
 }
@@ -72,17 +90,24 @@ function ensureListening() {
 export async function openChat(tabId: string, cwd: string, providerId: string, sessionId: string | null): Promise<string | null> {
   await ensureListening();
   patch(tabId, () => ({ opening: true, error: null }));
+  const early: Numbered[] = [];
+  if (sessionId) opening.set(sessionId, early);
   try {
     const o = await api.agentOpen(cwd, providerId, sessionId);
+    lastSeq.set(o.sessionId, o.seq ?? 0);
     // A turn still running: its events so far come after the log.
     patch(tabId, (c) => applyAll({
       ...c, sessionId: o.sessionId, title: o.title, model: o.model, providerName: o.providerName, busy: o.busy, opening: false,
       items: itemsFromLog(o.events), usage: o.usage, context: o.context, contextTokens: lastContext(o.events),
     }, o.live ?? []));
+    // then what was sent while it opened (minus what `live` already had)
+    if (early.length) queue(tabId, o.sessionId, early);
     return o.sessionId;
   } catch (e) {
     patch(tabId, () => ({ opening: false, error: errMsg(e) }));
     return null;
+  } finally {
+    if (sessionId && opening.get(sessionId) === early) opening.delete(sessionId);
   }
 }
 
@@ -94,7 +119,10 @@ export async function closeChat(tabId: string) {
     const { [tabId]: _, ...rest } = s.chats;
     return { chats: rest };
   });
-  if (c?.sessionId) await api.agentClose(c.sessionId).catch(() => {});
+  if (c?.sessionId) {
+    lastSeq.delete(c.sessionId);
+    await api.agentClose(c.sessionId).catch(() => {});
+  }
 }
 
 export async function send(tabId: string, text: string): Promise<boolean> {
