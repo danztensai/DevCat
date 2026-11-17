@@ -16,4 +16,4 @@ jobs:
           workspaces: src-tauri -> target
       - run: mkdir -p dist
       - working-directory: src-tauri
-        run: cargo test --locked --lib -- ai:: claude::pty:: notify::
+        run: 'cargo test --locked --lib -- ai:: claude::pty:: notify::'
