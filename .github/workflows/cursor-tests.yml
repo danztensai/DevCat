@@ -1,0 +1,19 @@
+# Temporary (fork only): run the Rust unit tests touched by the Cursor agent change.
+name: cursor-tests
+on:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: mkdir -p dist
+      - working-directory: src-tauri
+        run: cargo test --locked --lib -- ai:: claude::pty:: notify::
